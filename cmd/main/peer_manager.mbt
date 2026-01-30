@@ -132,15 +132,6 @@ fn PeerManager::update_connection_last_seen(
 }
 
 ///|
-fn PeerManager::get_connection_stats(self : PeerManager) -> (Int, Int, Int) {
-  let all_conns = self.connection_manager.get_all_connections()
-  let total = all_conns.length()
-  let active = all_conns.filter(fn(conn) { conn.is_active() }).length()
-  let peers = self.peers.length()
-  (total, active, peers)
-}
-
-///|
 fn PeerManager::get_all_connections(self : PeerManager) -> Array[Connection] {
   self.connection_manager.get_all_connections()
 }

@@ -76,9 +76,7 @@ struct StatusInfo {
   status : String
   connections : Array[PeerConnectionInfo]
   peers_count : Int
-  active_connections : Int
-  total_connections : Int
-  node_name : String
+  node_id : String
   listeners : Array[String]
 } derive(ToJson)
 
@@ -87,7 +85,7 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
   // Store the config globally for handlers to access
   global_config.val = Some(config)
   let server = @http.Server::new(@socket.Addr::parse(addr))
-  server.run_forever((request, _body, conn) => match
+  server.run_forever((request, body, conn) => match
     (request.meth, request.path) {
     (Get, "/config") => get_config_handler(conn)
     (Get, "/status") => status_handler(conn)
@@ -106,13 +104,67 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
         }
       }
 
-      // For now, just return success
-      conn
-      ..send_response(200, "OK", extra_headers={
-        "Content-Type": "application/json",
-      })
-      ..write({ "status": "sent", "target": target }.to_json().stringify())
-      ..end_response()
+      // Read request body (convert from Bytes to String)
+      let body_str = body.read_all().text()
+
+      // Get current node ID and local address
+      let node_id = match global_config.val {
+        Some(config) => config.id
+        None => "unknown"
+      }
+      let local_addr = match global_config.val {
+        Some(config) => {
+          let addrs = config.listeners.map(fn(url) { url.get_host() })
+          if addrs.is_empty() {
+            "127.0.0.1:0"
+          } else {
+            addrs[0]
+          }
+        }
+        None => "127.0.0.1:0"
+      }
+
+      // Create data message to send with body as data
+      let msg = Message::{
+        kind: "data",
+        id: node_id,
+        addr: local_addr,
+        version: Some(VERSION),
+        peers: None,
+        payload: None,
+        target: Some(target),
+        data: Some(body_str),
+      }
+
+      // Add to pending message queue
+      add_pending_message(target, msg)
+
+      // Check if target peer exists
+      let target_peer = get_global_peer_manager().get_peer(target)
+      match target_peer {
+        Some(_) =>
+          conn
+          ..send_response(200, "OK", extra_headers={
+            "Content-Type": "application/json",
+          })
+          ..write(
+            { "status": "queued", "target": target, "data": body_str }
+            .to_json()
+            .stringify(),
+          )
+          ..end_response()
+        None =>
+          conn
+          ..send_response(404, "Not Found", extra_headers={
+            "Content-Type": "application/json",
+          })
+          ..write(
+            { "error": "Target peer not found", "target": target }
+            .to_json()
+            .stringify(),
+          )
+          ..end_response()
+      }
     }
     _ => notfound_handler(conn)
   })
@@ -143,7 +195,6 @@ async fn get_config_handler(conn : @http.ServerConnection) -> Unit {
 async fn status_handler(conn : @http.ServerConnection) -> Unit {
   let all_peers = get_global_peer_manager().get_all_peers()
   let all_conns = get_global_peer_manager().get_all_connections()
-  let (total_conns, active_conns, _) = get_global_peer_manager().get_connection_stats()
 
   // Build connection info for each peer
   let connections : Array[PeerConnectionInfo] = []
@@ -163,9 +214,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
     status: "ok",
     connections,
     peers_count: all_peers.length(),
-    active_connections: active_conns,
-    total_connections: total_conns,
-    node_name: match global_config.val {
+    node_id: match global_config.val {
       Some(config) => config.id
       None => "unknown"
     },

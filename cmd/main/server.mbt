@@ -192,6 +192,36 @@ async fn handle_reconnects(
 }
 
 ///|
+async fn handle_pending_messages(server : @socket.UdpServer) -> Unit {
+  for {
+    // Check for pending messages every 100ms
+    @async.sleep(100)
+    let pending = get_pending_messages()
+
+    // Process each pending message
+    for pending_msg in pending {
+      let target = pending_msg.target
+      let msg = pending_msg.msg
+
+      // Try to find and send to target peer
+      let target_peer = get_global_peer_manager().get_peer(target)
+      match target_peer {
+        Some(_) =>
+          // Get best connection for target peer
+          match get_best_connection_for_peer(target) {
+            Some(conn) => {
+              ignore(send_message(server, conn.remote_addr, msg))
+              println("Sent message to \{target} via \{conn.remote_addr}")
+            }
+            None => println("No active connection to target \{target}")
+          }
+        None => println("Target peer \{target} not found")
+      }
+    }
+  }
+}
+
+///|
 async fn handle_heartbeat(
   server : @socket.UdpServer,
   local_addr : String,
@@ -277,6 +307,8 @@ async fn listen_udp(
   root.spawn_bg(fn() { handle_reconnects(server, local_addr, id) })
   // Start heartbeat/health check background task
   root.spawn_bg(fn() { handle_heartbeat(server, local_addr, id) })
+  // Start pending message sender background task
+  root.spawn_bg(fn() { handle_pending_messages(server) })
   for {
     let buf = FixedArray::make(2048, b'0')
     let (n, sender) = server.recvfrom(buf)
@@ -287,7 +319,8 @@ async fn listen_udp(
         continue
       }
     }
-    println("Received(\{sender}): \{msg.kind} from \{msg.id}")
+    println("Received message: \{msg}")
+    // println("Received(\{sender}): \{msg.kind} from \{msg.id}")
     let sender_addr = "\{sender}"
     let local_addr = "\{server.addr()}"
 
@@ -354,8 +387,42 @@ async fn listen_udp(
         )
         ignore(send_message(server, sender_addr, reply))
       }
+      { kind: "welcome", peers: Some(peers), .. } =>
+        // Welcome message - discover new peers from the list
+        for peer_addr_obj in peers {
+          let peer_addr = peer_addr_obj.address
+
+          // Skip 0.0.0.0 addresses (bind-all, not connectable)
+          if !peer_addr.has_prefix("0.0.0.0:") {
+            // Check if we already know this peer
+            match get_global_peer_manager().get_peer(peer_addr) {
+              Some(_) => () // Already known
+              None => {
+                // New peer discovered! Create it and add connection
+                let new_peer = PeerNode::new(id=peer_addr, version=VERSION)
+                update_global_peer_manager(fn(manager) {
+                  manager.add_peer(new_peer)
+                })
+
+                // Send hello to the newly discovered peer to establish connection
+                let hello_msg = Message::{
+                  kind: "hello",
+                  id: msg.id,
+                  addr: local_addr,
+                  version: Some(VERSION),
+                  peers: None,
+                  payload: None,
+                  target: None,
+                  data: None,
+                }
+                ignore(send_message(server, peer_addr, hello_msg))
+                println("Discovered and greeting new peer: \{peer_addr}")
+              }
+            }
+          }
+        }
       { kind: "welcome", .. } =>
-        // Welcome message - peer list is just for routing info, don't create new peers
+        // Welcome message without peer list
         ()
       { kind: "ping", .. } => {
         let reply = Message::new(kind="pong", id~, addr=local_addr)

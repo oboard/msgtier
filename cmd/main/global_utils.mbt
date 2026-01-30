@@ -1,4 +1,26 @@
 ///|
+struct PendingMessage {
+  target : String
+  msg : Message
+}
+
+///|
+let global_pending_messages : Ref[Array[PendingMessage]] = Ref::new([])
+
+///|
+pub fn add_pending_message(target : String, msg : Message) -> Unit {
+  let messages = global_pending_messages.val
+  messages.push(PendingMessage::{ target, msg })
+}
+
+///|
+pub fn get_pending_messages() -> Array[PendingMessage] {
+  let messages = global_pending_messages.val
+  global_pending_messages.val = []
+  messages
+}
+
+///|
 /// Global state for the peer manager using new architecture
 let global_peer_manager : Ref[PeerManager] = Ref::new(PeerManager::new())
 

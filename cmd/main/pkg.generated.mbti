@@ -8,6 +8,8 @@ import {
 // Values
 pub fn add_connected_peer(String, String, String) -> Unit
 
+pub fn add_pending_message(String, Message) -> Unit
+
 pub fn clear_connected_peers() -> Unit
 
 pub fn get_connected_peers() -> Array[PeerNode]
@@ -15,6 +17,8 @@ pub fn get_connected_peers() -> Array[PeerNode]
 pub fn get_global_peer_manager() -> PeerManager
 
 pub fn get_global_reconnect_manager() -> ReconnectManager
+
+pub fn get_pending_messages() -> Array[PendingMessage]
 
 pub fn network_address(String) -> NetworkAddress
 
@@ -84,6 +88,8 @@ type PeerNodeWithStatus
 pub impl Show for PeerNodeWithStatus
 pub impl ToJson for PeerNodeWithStatus
 pub impl @json.FromJson for PeerNodeWithStatus
+
+type PendingMessage
 
 type ReconnectManager
 pub impl Show for ReconnectManager
