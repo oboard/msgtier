@@ -115,7 +115,7 @@ fn PeerManager::update_connection_state(
 fn PeerManager::update_connection_last_seen(
   self : PeerManager,
   conn_id : String,
-  timestamp : Int64,
+  timestamp : UInt64,
 ) -> PeerManager {
   match self.connection_manager.connections.get(conn_id) {
     Some(conn) => {

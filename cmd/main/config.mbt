@@ -4,7 +4,7 @@ struct Config {
   secret : String
   peers : Array[@url.Url]
   listeners : Array[@url.Url]
-  scripts : Array[String]?
+  scripts : Map[String, String]?
   web_api : String?
 } derive(Show, ToJson, FromJson)
 

@@ -52,6 +52,32 @@ fn handle_new_connection(
 }
 
 ///|
+#cfg(platform="windows")
+fn get_shell() -> (String, String) {
+  ("cmd.exe", "/c")
+}
+
+///|
+#cfg(not(platform="windows"))
+fn get_shell() -> (String, String) {
+  ("sh", "-c")
+}
+
+///|
+async fn execute_script(script_name : String, command : String) -> Unit {
+  // Get platform-specific shell
+  let (shell, arg) = get_shell()
+
+  // Execute the script command using platform-specific shell
+  let exit_code = @process.run(shell, [arg, command])
+  if exit_code == 0 {
+    println("Script \{script_name} executed successfully")
+  } else {
+    println("Script \{script_name} failed with exit code: \{exit_code}")
+  }
+}
+
+///|
 fn get_best_connection_for_peer(peer_id : String) -> Connection? {
   let active_conns = get_global_peer_manager().get_active_peer_connections(
     peer_id,
@@ -166,6 +192,50 @@ async fn handle_reconnects(
 }
 
 ///|
+async fn handle_heartbeat(
+  server : @socket.UdpServer,
+  local_addr : String,
+  node_id : String,
+) -> Unit {
+  let heartbeat_interval = 10000 // 10 seconds
+  for {
+    @async.sleep(heartbeat_interval)
+    let current_time = @env.now()
+    let all_peers = get_global_peer_manager().get_all_peers()
+    for peer in all_peers {
+      let peer_id = peer.id
+      let peer_conns = get_global_peer_manager().get_peer_connections(peer_id)
+
+      // Send ping to all connections of this peer
+      for conn in peer_conns {
+        let ping_msg = Message::{
+          kind: "ping",
+          id: node_id,
+          addr: local_addr,
+          version: Some(VERSION),
+          peers: None,
+          payload: None,
+          target: None,
+          data: None,
+        }
+        ignore(send_message(server, conn.remote_addr, ping_msg))
+
+        // Check if connection has timed out (no response for 30 seconds)
+        if current_time - conn.last_seen > 30000UL && conn.is_active() {
+          println("Connection to \{peer_id} at \{conn.remote_addr} timed out")
+          update_global_peer_manager(fn(manager) {
+            manager.update_connection_state(
+              conn.id,
+              ConnectionState::Disconnected,
+            )
+          })
+        }
+      }
+    }
+  }
+}
+
+///|
 async fn listen_udp(
   root : @async.TaskGroup[Unit],
   addr : @socket.Addr,
@@ -205,6 +275,8 @@ async fn listen_udp(
 
   // Start reconnection background task
   root.spawn_bg(fn() { handle_reconnects(server, local_addr, id) })
+  // Start heartbeat/health check background task
+  root.spawn_bg(fn() { handle_heartbeat(server, local_addr, id) })
   for {
     let buf = FixedArray::make(2048, b'0')
     let (n, sender) = server.recvfrom(buf)
@@ -248,8 +320,8 @@ async fn listen_udp(
         conn.id,
         ConnectionState::Connected,
       )
-      // Use current time as timestamp (simplified for now)
-      let timestamp = 9999999999999L // Far future to prevent timeout
+      // Use current time as timestamp
+      let timestamp = @env.now() // Far future to prevent timeout
       manager.update_connection_last_seen(conn.id, timestamp)
     })
 
@@ -288,6 +360,21 @@ async fn listen_udp(
       { kind: "ping", .. } => {
         let reply = Message::new(kind="pong", id~, addr=local_addr)
         ignore(send_message(server, sender_addr, reply))
+      }
+      { kind: "pong", .. } => {
+        // Heartbeat response received - mark connection as healthy
+        let peer_id = msg.id
+        let peer_conns = get_global_peer_manager().get_peer_connections(peer_id)
+        // Find the connection that matches this sender and update its last_seen
+        for conn in peer_conns {
+          if conn.remote_addr == sender_addr {
+            update_global_peer_manager(fn(manager) {
+              let timestamp = @env.now()
+              manager.update_connection_last_seen(conn.id, timestamp)
+            })
+          }
+        }
+        println("Received pong from \{peer_id}")
       }
       { kind: "punch_request", target: Some(target), .. } => {
         let punch_to_target = Message::new(
@@ -366,7 +453,22 @@ async fn listen_udp(
           None => ()
         }
       }
-      { kind: "data", data: Some(_), .. } => println("data: \{msg}")
+      { kind: "data", data: Some(script_name), .. } =>
+        // Check if a script exists with this name and execute it asynchronously
+        root.spawn_bg(fn() {
+          match global_config.val {
+            Some(config) =>
+              match config.scripts {
+                Some(scripts) =>
+                  match scripts.get(script_name) {
+                    Some(command) => execute_script(script_name, command)
+                    None => println("Script not found: \{script_name}")
+                  }
+                None => println("No scripts configured")
+              }
+            None => println("Config not available")
+          }
+        })
       _ => ()
     }
     root.spawn_bg(fn() {  })

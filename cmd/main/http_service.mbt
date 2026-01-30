@@ -91,6 +91,29 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
     (request.meth, request.path) {
     (Get, "/config") => get_config_handler(conn)
     (Get, "/status") => status_handler(conn)
+    (Post, "/send") => {
+      // Extract target from headers
+      let target = match request.headers.get("target") {
+        Some(t) => t
+        None => {
+          conn
+          ..send_response(400, "Bad Request", extra_headers={
+            "Content-Type": "application/json",
+          })
+          ..write({ "error": "Missing target header" }.to_json().stringify())
+          ..end_response()
+          return
+        }
+      }
+
+      // For now, just return success
+      conn
+      ..send_response(200, "OK", extra_headers={
+        "Content-Type": "application/json",
+      })
+      ..write({ "status": "sent", "target": target }.to_json().stringify())
+      ..end_response()
+    }
     _ => notfound_handler(conn)
   })
 }

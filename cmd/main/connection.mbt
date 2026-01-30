@@ -7,7 +7,7 @@ struct Connection {
   remote_addr : String
   peer_id : String
   state : ConnectionState
-  last_seen : Int64 // timestamp
+  last_seen : UInt64 // timestamp
   quality : Int // connection quality metric (0-100)
   metadata : Map[String, String]?
 } derive(Show, ToJson, FromJson)
@@ -33,7 +33,7 @@ fn Connection::new(
     remote_addr,
     peer_id,
     state: Init,
-    last_seen: 0L,
+    last_seen: @env.now(),
     quality: 0,
     metadata: None,
   }
@@ -51,7 +51,7 @@ fn Connection::update_state(
 ///  // This function is used for connection health monitoring
 fn Connection::update_last_seen(
   self : Connection,
-  timestamp : Int64,
+  timestamp : UInt64,
 ) -> Connection {
   { ..self, last_seen: timestamp }
 }
