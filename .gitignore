@@ -8,3 +8,4 @@ node_modules
 .joycode
 config
 references/
+examples/

@@ -1,0 +1,81 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/url"
+
+import {
+  "moonbitlang/core/json",
+}
+
+// Values
+
+// Errors
+type ValidationError
+pub impl ToJson for ValidationError
+
+// Types and methods
+pub enum Host {
+  Domain(String)
+  IPv4(IPv4)
+  IPv6(IPv6)
+  Opaque(String)
+}
+pub fn Host::parse(StringView, is_opaque? : Bool) -> Self raise ValidationError
+pub fn Host::to_string(Self) -> String
+pub fn Host::to_unicode(Self) -> String
+pub impl Show for Host
+pub impl ToJson for Host
+pub impl @json.FromJson for Host
+
+type IPv4
+pub fn IPv4::parse(StringView) -> Self raise ValidationError
+pub fn IPv4::to_string(Self) -> String
+pub impl Show for IPv4
+pub impl ToJson for IPv4
+
+type IPv6
+pub fn IPv6::parse(StringView) -> Self raise ValidationError
+pub fn IPv6::to_string(Self) -> String
+pub impl Show for IPv6
+pub impl ToJson for IPv6
+
+type Path
+
+pub struct Url {
+  mut scheme : String
+  mut username : String
+  mut password : String
+  mut host : Host?
+  mut port : UInt16?
+  mut path : Path
+  mut query : String?
+  mut fragment : String?
+}
+pub fn Url::get_host(Self) -> String
+pub fn Url::get_password(Self) -> String
+pub fn Url::get_port(Self) -> String
+pub fn Url::get_username(Self) -> String
+pub fn Url::hash(Self) -> String
+pub fn Url::hostname(Self) -> String
+pub fn Url::href(Self) -> String
+pub fn Url::origin(Self) -> String
+pub fn Url::parse(String, base? : Self) -> Self?
+pub fn Url::pathname(Self) -> String
+pub fn Url::protocol(Self) -> String
+pub fn Url::search(Self) -> String
+pub fn Url::set_hash(Self, String) -> Unit
+pub fn Url::set_host(Self, String) -> Unit
+pub fn Url::set_hostname(Self, String) -> Unit
+pub fn Url::set_password(Self, String) -> Unit
+pub fn Url::set_pathname(Self, String) -> Unit
+pub fn Url::set_port(Self, String) -> Unit
+pub fn Url::set_protocol(Self, String) -> Unit
+pub fn Url::set_search(Self, String) -> Unit
+pub fn Url::set_username(Self, String) -> Unit
+pub fn Url::to_string(Self) -> String
+pub impl Show for Url
+pub impl ToJson for Url
+pub impl @json.FromJson for Url
+
+// Type aliases
+
+// Traits
+

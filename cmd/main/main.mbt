@@ -6,12 +6,20 @@ async fn main {
       [config] => {
         let config = Config::from_file(config)
         println(config.to_json().stringify(indent=2))
+        let name = config.name
+        let peer_hosts : Array[String] = []
+        for peer in config.peers {
+          let host = peer.get_host()
+          if !host.is_empty() {
+            peer_hosts.push(host)
+          }
+        }
         let tasks = []
         for addr in config.listeners {
           let addr = addr.get_host()
           println("Listening on \{addr}")
           let task = root.spawn(fn() {
-            listen_udp(root, @socket.Addr::parse(addr))
+            listen_udp(root, @socket.Addr::parse(addr), name, peer_hosts)
           })
           tasks.push(task)
         }

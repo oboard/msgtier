@@ -1,0 +1,33 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/cmd/main"
+
+import {
+  "moonbitlang/core/json",
+}
+
+// Values
+pub fn add_peer(Array[String], String) -> Unit
+
+pub fn merge_peers(Array[String], Array[String]) -> Unit
+
+pub fn message_decode(Bytes) -> Message?
+
+pub fn message_encode(Message) -> Bytes
+
+// Errors
+
+// Types and methods
+type Config
+pub impl Show for Config
+pub impl ToJson for Config
+pub impl @json.FromJson for Config
+
+type Message
+pub impl Show for Message
+pub impl ToJson for Message
+pub impl @json.FromJson for Message
+
+// Type aliases
+
+// Traits
+
