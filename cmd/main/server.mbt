@@ -5,16 +5,28 @@ fn handle_new_connection(
   remote_addr : String,
   peer_info? : NetworkDiscoveryInfo,
 ) -> Connection {
-  // Add or update peer - create PeerNode from peer_info or use basic info
-  let peer_node = if peer_info is Some(info) {
-    PeerNode::new(id=info.id, version=info.version)
+  // Get the actual peer ID (from peer_info if available, otherwise from peer_id parameter)
+  let actual_peer_id = if peer_info is Some(info) { info.id } else { peer_id }
+
+  // Add or update peer with provided info
+  if peer_info is Some(info) {
+    let peer_node = PeerNode::new(id=info.id, version=info.version)
+    update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
   } else {
-    PeerNode::new(id=peer_id, version="unknown")
+    // Only create peer if it doesn't exist yet
+    match get_global_peer_manager().get_peer(actual_peer_id) {
+      Some(_) => () // Peer exists, don't override
+      None => {
+        let peer_node = PeerNode::new(id=actual_peer_id, version=VERSION)
+        update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
+      }
+    }
   }
-  update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
 
   // Check if connection already exists
-  let existing_conns = get_global_peer_manager().get_peer_connections(peer_id)
+  let existing_conns = get_global_peer_manager().get_peer_connections(
+    actual_peer_id,
+  )
   for existing_conn in existing_conns {
     if existing_conn.local_addr == local_addr &&
       existing_conn.remote_addr == remote_addr {
@@ -24,10 +36,19 @@ fn handle_new_connection(
   }
 
   // Add new connection
-  let conn = get_global_peer_manager().add_connection(
-    peer_id, local_addr, remote_addr,
-  )
-  conn
+  update_global_peer_manager(fn(manager) {
+    manager.add_connection(actual_peer_id, local_addr, remote_addr)
+  })
+  // Get the connection we just added
+  let conns = get_global_peer_manager().get_peer_connections(actual_peer_id)
+  let filtered = conns.filter(fn(c) {
+    c.local_addr == local_addr && c.remote_addr == remote_addr
+  })
+  if filtered.is_empty() {
+    conns[0]
+  } else {
+    filtered[0]
+  }
 }
 
 ///|
@@ -154,38 +175,32 @@ async fn listen_udp(
   defer server.close()
   let local_addr = "\{server.addr()}"
 
-  // Don't initialize with peers - peers will be discovered through welcome messages
+  // Get peer addresses from config and send hello messages directly
+  match global_config.val {
+    Some(config) => {
+      let peer_addresses : Array[NetworkAddress] = []
+      for peer_url in config.peers {
+        let peer_host = peer_url.get_host()
+        peer_addresses.push(NetworkAddress::{ address: peer_host })
+      }
+      let hello = Message::{
+        kind: "hello",
+        id,
+        addr: local_addr,
+        version: Some(VERSION),
+        peers: Some(peer_addresses),
+        payload: None,
+        target: None,
+        data: None,
+      }
 
-  // Get all known peers for hello message
-  let known_peers = get_global_peer_manager().get_all_peers()
-  let peer_addresses : Array[NetworkAddress] = []
-  for peer in known_peers {
-    // Get connection addresses for this peer
-    let peer_conns = get_global_peer_manager().get_peer_connections(peer.id)
-    if !peer_conns.is_empty() {
-      peer_addresses.push(NetworkAddress::{ address: peer_conns[0].remote_addr })
-    } else {
-      // If no connections, use peer ID as fallback
-      peer_addresses.push(NetworkAddress::{ address: peer.id })
+      // Send hello to all configured peer addresses from this listener
+      for peer_url in config.peers {
+        let peer_host = peer_url.get_host()
+        ignore(send_message(server, peer_host, hello))
+      }
     }
-  }
-  let hello = Message::{
-    kind: "hello",
-    id,
-    addr: local_addr,
-    version: Some(VERSION),
-    peers: Some(peer_addresses),
-    payload: None,
-    target: None,
-    data: None,
-  }
-
-  // Send hello to all known peers using their connection addresses
-  for peer in known_peers {
-    let peer_conns = get_global_peer_manager().get_peer_connections(peer.id)
-    if !peer_conns.is_empty() {
-      ignore(send_message(server, peer_conns[0].remote_addr, hello))
-    }
+    None => ()
   }
 
   // Start reconnection background task
@@ -209,7 +224,10 @@ async fn listen_udp(
       "hello" =>
         Some(NetworkDiscoveryInfo::{
           id: msg.id,
-          version: "0.1.0", // Default version
+          version: match msg.version {
+            Some(v) => v
+            None => VERSION
+          },
           addresses: [NetworkAddress::{ address: sender_addr }], // Use actual sender address
           peers: msg.peers,
         })
@@ -240,7 +258,7 @@ async fn listen_udp(
     // Don't create peer from sender address - wait for welcome message
     match msg {
       { kind: "hello", .. } => {
-        // 发送 welcome 消息，但排除对方的 peers（避免循环）
+        // 发送 welcome 消息，包含已知的peer连接地址
         let welcome_peer_addresses : Array[NetworkAddress] = []
         let all_peers = get_global_peer_manager().get_all_peers()
         let all_conns = get_global_peer_manager().get_all_connections()
@@ -248,6 +266,7 @@ async fn listen_udp(
           // Get connection addresses for this peer
           let peer_conns = peer.get_all_connections(all_conns)
           for conn in peer_conns {
+            // Don't include the sender in our peer list to avoid loops
             if conn.remote_addr != sender_addr {
               welcome_peer_addresses.push(NetworkAddress::{
                 address: conn.remote_addr,
@@ -263,6 +282,9 @@ async fn listen_udp(
         )
         ignore(send_message(server, sender_addr, reply))
       }
+      { kind: "welcome", .. } =>
+        // Welcome message - peer list is just for routing info, don't create new peers
+        ()
       { kind: "ping", .. } => {
         let reply = Message::new(kind="pong", id~, addr=local_addr)
         ignore(send_message(server, sender_addr, reply))

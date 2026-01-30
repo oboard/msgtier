@@ -181,7 +181,10 @@ fn ConnectionManager::add_connection(
   let peer_conns = match peer_connections.get(conn.peer_id) {
     Some(ids) => {
       let new_ids = ids.copy()
-      new_ids.push(conn.id)
+      // Only add if not already present
+      if !new_ids.any(fn(id) { id == conn.id }) {
+        new_ids.push(conn.id)
+      }
       new_ids
     }
     None => [conn.id]

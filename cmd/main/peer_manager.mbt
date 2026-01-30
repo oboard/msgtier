@@ -58,13 +58,13 @@ fn PeerManager::add_connection(
   peer_id : String,
   local_addr : String,
   remote_addr : String,
-) -> Connection {
+) -> PeerManager {
   // First ensure the peer exists, if not create a basic one
+  let peers = self.peers
   match self.peers.get(peer_id) {
     Some(_) => ()
     None => {
-      let new_peer = PeerNode::new(id=peer_id, version="unknown")
-      let peers = self.peers
+      let new_peer = PeerNode::new(id=peer_id, version=VERSION)
       peers[peer_id] = new_peer
     }
   }
@@ -72,8 +72,7 @@ fn PeerManager::add_connection(
   // Create new connection
   let conn = Connection::new(peer_id, local_addr, remote_addr)
   let updated_manager = self.connection_manager.add_connection(conn)
-  ignore({ ..self, connection_manager: updated_manager })
-  conn
+  { peers, connection_manager: updated_manager }
 }
 
 ///|

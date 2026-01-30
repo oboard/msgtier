@@ -63,9 +63,18 @@ pub fn clear_connected_peers() -> Unit {
 }
 
 ///|
+struct PeerConnectionInfo {
+  peer_id : String
+  version : String
+  active : Bool
+  local_addr : String
+  remote_addr : String
+} derive(ToJson)
+
+///|
 struct StatusInfo {
   status : String
-  connected_peers : Array[PeerNode]
+  connections : Array[PeerConnectionInfo]
   peers_count : Int
   active_connections : Int
   total_connections : Int
@@ -110,10 +119,26 @@ async fn get_config_handler(conn : @http.ServerConnection) -> Unit {
 ///|
 async fn status_handler(conn : @http.ServerConnection) -> Unit {
   let all_peers = get_global_peer_manager().get_all_peers()
+  let all_conns = get_global_peer_manager().get_all_connections()
   let (total_conns, active_conns, _) = get_global_peer_manager().get_connection_stats()
+
+  // Build connection info for each peer
+  let connections : Array[PeerConnectionInfo] = []
+  for peer in all_peers {
+    let peer_conns = peer.get_all_connections(all_conns)
+    for peer_conn in peer_conns {
+      connections.push(PeerConnectionInfo::{
+        peer_id: peer.id,
+        version: peer.version,
+        active: peer_conn.is_active(),
+        local_addr: peer_conn.local_addr,
+        remote_addr: peer_conn.remote_addr,
+      })
+    }
+  }
   let status_info = StatusInfo::{
     status: "ok",
-    connected_peers: all_peers,
+    connections,
     peers_count: all_peers.length(),
     active_connections: active_conns,
     total_connections: total_conns,

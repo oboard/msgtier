@@ -18,6 +18,11 @@ async fn main {
         let config = Config::from_file(config)
         println(config.to_json().stringify(indent=2))
         let id = config.id
+
+        // Store config globally for access by listeners
+        global_config.val = Some(config)
+
+        // Don't pre-create peers - they will be created when hello messages arrive
         for addr in config.listeners {
           let addr = addr.get_host()
           println("Listening on \{addr}")

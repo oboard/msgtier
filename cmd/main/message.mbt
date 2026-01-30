@@ -3,7 +3,7 @@ struct Message {
   kind : String
   id : String
   addr : String
-  version: String?
+  version : String?
   peers : Array[NetworkAddress]?
   payload : String?
   target : String?
@@ -62,8 +62,8 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
     Map(
       { "id": String(id), "kind": String(kind), "addr": String(addr), .. } as msg_map
     ) => {
-      let peers = match msg_map["peers"] {
-        Array(arr) => {
+      let peers = match msg_map {
+        { "peers": Array(arr), .. } => {
           let peers_array : Array[NetworkAddress] = []
           for peer_value in arr {
             match peer_value {
@@ -76,20 +76,20 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         }
         _ => None
       }
-      let payload = match msg_map["payload"] {
-        String(s) => Some(s)
+      let payload = match msg_map {
+        { "payload": String(s), .. } => Some(s)
         _ => None
       }
-      let target = match msg_map["target"] {
-        String(s) => Some(s)
+      let target = match msg_map {
+        { "target": String(s), .. } => Some(s)
         _ => None
       }
-      let data = match msg_map["data"] {
-        String(s) => Some(s)
+      let data = match msg_map {
+        { "data": String(s), .. } => Some(s)
         _ => None
       }
-      let version = match msg_map["version"] {
-        String(s) => Some(s)
+      let version = match msg_map {
+        { "version": String(s), .. } => Some(s)
         _ => None
       }
       Message::{ kind, id, addr, version, peers, payload, target, data }

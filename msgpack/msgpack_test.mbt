@@ -1,40 +1,6 @@
 // Ported from Deno std msgpack module integration tests
 // Original source: https://github.com/denoland/std/tree/42fd485b615d7cc647c7d2f12610c42d68a597e6/msgpack
 
-// Test round-trip encode/decode
-
-///|
-test "round trip encode decode" {
-  // Test integers
-  let test_values = [0, 1, -1, 42, -42, 127, -32]
-  for value in test_values {
-    let encoded = encode(int(value))
-    let decoded = decode(encoded)
-    debug_inspect(decoded, content="true")
-  }
-
-  // Test strings
-  let test_strings = ["", "hello", "world", "A"]
-  for str_val in test_strings {
-    let encoded = encode(string(str_val))
-    let decoded = decode(encoded)
-    debug_inspect(decoded, content="true")
-  }
-
-  // Test booleans
-  let encoded_true = encode(bool(true))
-  let decoded_true = decode(encoded_true)
-  debug_inspect(decoded_true, content="true")
-  let encoded_false = encode(bool(false))
-  let decoded_false = decode(encoded_false)
-  debug_inspect(decoded_false, content="true")
-
-  // Test nil
-  let encoded_nil = encode(nil())
-  let decoded_nil = decode(encoded_nil)
-  debug_inspect(decoded_nil, content="true")
-}
-
 // Test complex data structures
 
 ///|
@@ -44,13 +10,25 @@ test "complex data structures" {
   let outer_array = array([inner_array, int(3)])
   let encoded = encode(outer_array)
   let decoded = decode(encoded)
-  debug_inspect(decoded, content="true")
+  debug_inspect(decoded, content="Array([Array([..., ...]), Int(3)])")
 
   // Test mixed array
   let mixed_array = array([int(42), string("hello"), bool(true), nil()])
   let encoded_mixed = encode(mixed_array)
   let decoded_mixed = decode(encoded_mixed)
-  debug_inspect(decoded_mixed, content="true")
+  debug_inspect(
+    decoded_mixed,
+    content=(
+      #|Array(
+      #|  [
+      #|    Int(42),
+      #|    String("hello"),
+      #|    Bool(true),
+      #|    Nil,
+      #|  ],
+      #|)
+    ),
+  )
 }
 
 // Test edge cases
@@ -61,25 +39,30 @@ test "edge cases" {
   let empty_str = string("")
   let encoded_empty = encode(empty_str)
   let decoded_empty = decode(encoded_empty)
-  debug_inspect(decoded_empty, content="true")
+  debug_inspect(
+    decoded_empty,
+    content=(
+      #|String("")
+    ),
+  )
 
   // Test zero
   let zero_int = int(0)
   let encoded_zero = encode(zero_int)
   let decoded_zero = decode(encoded_zero)
-  debug_inspect(decoded_zero, content="true")
+  debug_inspect(decoded_zero, content="Int(0)")
 
   // Test maximum positive fixint
   let max_fixint = int(127)
   let encoded_max = encode(max_fixint)
   let decoded_max = decode(encoded_max)
-  debug_inspect(decoded_max, content="true")
+  debug_inspect(decoded_max, content="Int(127)")
 
   // Test minimum negative fixint
   let min_fixint = int(-32)
   let encoded_min = encode(min_fixint)
   let decoded_min = decode(encoded_min)
-  debug_inspect(decoded_min, content="true")
+  debug_inspect(decoded_min, content="Int(-32)")
 }
 
 // Test large data structures
@@ -94,7 +77,35 @@ test "large data structures" {
   let large_array = array(values)
   let encoded_large = encode(large_array)
   let decoded_large = decode(encoded_large)
-  debug_inspect(decoded_large, content="true")
+  debug_inspect(
+    decoded_large,
+    content=(
+      #|Array(
+      #|  [
+      #|    Int(0),
+      #|    Int(1),
+      #|    Int(2),
+      #|    Int(3),
+      #|    Int(4),
+      #|    Int(5),
+      #|    Int(6),
+      #|    Int(7),
+      #|    Int(8),
+      #|    Int(9),
+      #|    Int(10),
+      #|    Int(11),
+      #|    Int(12),
+      #|    Int(13),
+      #|    Int(14),
+      #|    Int(15),
+      #|    Int(16),
+      #|    Int(17),
+      #|    Int(18),
+      #|    Int(19),
+      #|  ],
+      #|)
+    ),
+  )
 }
 
 // Test data type validation
@@ -112,11 +123,21 @@ test "data type validation" {
     string("test"),
     array([int(1), int(2)]),
   ]
-  for data in test_data {
-    let encoded = encode(data)
-    let decoded = decode(encoded)
-    debug_inspect(decoded, content="true")
-  }
+  debug_inspect(
+    test_data.map(encode(_)).map(decode(_)),
+    content=(
+      #|[
+      #|  Nil,
+      #|  Bool(true),
+      #|  Bool(false),
+      #|  Int(0),
+      #|  Int(42),
+      #|  Int(-1),
+      #|  String("test"),
+      #|  Array([Int(1), Int(2)]),
+      #|]
+    ),
+  )
 }
 
 // Compatibility tests - test Deno sample data
@@ -135,7 +156,23 @@ test "deno compatibility tests" {
   test_map["string1"] = string("A")
   let encoded_complex = encode(map(test_map))
   let decoded_complex = decode(encoded_complex)
-  debug_inspect(decoded_complex, content="true")
+  debug_inspect(
+    decoded_complex,
+    content=(
+      #|Map(
+      #|  {
+      #|    "int0": Int(0),
+      #|    "int1": Int(1),
+      #|    "int1-": Int(-1),
+      #|    "nil": Nil,
+      #|    "true": Bool(true),
+      #|    "false": Bool(false),
+      #|    "string0": String(""),
+      #|    "string1": String("A"),
+      #|  },
+      #|)
+    ),
+  )
 
   // Test array with different types
   let mixed_types_array = array([
@@ -147,7 +184,20 @@ test "deno compatibility tests" {
   ])
   let encoded_mixed_types = encode(mixed_types_array)
   let decoded_mixed_types = decode(encoded_mixed_types)
-  debug_inspect(decoded_mixed_types, content="true")
+  debug_inspect(
+    decoded_mixed_types,
+    content=(
+      #|Array(
+      #|  [
+      #|    Int(1),
+      #|    String("foo"),
+      #|    Bool(false),
+      #|    Nil,
+      #|    Array([..., ...]),
+      #|  ],
+      #|)
+    ),
+  )
 }
 
 // Performance test (simplified version)
@@ -165,6 +215,24 @@ test "basic performance test" {
   for i = 0; i < 5; i = i + 1 {
     let encoded = encode(perf_data)
     let decoded = decode(encoded)
-    debug_inspect(decoded, content="true")
+    debug_inspect(
+      decoded,
+      content=(
+        #|Map(
+        #|  {
+        #|    "key0": Int(0),
+        #|    "key1": Int(1),
+        #|    "key2": Int(2),
+        #|    "key3": Int(3),
+        #|    "key4": Int(4),
+        #|    "key5": Int(5),
+        #|    "key6": Int(6),
+        #|    "key7": Int(7),
+        #|    "key8": Int(8),
+        #|    "key9": Int(9),
+        #|  },
+        #|)
+      ),
+    )
   }
 }

@@ -63,6 +63,9 @@ pub impl Show for NetworkDiscoveryInfo
 pub impl ToJson for NetworkDiscoveryInfo
 pub impl @json.FromJson for NetworkDiscoveryInfo
 
+type PeerConnectionInfo
+pub impl ToJson for PeerConnectionInfo
+
 type PeerManager
 pub impl Show for PeerManager
 
