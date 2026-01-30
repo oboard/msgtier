@@ -308,8 +308,8 @@ async fn listen_udp(
         continue
       }
     }
-    println("Received message: \{msg}")
-    // println("Received(\{sender}): \{msg.kind} from \{msg.id}")
+    // println("Received message: \{msg}")
+    println("\{msg.id}(\{sender}): \{msg.kind} from \{msg.from}")
     let sender_addr = "\{sender}"
     let local_addr = "\{server.addr()}"
 

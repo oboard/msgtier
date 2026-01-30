@@ -9,6 +9,7 @@ struct Connection {
   state : ConnectionState
   last_seen : UInt64 // timestamp
   quality : Int // connection quality metric (0-100)
+  relay : Int // 1 = direct, 2+ = relayed through N-1 peers
   metadata : Map[String, String]?
 } derive(Show, ToJson, FromJson)
 
@@ -35,6 +36,7 @@ fn Connection::new(
     state: Init,
     last_seen: @env.now(),
     quality: 0,
+    relay: 1,
     metadata: None,
   }
 }
@@ -45,6 +47,14 @@ fn Connection::update_state(
   new_state : ConnectionState,
 ) -> Connection {
   { ..self, state: new_state }
+}
+
+///|
+fn Connection::update_relay(
+  self : Connection,
+  relay_depth : Int,
+) -> Connection {
+  { ..self, relay: relay_depth }
 }
 
 ///|
@@ -257,4 +267,48 @@ fn ConnectionManager::get_all_connections(
     conns.push(conn)
   }
   conns
+}
+
+///|
+fn ConnectionManager::update_connection_relay(
+  self : ConnectionManager,
+  conn_id : String,
+  relay_depth : Int,
+) -> ConnectionManager {
+  let connections = self.connections
+  match connections.get(conn_id) {
+    Some(conn) => {
+      connections[conn_id] = conn.update_relay(relay_depth)
+      { connections, peer_connections: self.peer_connections }
+    }
+    None => self
+  }
+}
+
+///|
+fn ConnectionManager::get_best_direct_connection(
+  self : ConnectionManager,
+  peer_id : String,
+) -> Connection? {
+  let active_conns = self.get_active_connections(peer_id)
+  if active_conns.is_empty() {
+    None
+  } else {
+    // Prefer direct connections (relay = 1)
+    let direct = active_conns.filter(fn(c) { c.relay == 1 })
+    if !direct.is_empty() {
+      Some(direct[0])
+    } else {
+      // Fallback to any active connection, preferring lower relay depth
+      Some(
+        active_conns.fold(init=active_conns[0], fn(best, conn) {
+          if conn.relay < best.relay {
+            conn
+          } else {
+            best
+          }
+        }),
+      )
+    }
+  }
 }
