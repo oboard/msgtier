@@ -65,10 +65,44 @@ pub fn decode(data : Bytes) -> Value raise MsgPackError {
         (data[2].to_int() << 16) |
         (data[3].to_int() << 8) |
         data[4].to_int()
-      // For 32-bit signed integers, we need to handle the sign bit
-      // Note: MoonBit's Int type limitations require simplified handling
       let signed_value = value
       Int(signed_value)
+    }
+    0xd9 => {
+      // str8 (1-byte length)
+      if data.length() < 2 {
+        raise InvalidData("Incomplete str8 length")
+      }
+      let str_length = data[1].to_int()
+      if data.length() < 2 + str_length {
+        raise InvalidData("Incomplete str8 data")
+      }
+      decode_string_bytes(data, 2, str_length)
+    }
+    0xda => {
+      // str16 (2-byte length)
+      if data.length() < 3 {
+        raise InvalidData("Incomplete str16 length")
+      }
+      let str_length = (data[1].to_int() << 8) | data[2].to_int()
+      if data.length() < 3 + str_length {
+        raise InvalidData("Incomplete str16 data")
+      }
+      decode_string_bytes(data, 3, str_length)
+    }
+    0xdb => {
+      // str32 (4-byte length)
+      if data.length() < 5 {
+        raise InvalidData("Incomplete str32 length")
+      }
+      let str_length = (data[1].to_int() << 24) |
+        (data[2].to_int() << 16) |
+        (data[3].to_int() << 8) |
+        data[4].to_int()
+      if data.length() < 5 + str_length {
+        raise InvalidData("Incomplete str32 data")
+      }
+      decode_string_bytes(data, 5, str_length)
     }
     0xdc => {
       // array16
@@ -97,27 +131,13 @@ pub fn decode(data : Bytes) -> Value raise MsgPackError {
       } else if (first_byte.to_int() & 0xe0) == 0xe0 {
         // negative fixint
         Int(first_byte.to_int() - 256)
-      } else if ( // Convert to negative
-          first_byte.to_int() & 0xf0
-        ) ==
-        0xa0 {
+      } else if (first_byte.to_int() & 0xf0) == 0xa0 {
         // fixstr
         let str_length = first_byte.to_int() & 0x1f
         if data.length() < str_length + 1 {
           raise InvalidData("Incomplete fixstr")
         }
-        let str_bytes : Array[Byte] = []
-        for i = 1; i <= str_length; i = i + 1 {
-          str_bytes.push(data[i])
-        }
-        // Simplified string conversion - MoonBit handles UTF-8 automatically
-        let mut str_val = ""
-        // For now, create a simple string from bytes
-        for byte in str_bytes {
-          let char_val = Int::unsafe_to_char(byte.to_int())
-          str_val = str_val + char_val.to_string()
-        }
-        String(str_val)
+        decode_string_bytes(data, 1, str_length)
       } else if (first_byte.to_int() & 0xf0) == 0x90 {
         // fixarray
         let array_length = first_byte.to_int() & 0x0f
@@ -134,6 +154,21 @@ pub fn decode(data : Bytes) -> Value raise MsgPackError {
         raise InvalidData("Unsupported format")
       }
   }
+}
+
+// Helper function to decode string bytes
+///|
+fn decode_string_bytes(data : Bytes, offset : Int, length : Int) -> Value {
+  let str_bytes : Array[Byte] = []
+  for i = 0; i < length; i = i + 1 {
+    str_bytes.push(data[offset + i])
+  }
+  let mut str_val = ""
+  for byte in str_bytes {
+    let char_val = Int::unsafe_to_char(byte.to_int())
+    str_val = str_val + char_val.to_string()
+  }
+  String(str_val)
 }
 
 // Helper functions for decoding complex types
@@ -278,6 +313,42 @@ fn decode_value_at_offset(
         (data[offset + 3].to_int() << 8) |
         data[offset + 4].to_int()
       (Int(value), offset + 5)
+    }
+    0xd9 => {
+      // str8 (1-byte length)
+      if offset + 1 >= data.length() {
+        raise InvalidData("Incomplete str8 length")
+      }
+      let str_length = data[offset + 1].to_int()
+      if offset + 2 + str_length > data.length() {
+        raise InvalidData("Incomplete str8 data")
+      }
+      (decode_string_bytes(data, offset + 2, str_length), offset + 2 + str_length)
+    }
+    0xda => {
+      // str16 (2-byte length)
+      if offset + 2 >= data.length() {
+        raise InvalidData("Incomplete str16 length")
+      }
+      let str_length = (data[offset + 1].to_int() << 8) | data[offset + 2].to_int()
+      if offset + 3 + str_length > data.length() {
+        raise InvalidData("Incomplete str16 data")
+      }
+      (decode_string_bytes(data, offset + 3, str_length), offset + 3 + str_length)
+    }
+    0xdb => {
+      // str32 (4-byte length)
+      if offset + 4 >= data.length() {
+        raise InvalidData("Incomplete str32 length")
+      }
+      let str_length = (data[offset + 1].to_int() << 24) |
+        (data[offset + 2].to_int() << 16) |
+        (data[offset + 3].to_int() << 8) |
+        data[offset + 4].to_int()
+      if offset + 5 + str_length > data.length() {
+        raise InvalidData("Incomplete str32 data")
+      }
+      (decode_string_bytes(data, offset + 5, str_length), offset + 5 + str_length)
     }
     _ =>
       if (first_byte.to_int() & 0x80) == 0 {

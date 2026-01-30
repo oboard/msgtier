@@ -445,8 +445,16 @@ async fn listen_udp(
         ignore(send_message(server, sender_addr, punch_to_sender))
       }
       { kind: "punch", target: Some(target), .. } => {
-        let ack_to_target = Message::new(kind="punch_ack", from=id, addr=local_addr)
-        let ack_to_sender = Message::new(kind="punch_ack", from=id, addr=local_addr)
+        let ack_to_target = Message::new(
+          kind="punch_ack",
+          from=id,
+          addr=local_addr,
+        )
+        let ack_to_sender = Message::new(
+          kind="punch_ack",
+          from=id,
+          addr=local_addr,
+        )
         ignore(send_message(server, target, ack_to_target))
         ignore(send_message(server, sender_addr, ack_to_sender))
       }

@@ -41,11 +41,12 @@ fn Message::new(
 ///|
 fn Message::to_msgpack(self : Message) -> Bytes {
   // Convert Message to msgpack Value
-  let msg_map = Map::new()
-  msg_map["id"] = @msgpack.string(self.id)
-  msg_map["kind"] = @msgpack.string(self.kind)
-  msg_map["from"] = @msgpack.string(self.from)
-  msg_map["addr"] = @msgpack.string(self.addr)
+  let msg_map = {
+    "id": @msgpack.string(self.id),
+    "kind": @msgpack.string(self.kind),
+    "from": @msgpack.string(self.from),
+    "addr": @msgpack.string(self.addr),
+  }
   match self.peers {
     Some(peers) => {
       let peers_array : Array[@msgpack.Value] = []

@@ -33,18 +33,16 @@ pub fn get_pending_messages() -> Array[PendingMessage] {
   // (first attempt or retry eligible)
   let ready : Array[PendingMessage] = []
   let remaining : Array[PendingMessage] = []
-
   for pending in messages {
     let now = @env.now()
     let elapsed = now - pending.last_sent
     // Exponential backoff: 1s, 2s, 4s, 8s, 16s
     let backoff_ms = if pending.retry_count == 0 {
-      0UL  // Send immediately first time
+      0UL // Send immediately first time
     } else {
       let shift_amount = pending.retry_count.reinterpret_as_uint().to_uint64()
       (1UL << shift_amount.to_int()) * 1000UL
     }
-
     if elapsed >= backoff_ms && pending.retry_count <= pending.max_retries {
       // Mark as sent by updating the pending message
       let updated = PendingMessage::{
@@ -57,16 +55,8 @@ pub fn get_pending_messages() -> Array[PendingMessage] {
       remaining.push(pending)
     }
   }
-
   global_pending_messages.val = remaining
   ready
-}
-
-///|
-pub fn mark_message_sent(msg_id : String) -> Unit {
-  // Messages are automatically marked in get_pending_messages(),
-  // but keep this function for API consistency
-  ()
 }
 
 ///|

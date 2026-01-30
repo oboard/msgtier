@@ -12,7 +12,6 @@
     "moonbitlang/async/http",
     "moonbitlang/async/io",
     "moonbitlang/async/process",
-    "moonbitlang/x/uuid",
     "bobzhang/uuidm"
   ]
 }
