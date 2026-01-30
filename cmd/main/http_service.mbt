@@ -67,6 +67,7 @@ struct PeerConnectionInfo {
   peer_id : String
   version : String
   active : Bool
+  relay : Int
   local_addr : String
   remote_addr : String
 } derive(ToJson)
@@ -74,8 +75,9 @@ struct PeerConnectionInfo {
 ///|
 struct StatusInfo {
   status : String
+  peers : Array[PeerNode]
   connections : Array[PeerConnectionInfo]
-  peers_count : Int
+  connections_count : Int
   node_id : String
   listeners : Array[String]
 } derive(ToJson)
@@ -137,10 +139,12 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
       // Add to pending message queue
       add_pending_message(target, msg)
 
-      // Check if target peer exists
+      // Check if target peer exists or is self
       let target_peer = get_global_peer_manager().get_peer(target)
-      match target_peer {
-        Some(_) =>
+      let is_self = target == node_id
+
+      match (target_peer, is_self) {
+        (Some(_), _) | (None, true) =>
           conn
           ..send_response(200, "OK", extra_headers={
             "Content-Type": "application/json",
@@ -151,7 +155,7 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
             .stringify(),
           )
           ..end_response()
-        None =>
+        (None, false) =>
           conn
           ..send_response(404, "Not Found", extra_headers={
             "Content-Type": "application/json",
@@ -203,6 +207,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
         peer_id: peer.id,
         version: peer.version,
         active: peer_conn.is_active(),
+        relay: peer_conn.relay,
         local_addr: peer_conn.local_addr,
         remote_addr: peer_conn.remote_addr,
       })
@@ -210,8 +215,9 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
   }
   let status_info = StatusInfo::{
     status: "ok",
+    peers: all_peers,
     connections,
-    peers_count: all_peers.length(),
+    connections_count: all_peers.length(),
     node_id: match global_config.val {
       Some(config) => config.id
       None => "unknown"
