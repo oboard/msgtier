@@ -125,16 +125,14 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
       }
 
       // Create data message to send with body as data
-      let msg = Message::{
-        kind: "data",
-        id: node_id,
-        addr: local_addr,
-        version: Some(VERSION),
-        peers: None,
-        payload: None,
-        target: Some(target),
-        data: Some(body_str),
-      }
+      let msg = Message::new(
+        kind="data",
+        from=node_id,
+        addr=local_addr,
+        version=Some(VERSION),
+        target=Some(target),
+        data=Some(body_str),
+      )
 
       // Add to pending message queue
       add_pending_message(target, msg)

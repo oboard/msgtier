@@ -1,7 +1,8 @@
 ///|
 struct Message {
-  kind : String
   id : String
+  kind : String
+  from : String
   addr : String
   version : String?
   peers : Array[NetworkAddress]?
@@ -12,8 +13,9 @@ struct Message {
 
 ///|
 fn Message::new(
+  id? : String,
   kind~ : String,
-  id~ : String,
+  from~ : String,
   addr~ : String,
   version? : String? = None,
   peers? : Array[NetworkAddress]? = None,
@@ -21,15 +23,28 @@ fn Message::new(
   target? : String? = None,
   data? : String? = None,
 ) -> Message {
-  { kind, id, addr, version, peers, payload, target, data }
+  {
+    id: id.unwrap_or(@uuidm.v4_with_rng(
+      @uuidm.SimpleRng::new(@env.now().reinterpret_as_int64()),
+    ).to_string_simple()),
+    kind,
+    from,
+    addr,
+    version,
+    peers,
+    payload,
+    target,
+    data,
+  }
 }
 
 ///|
 fn Message::to_msgpack(self : Message) -> Bytes {
   // Convert Message to msgpack Value
   let msg_map = Map::new()
-  msg_map["kind"] = @msgpack.string(self.kind)
   msg_map["id"] = @msgpack.string(self.id)
+  msg_map["kind"] = @msgpack.string(self.kind)
+  msg_map["from"] = @msgpack.string(self.from)
   msg_map["addr"] = @msgpack.string(self.addr)
   match self.peers {
     Some(peers) => {
@@ -53,6 +68,10 @@ fn Message::to_msgpack(self : Message) -> Bytes {
     Some(data) => msg_map["data"] = @msgpack.string(data)
     None => msg_map["data"] = @msgpack.nil()
   }
+  match self.version {
+    Some(version) => msg_map["version"] = @msgpack.string(version)
+    None => msg_map["version"] = @msgpack.nil()
+  }
   @msgpack.encode(@msgpack.map(msg_map))
 }
 
@@ -60,7 +79,13 @@ fn Message::to_msgpack(self : Message) -> Bytes {
 fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
   match msgpack {
     Map(
-      { "id": String(id), "kind": String(kind), "addr": String(addr), .. } as msg_map
+      {
+        "id": String(id),
+        "from": String(from),
+        "kind": String(kind),
+        "addr": String(addr),
+        ..
+      } as msg_map
     ) => {
       let peers = match msg_map {
         { "peers": Array(arr), .. } => {
@@ -92,7 +117,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         { "version": String(s), .. } => Some(s)
         _ => None
       }
-      Message::{ kind, id, addr, version, peers, payload, target, data }
+      Message::{ id, kind, from, addr, version, peers, payload, target, data }
     }
     _ => raise @msgpack.InvalidData("")
   }

@@ -126,16 +126,12 @@ async fn handle_reconnects(
   local_addr : String,
   node_id : String,
 ) -> Unit {
-  let hello_msg = Message::{
-    kind: "hello",
-    id: node_id,
-    addr: local_addr,
-    version: Some(VERSION),
-    peers: None,
-    payload: None,
-    target: None,
-    data: None,
-  }
+  let hello_msg = Message::new(
+    kind="hello",
+    from=node_id,
+    addr=local_addr,
+    version=Some(VERSION),
+  )
   for {
     // Sleep for 5 seconds between retry checks
     @async.sleep(5000)
@@ -238,16 +234,12 @@ async fn handle_heartbeat(
 
       // Send ping to all connections of this peer
       for conn in peer_conns {
-        let ping_msg = Message::{
-          kind: "ping",
-          id: node_id,
-          addr: local_addr,
-          version: Some(VERSION),
-          peers: None,
-          payload: None,
-          target: None,
-          data: None,
-        }
+        let ping_msg = Message::new(
+          kind="ping",
+          from=node_id,
+          addr=local_addr,
+          version=Some(VERSION),
+        )
         ignore(send_message(server, conn.remote_addr, ping_msg))
 
         // Check if connection has timed out (no response for 30 seconds)
@@ -283,16 +275,13 @@ async fn listen_udp(
         let peer_host = peer_url.get_host()
         peer_addresses.push(NetworkAddress::{ address: peer_host })
       }
-      let hello = Message::{
-        kind: "hello",
-        id,
-        addr: local_addr,
-        version: Some(VERSION),
-        peers: Some(peer_addresses),
-        payload: None,
-        target: None,
-        data: None,
-      }
+      let hello = Message::new(
+        kind="hello",
+        from=id,
+        addr=local_addr,
+        version=Some(VERSION),
+        peers=Some(peer_addresses),
+      )
 
       // Send hello to all configured peer addresses from this listener
       for peer_url in config.peers {
@@ -328,7 +317,7 @@ async fn listen_udp(
     let peer_info = match msg.kind {
       "hello" =>
         Some(NetworkDiscoveryInfo::{
-          id: msg.id,
+          id: msg.from,
           version: match msg.version {
             Some(v) => v
             None => VERSION
@@ -341,7 +330,7 @@ async fn listen_udp(
 
     // Always handle connection, even if peer_info is None
     let conn = handle_new_connection(
-      msg.id,
+      msg.from,
       local_addr,
       sender_addr,
       peer_info?,
@@ -381,7 +370,7 @@ async fn listen_udp(
         }
         let reply = Message::new(
           kind="welcome",
-          id~,
+          from=id,
           addr=local_addr,
           peers=Some(welcome_peer_addresses),
         )
@@ -405,16 +394,12 @@ async fn listen_udp(
                 })
 
                 // Send hello to the newly discovered peer to establish connection
-                let hello_msg = Message::{
-                  kind: "hello",
-                  id: msg.id,
-                  addr: local_addr,
-                  version: Some(VERSION),
-                  peers: None,
-                  payload: None,
-                  target: None,
-                  data: None,
-                }
+                let hello_msg = Message::new(
+                  kind="hello",
+                  from=msg.from,
+                  addr=local_addr,
+                  version=Some(VERSION),
+                )
                 ignore(send_message(server, peer_addr, hello_msg))
                 println("Discovered and greeting new peer: \{peer_addr}")
               }
@@ -425,12 +410,12 @@ async fn listen_udp(
         // Welcome message without peer list
         ()
       { kind: "ping", .. } => {
-        let reply = Message::new(kind="pong", id~, addr=local_addr)
+        let reply = Message::new(kind="pong", from=id, addr=local_addr)
         ignore(send_message(server, sender_addr, reply))
       }
       { kind: "pong", .. } => {
         // Heartbeat response received - mark connection as healthy
-        let peer_id = msg.id
+        let peer_id = msg.from
         let peer_conns = get_global_peer_manager().get_peer_connections(peer_id)
         // Find the connection that matches this sender and update its last_seen
         for conn in peer_conns {
@@ -446,13 +431,13 @@ async fn listen_udp(
       { kind: "punch_request", target: Some(target), .. } => {
         let punch_to_target = Message::new(
           kind="punch",
-          id~,
+          from=id,
           addr=local_addr,
           target=Some(sender_addr),
         )
         let punch_to_sender = Message::new(
           kind="punch",
-          id~,
+          from=id,
           addr=local_addr,
           target=Some(target),
         )
@@ -460,15 +445,15 @@ async fn listen_udp(
         ignore(send_message(server, sender_addr, punch_to_sender))
       }
       { kind: "punch", target: Some(target), .. } => {
-        let ack_to_target = Message::new(kind="punch_ack", id~, addr=local_addr)
-        let ack_to_sender = Message::new(kind="punch_ack", id~, addr=local_addr)
+        let ack_to_target = Message::new(kind="punch_ack", from=id, addr=local_addr)
+        let ack_to_sender = Message::new(kind="punch_ack", from=id, addr=local_addr)
         ignore(send_message(server, target, ack_to_target))
         ignore(send_message(server, sender_addr, ack_to_sender))
       }
       { kind: "relay", target: Some(target), data: Some(data), .. } => {
         let forward = Message::new(
           kind="data",
-          id=msg.id,
+          from=msg.from,
           addr=msg.addr,
           data=Some(data),
         )
@@ -477,7 +462,7 @@ async fn listen_udp(
       { kind: "send", target: Some(target), data: Some(data), .. } => {
         let direct = Message::new(
           kind="data",
-          id=msg.id,
+          from=msg.from,
           addr=msg.addr,
           data=Some(data),
         )
@@ -503,13 +488,13 @@ async fn listen_udp(
           Some(relay_conn) => {
             let request = Message::new(
               kind="punch_request",
-              id~,
+              from=id,
               addr=local_addr,
               target=Some(target),
             )
             let relay = Message::new(
               kind="relay",
-              id=msg.id,
+              from=msg.from,
               addr=msg.addr,
               target=Some(target),
               data=Some(data),
