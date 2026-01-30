@@ -410,25 +410,34 @@ async fn listen_udp(
         )
         ignore(send_message(server, sender_addr, reply))
       }
-      { kind: "welcome", peers: Some(peers), .. } =>
+      { kind: "welcome", peers: Some(peers), .. } => {
         // Welcome message - discover new peers from the list
         // Send hello to each peer address, let their response bring us the actual peer ID
+        let all_conns = get_global_peer_manager().get_all_connections()
         for peer_addr_obj in peers {
           let peer_addr = peer_addr_obj.address
           // Skip 0.0.0.0 addresses (bind-all, not connectable) and our own address
           if !peer_addr.has_prefix("0.0.0.0:") && peer_addr != local_addr {
-            // Send hello to discover this peer
-            // The hello response will bring us the actual peer ID
-            let hello_msg = Message::new(
-              kind="hello",
-              from=id,
-              addr=local_addr,
-              version=Some(VERSION),
-            )
-            ignore(send_message(server, peer_addr, hello_msg))
-            println("Greeting discovered peer at: \{peer_addr}")
+            // Check if we already have ANY connection to this address (active or not)
+            let already_connected = all_conns.any(fn(conn) {
+              conn.remote_addr == peer_addr
+            })
+
+            if !already_connected {
+              // Send hello to discover this peer
+              // The hello response will bring us the actual peer ID
+              let hello_msg = Message::new(
+                kind="hello",
+                from=id,
+                addr=local_addr,
+                version=Some(VERSION),
+              )
+              ignore(send_message(server, peer_addr, hello_msg))
+              println("Greeting discovered peer at: \{peer_addr}")
+            }
           }
         }
+      }
       { kind: "welcome", .. } =>
         // Welcome message without peer list
         ()
