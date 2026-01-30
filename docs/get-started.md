@@ -1,12 +1,162 @@
-# MsgTier 简介
-MsgTier 是一个去中心化的消息事件分发，支持中继，适合需要内网穿透传输信息的场景，无需公网IP。
+# Getting Started with MsgTier
 
-1. 节点之间的加密通信
-2. 智能多节点发现机制
-3. 拥有消息路由与可靠性
-4. 可编写事件脚本配置
+MsgTier is a decentralized P2P messaging network that enables nodes to discover each other and communicate without a central server.
 
-配置文件格式：
+## Installation
+
+Build MsgTier from source:
+
+```bash
+git clone <repository>
+cd msgtier
+moon build
+```
+
+## Configuration
+
+Create a `node.json` configuration file for each node:
+
+```json
 {
-    
+  "id": "1",
+  "secret": "shared-secret-key",
+  "listeners": [
+    "udp://0.0.0.0:6666",
+    "udp://0.0.0.0:6667"
+  ],
+  "peers": [
+    "udp://127.0.0.1:6668",
+    "udp://127.0.0.1:6669"
+  ],
+  "web_api": "127.0.0.1:9000",
+  "scripts": {
+    "open_browser": "open /Applications/Google\\ Chrome.app",
+    "notify": "echo 'Message received'"
+  }
 }
+```
+
+### Configuration Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | String | Unique identifier for this node |
+| `secret` | String | Shared secret key (currently placeholder) |
+| `listeners` | Array | UDP addresses to listen on (use 0.0.0.0 to bind all interfaces) |
+| `peers` | Array | Initial peer addresses to connect to |
+| `web_api` | String | HTTP server address (optional) |
+| `scripts` | Object | Named scripts that can be triggered via messages |
+
+## Running Nodes
+
+### Single Node
+
+```bash
+./msgtier node.json
+```
+
+Output:
+```
+{
+  "id": "1",
+  "secret": "secret-key",
+  "listeners": ["0.0.0.0:6666"],
+  "peers": [],
+  "web_api": "127.0.0.1:9000"
+}
+Listening on 0.0.0.0:6666
+HTTP API listening on http://127.0.0.1:9000
+```
+
+### Multi-Node Network
+
+**Terminal 1 - Node 1:**
+```bash
+./msgtier node1.json
+```
+
+**Terminal 2 - Node 2:**
+```bash
+./msgtier node2.json
+```
+
+**Terminal 3 - Node 3:**
+```bash
+./msgtier node3.json
+```
+
+## Sending Messages
+
+### HTTP API
+
+Send a message to a peer using the REST API:
+
+```bash
+curl -X POST 'http://127.0.0.1:9000/send' \
+  -H 'target: 1' \
+  -d 'script_name'
+```
+
+- `target` header: ID of the destination peer
+- Body: Name of the script to trigger
+
+### Script Execution
+
+When a message is received, if the message body matches a script name in the config, the script is executed:
+
+```json
+"scripts": {
+  "chrome": "open /Applications/Google\\ Chrome.app"
+}
+```
+
+Send via HTTP:
+```bash
+curl -X POST 'http://localhost:9000/send' \
+  -H 'target: 1' \
+  -d 'chrome'
+```
+
+Node will execute: `open /Applications/Google\ Chrome.app`
+
+## Checking Connection Status
+
+View connection status and peer information:
+```bash
+curl http://127.0.0.1:9000/status
+```
+
+## Troubleshooting
+
+### Connection Issues
+
+**Problem:** Nodes aren't discovering each other
+
+**Solution:**
+- Ensure firewall allows UDP on configured ports
+- Verify peer addresses are correct and reachable
+- Check logs for "Discovered new peer" messages
+
+### Script Not Executing
+
+**Problem:** Message received but script didn't run
+
+**Solution:**
+- Verify script name exactly matches config
+- Check script syntax (platform-specific shells)
+- View logs for script execution status
+
+### High Latency
+
+**Problem:** Messages taking long time to deliver
+
+**Solution:**
+- Check connection status: `curl http://localhost:9000/status`
+- Verify heartbeat/pong responses working
+- Consider network topology - use nodes as relays
+
+## Next Steps
+
+- Check [API Examples](/api-examples) for detailed endpoint documentation
+- Explore cross-platform script capabilities
+- Set up multi-node clusters for testing message relay
