@@ -32,25 +32,25 @@ fn PeerManager::get_all_peers(self : PeerManager) -> Array[PeerNode] {
   peer_list
 }
 
-///|
-fn PeerManager::get_peers_with_status(
-  self : PeerManager,
-) -> Array[PeerNodeWithStatus] {
-  let all_connections = self.connection_manager.get_all_connections()
-  let result = []
-  for _, peer in self.peers {
-    let status = peer.get_status(all_connections)
-    let active_conns = peer.get_active_connections(all_connections).length()
-    let total_conns = peer.get_all_connections(all_connections).length()
-    result.push(PeerNodeWithStatus::{
-      peer,
-      status,
-      active_connections: active_conns,
-      total_connections: total_conns,
-    })
-  }
-  result
-}
+// ///|
+// fn PeerManager::get_peers_with_status(
+//   self : PeerManager,
+// ) -> Array[PeerNodeWithStatus] {
+//   let all_connections = self.connection_manager.get_all_connections()
+//   let result = []
+//   for _, peer in self.peers {
+//     let status = peer.get_status(all_connections)
+//     let active_conns = peer.get_active_connections(all_connections).length()
+//     let total_conns = peer.get_all_connections(all_connections).length()
+//     result.push(PeerNodeWithStatus::{
+//       peer,
+//       status,
+//       active_connections: active_conns,
+//       total_connections: total_conns,
+//     })
+//   }
+//   result
+// }
 
 ///|
 fn PeerManager::add_connection(

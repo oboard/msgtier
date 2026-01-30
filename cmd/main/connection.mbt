@@ -218,14 +218,6 @@ fn ConnectionManager::remove_connection(
 }
 
 ///|
-fn ConnectionManager::get_connection(
-  self : ConnectionManager,
-  conn_id : String,
-) -> Connection? {
-  self.connections.get(conn_id)
-}
-
-///|
 fn ConnectionManager::get_peer_connections(
   self : ConnectionManager,
   peer_id : String,
@@ -262,13 +254,4 @@ fn ConnectionManager::get_all_connections(
     conns.push(conn)
   }
   conns
-}
-
-///|
-fn ConnectionManager::get_all_peers(self : ConnectionManager) -> Array[String] {
-  let peers = []
-  for peer_id, _ in self.peer_connections {
-    peers.push(peer_id)
-  }
-  peers
 }

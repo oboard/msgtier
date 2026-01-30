@@ -3,6 +3,7 @@ struct Message {
   kind : String
   id : String
   addr : String
+  version: String?
   peers : Array[NetworkAddress]?
   payload : String?
   target : String?
@@ -14,12 +15,13 @@ fn Message::new(
   kind~ : String,
   id~ : String,
   addr~ : String,
+  version? : String? = None,
   peers? : Array[NetworkAddress]? = None,
   payload? : String? = None,
   target? : String? = None,
   data? : String? = None,
 ) -> Message {
-  { kind, id, addr, peers, payload, target, data }
+  { kind, id, addr, version, peers, payload, target, data }
 }
 
 ///|
@@ -86,7 +88,11 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         String(s) => Some(s)
         _ => None
       }
-      Message::{ kind, id, addr, peers, payload, target, data }
+      let version = match msg_map["version"] {
+        String(s) => Some(s)
+        _ => None
+      }
+      Message::{ kind, id, addr, version, peers, payload, target, data }
     }
     _ => raise @msgpack.InvalidData("")
   }

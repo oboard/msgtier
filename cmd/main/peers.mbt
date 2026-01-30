@@ -29,37 +29,28 @@ fn PeerNode::new(id~ : String, version~ : String) -> PeerNode {
   { id, version, metadata: None }
 }
 
-///|
-fn PeerNode::with_metadata(
-  id : String,
-  version : String,
-  metadata : Map[String, String],
-) -> PeerNode {
-  { id, version, metadata: Some(metadata) }
-}
+// ///|
+// fn PeerNode::get_status(
+//   self : PeerNode,
+//   connections : Array[Connection],
+// ) -> PeerNodeStatus {
+//   let active_conns = connections.filter(fn(conn) {
+//     conn.peer_id == self.id && conn.is_active()
+//   })
+//   if active_conns.is_empty() {
+//     Disconnected
+//   } else {
+//     Connected
+//   }
+// }
 
-///|
-fn PeerNode::get_status(
-  self : PeerNode,
-  connections : Array[Connection],
-) -> PeerNodeStatus {
-  let active_conns = connections.filter(fn(conn) {
-    conn.peer_id == self.id && conn.is_active()
-  })
-  if active_conns.is_empty() {
-    Disconnected
-  } else {
-    Connected
-  }
-}
-
-///|
-fn PeerNode::get_active_connections(
-  self : PeerNode,
-  connections : Array[Connection],
-) -> Array[Connection] {
-  connections.filter(fn(conn) { conn.peer_id == self.id && conn.is_active() })
-}
+// ///|
+// fn PeerNode::get_active_connections(
+//   self : PeerNode,
+//   connections : Array[Connection],
+// ) -> Array[Connection] {
+//   connections.filter(fn(conn) { conn.peer_id == self.id && conn.is_active() })
+// }
 
 ///|
 fn PeerNode::get_all_connections(
