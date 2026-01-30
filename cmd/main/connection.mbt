@@ -50,10 +50,7 @@ fn Connection::update_state(
 }
 
 ///|
-fn Connection::update_relay(
-  self : Connection,
-  relay_depth : Int,
-) -> Connection {
+fn Connection::update_relay(self : Connection, relay_depth : Int) -> Connection {
   { ..self, relay: relay_depth }
 }
 

@@ -157,6 +157,7 @@ pub fn decode(data : Bytes) -> Value raise MsgPackError {
 }
 
 // Helper function to decode string bytes
+
 ///|
 fn decode_string_bytes(data : Bytes, offset : Int, length : Int) -> Value {
   let str_bytes : Array[Byte] = []
@@ -323,18 +324,25 @@ fn decode_value_at_offset(
       if offset + 2 + str_length > data.length() {
         raise InvalidData("Incomplete str8 data")
       }
-      (decode_string_bytes(data, offset + 2, str_length), offset + 2 + str_length)
+      (
+        decode_string_bytes(data, offset + 2, str_length),
+        offset + 2 + str_length,
+      )
     }
     0xda => {
       // str16 (2-byte length)
       if offset + 2 >= data.length() {
         raise InvalidData("Incomplete str16 length")
       }
-      let str_length = (data[offset + 1].to_int() << 8) | data[offset + 2].to_int()
+      let str_length = (data[offset + 1].to_int() << 8) |
+        data[offset + 2].to_int()
       if offset + 3 + str_length > data.length() {
         raise InvalidData("Incomplete str16 data")
       }
-      (decode_string_bytes(data, offset + 3, str_length), offset + 3 + str_length)
+      (
+        decode_string_bytes(data, offset + 3, str_length),
+        offset + 3 + str_length,
+      )
     }
     0xdb => {
       // str32 (4-byte length)
@@ -348,7 +356,10 @@ fn decode_value_at_offset(
       if offset + 5 + str_length > data.length() {
         raise InvalidData("Incomplete str32 data")
       }
-      (decode_string_bytes(data, offset + 5, str_length), offset + 5 + str_length)
+      (
+        decode_string_bytes(data, offset + 5, str_length),
+        offset + 5 + str_length,
+      )
     }
     _ =>
       if (first_byte.to_int() & 0x80) == 0 {

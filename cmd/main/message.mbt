@@ -24,9 +24,11 @@ fn Message::new(
   data? : String? = None,
 ) -> Message {
   {
-    id: id.unwrap_or(@uuidm.v4_with_rng(
-      @uuidm.SimpleRng::new(@env.now().reinterpret_as_int64()),
-    ).to_string_simple()),
+    id: id.unwrap_or(
+      @uuidm.v4_with_rng(
+        @uuidm.SimpleRng::new(@env.now().reinterpret_as_int64()),
+      ).to_string_simple(),
+    ),
     kind,
     from,
     addr,

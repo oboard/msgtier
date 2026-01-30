@@ -422,7 +422,6 @@ async fn listen_udp(
             let already_connected = all_conns.any(fn(conn) {
               conn.remote_addr == peer_addr
             })
-
             if !already_connected {
               // Send hello to discover this peer
               // The hello response will bring us the actual peer ID

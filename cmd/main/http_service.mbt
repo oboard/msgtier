@@ -142,7 +142,6 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
       // Check if target peer exists or is self
       let target_peer = get_global_peer_manager().get_peer(target)
       let is_self = target == node_id
-
       match (target_peer, is_self) {
         (Some(_), _) | (None, true) =>
           conn
