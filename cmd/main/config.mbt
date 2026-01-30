@@ -1,10 +1,11 @@
 ///|
 struct Config {
-  name : String
+  id : String
   secret : String
   peers : Array[@url.Url]
   listeners : Array[@url.Url]
   scripts : Array[String]?
+  web_api : String?
 } derive(Show, ToJson, FromJson)
 
 ///|

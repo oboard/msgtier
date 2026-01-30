@@ -7,6 +7,9 @@
     "moonbitlang/async",
     "moonbitlang/async/socket",
     "moonbitlang/async/fs",
-    "oboard/msgtier/url"
+    "oboard/msgtier/url",
+    "oboard/msgtier/msgpack",
+    "moonbitlang/async/http",
+    "moonbitlang/async/io"
   ]
 }

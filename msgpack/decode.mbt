@@ -1,0 +1,317 @@
+// MessagePack decoder
+
+// Simple decoder - returns Result type for error handling
+
+///|
+pub fn decode(data : Bytes) -> Value raise MsgPackError {
+  if data.length() == 0 {
+    raise InvalidData("Empty data")
+  }
+  let first_byte = data[0]
+  match first_byte.to_int() {
+    0xc0 => Nil
+    0xc2 => Bool(false)
+    0xc3 => Bool(true)
+    0xcc => {
+      // uint8
+      if data.length() < 2 {
+        raise InvalidData("Incomplete uint8")
+      }
+      Int(data[1].to_int())
+    }
+    0xcd => {
+      // uint16
+      if data.length() < 3 {
+        raise InvalidData("Incomplete uint16")
+      }
+      let value = (data[1].to_int() << 8) | data[2].to_int()
+      Int(value)
+    }
+    0xce => {
+      // uint32
+      if data.length() < 5 {
+        raise InvalidData("Incomplete uint32")
+      }
+      let value = (data[1].to_int() << 24) |
+        (data[2].to_int() << 16) |
+        (data[3].to_int() << 8) |
+        data[4].to_int()
+      Int(value)
+    }
+    0xd0 => {
+      // int8
+      if data.length() < 2 {
+        raise InvalidData("Incomplete int8")
+      }
+      let value = data[1].to_int()
+      let signed_value = if value > 127 { value - 256 } else { value }
+      Int(signed_value)
+    }
+    0xd1 => {
+      // int16
+      if data.length() < 3 {
+        raise InvalidData("Incomplete int16")
+      }
+      let value = (data[1].to_int() << 8) | data[2].to_int()
+      let signed_value = if value > 32767 { value - 65536 } else { value }
+      Int(signed_value)
+    }
+    0xd2 => {
+      // int32
+      if data.length() < 5 {
+        raise InvalidData("Incomplete int32")
+      }
+      let value = (data[1].to_int() << 24) |
+        (data[2].to_int() << 16) |
+        (data[3].to_int() << 8) |
+        data[4].to_int()
+      // For 32-bit signed integers, we need to handle the sign bit
+      // Note: MoonBit's Int type limitations require simplified handling
+      let signed_value = value
+      Int(signed_value)
+    }
+    0xdc => {
+      // array16
+      if data.length() < 3 {
+        raise InvalidData("Incomplete array16")
+      }
+      let array_length = (data[1].to_int() << 8) | data[2].to_int()
+      match decode_array(data, 3, array_length) {
+        (value, _) => value
+      }
+    }
+    0xde => {
+      // map16
+      if data.length() < 3 {
+        raise InvalidData("Incomplete map16")
+      }
+      let map_length = (data[1].to_int() << 8) | data[2].to_int()
+      match decode_map(data, 3, map_length) {
+        (value, _) => value
+      }
+    }
+    _ =>
+      if (first_byte.to_int() & 0x80) == 0 {
+        // positive fixint
+        Int(first_byte.to_int())
+      } else if (first_byte.to_int() & 0xe0) == 0xe0 {
+        // negative fixint
+        Int(first_byte.to_int() - 256)
+      } else if ( // Convert to negative
+          first_byte.to_int() & 0xf0
+        ) ==
+        0xa0 {
+        // fixstr
+        let str_length = first_byte.to_int() & 0x1f
+        if data.length() < str_length + 1 {
+          raise InvalidData("Incomplete fixstr")
+        }
+        let str_bytes : Array[Byte] = []
+        for i = 1; i <= str_length; i = i + 1 {
+          str_bytes.push(data[i])
+        }
+        // Simplified string conversion - MoonBit handles UTF-8 automatically
+        let mut str_val = ""
+        // For now, create a simple string from bytes
+        for byte in str_bytes {
+          let char_val = Int::unsafe_to_char(byte.to_int())
+          str_val = str_val + char_val.to_string()
+        }
+        String(str_val)
+      } else if (first_byte.to_int() & 0xf0) == 0x90 {
+        // fixarray
+        let array_length = first_byte.to_int() & 0x0f
+        match decode_array(data, 1, array_length) {
+          (value, _) => value
+        }
+      } else if (first_byte.to_int() & 0xf0) == 0x80 {
+        // fixmap
+        let map_length = first_byte.to_int() & 0x0f
+        match decode_map(data, 1, map_length) {
+          (value, _) => value
+        }
+      } else {
+        raise InvalidData("Unsupported format")
+      }
+  }
+}
+
+// Helper functions for decoding complex types
+
+///|
+fn decode_array(
+  data : Bytes,
+  start_offset : Int,
+  length : Int,
+) -> (Value, Int) raise MsgPackError {
+  let array : Array[Value] = []
+  let mut offset = start_offset
+  for i = 0; i < length; i = i + 1 {
+    if offset >= data.length() {
+      raise InvalidData("Incomplete array data")
+    }
+    match decode_value_at_offset(data, offset) {
+      (value, new_offset) => {
+        array.push(value)
+        offset = new_offset
+      }
+    }
+  }
+  (Array(array), offset)
+}
+
+///|
+fn decode_map(
+  data : Bytes,
+  start_offset : Int,
+  length : Int,
+) -> (Value, Int) raise MsgPackError {
+  let map = Map::new()
+  let mut offset = start_offset
+  for i = 0; i < length; i = i + 1 {
+    if offset >= data.length() {
+      raise InvalidData("Incomplete map data")
+    }
+    // Decode key
+    match decode_value_at_offset(data, offset) {
+      (key_value, new_offset1) => {
+        offset = new_offset1
+        match key_value {
+          String(key) =>
+            // Decode value
+            match decode_value_at_offset(data, offset) {
+              (value, new_offset2) => {
+                map[key] = value
+                offset = new_offset2
+              }
+            }
+          _ => raise InvalidData("Map key must be string")
+        }
+      }
+    }
+  }
+  (Map(map), offset)
+}
+
+///|
+fn decode_value_at_offset(
+  data : Bytes,
+  offset : Int,
+) -> (Value, Int) raise MsgPackError {
+  if offset >= data.length() {
+    raise InvalidData("Offset out of bounds")
+  }
+  let first_byte = data[offset]
+  match first_byte.to_int() {
+    0xc0 => (Nil, offset + 1)
+    0xc2 => (Bool(false), offset + 1)
+    0xc3 => (Bool(true), offset + 1)
+    0xcc => {
+      // uint8
+      if offset + 1 >= data.length() {
+        raise InvalidData("Incomplete uint8")
+      }
+      (Int(data[offset + 1].to_int()), offset + 2)
+    }
+    0xcd => {
+      // uint16
+      if offset + 2 >= data.length() {
+        raise InvalidData("Incomplete uint16")
+      }
+      let value = (data[offset + 1].to_int() << 8) | data[offset + 2].to_int()
+      (Int(value), offset + 3)
+    }
+    0xce => {
+      // uint32
+      if offset + 4 >= data.length() {
+        raise InvalidData("Incomplete uint32")
+      }
+      let value = (data[offset + 1].to_int() << 24) |
+        (data[offset + 2].to_int() << 16) |
+        (data[offset + 3].to_int() << 8) |
+        data[offset + 4].to_int()
+      (Int(value), offset + 5)
+    }
+    0xdc => {
+      // array16
+      if offset + 2 >= data.length() {
+        raise InvalidData("Incomplete array16")
+      }
+      let array_length = (data[offset + 1].to_int() << 8) |
+        data[offset + 2].to_int()
+      decode_array(data, offset + 3, array_length)
+    }
+    0xde => {
+      // map16
+      if offset + 2 >= data.length() {
+        raise InvalidData("Incomplete map16")
+      }
+      let map_length = (data[offset + 1].to_int() << 8) |
+        data[offset + 2].to_int()
+      decode_map(data, offset + 3, map_length)
+    }
+    0xd0 => {
+      // int8
+      if offset + 1 >= data.length() {
+        raise InvalidData("Incomplete int8")
+      }
+      let value = data[offset + 1].to_int()
+      let signed_value = if value > 127 { value - 256 } else { value }
+      (Int(signed_value), offset + 2)
+    }
+    0xd1 => {
+      // int16
+      if offset + 2 >= data.length() {
+        raise InvalidData("Incomplete int16")
+      }
+      let value = (data[offset + 1].to_int() << 8) | data[offset + 2].to_int()
+      let signed_value = if value > 32767 { value - 65536 } else { value }
+      (Int(signed_value), offset + 3)
+    }
+    0xd2 => {
+      // int32
+      if offset + 4 >= data.length() {
+        raise InvalidData("Incomplete int32")
+      }
+      let value = (data[offset + 1].to_int() << 24) |
+        (data[offset + 2].to_int() << 16) |
+        (data[offset + 3].to_int() << 8) |
+        data[offset + 4].to_int()
+      (Int(value), offset + 5)
+    }
+    _ =>
+      if (first_byte.to_int() & 0x80) == 0 {
+        // positive fixint
+        (Int(first_byte.to_int()), offset + 1)
+      } else if (first_byte.to_int() & 0xe0) == 0xe0 {
+        // negative fixint
+        (Int(first_byte.to_int() - 256), offset + 1)
+      } else if (first_byte.to_int() & 0xf0) == 0xa0 {
+        // fixstr
+        let str_length = first_byte.to_int() & 0x1f
+        if offset + str_length >= data.length() {
+          raise InvalidData("Incomplete fixstr")
+        }
+        let str_bytes : Array[Byte] = []
+        for i = 1; i <= str_length; i = i + 1 {
+          str_bytes.push(data[offset + i])
+        }
+        let mut str_val = ""
+        for byte in str_bytes {
+          let char_val = Int::unsafe_to_char(byte.to_int())
+          str_val = str_val + char_val.to_string()
+        }
+        (String(str_val), offset + str_length + 1)
+      } else if (first_byte.to_int() & 0xf0) == 0x90 {
+        // fixarray
+        let array_length = first_byte.to_int() & 0x0f
+        decode_array(data, offset + 1, array_length)
+      } else if (first_byte.to_int() & 0xf0) == 0x80 {
+        // fixmap
+        let map_length = first_byte.to_int() & 0x0f
+        decode_map(data, offset + 1, map_length)
+      } else {
+        raise InvalidData("Unsupported format")
+      }
+  }
+}

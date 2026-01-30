@@ -1,0 +1,106 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/msgpack"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub const ARRAY16_CODE : Int = 0xdc
+
+pub const ARRAY32_CODE : Int = 0xdd
+
+pub const BIN8_CODE : Int = 0xc4
+
+pub const FALSE_CODE : Int = 0xc2
+
+pub const FIXARRAY_CODE : Int = 0x90
+
+pub const FIXMAP_CODE : Int = 0x80
+
+pub const FIXSTR_CODE : Int = 0xa0
+
+pub const FLOAT64_CODE : Int = 0xcb
+
+pub const INT16_CODE : Int = 0xd1
+
+pub const INT32_CODE : Int = 0xd2
+
+pub const INT8_CODE : Int = 0xd0
+
+pub const MAP16_CODE : Int = 0xde
+
+pub const MAP32_CODE : Int = 0xdf
+
+pub const NEGATIVE_FIXINT_CODE : Int = 0xe0
+
+pub const NIL_CODE : Int = 0xc0
+
+pub const STR16_CODE : Int = 0xda
+
+pub const STR32_CODE : Int = 0xdb
+
+pub const STR8_CODE : Int = 0xd9
+
+pub const TRUE_CODE : Int = 0xc3
+
+pub const UINT32_CODE : Int = 0xce
+
+pub fn array(Array[Value]) -> Value
+
+pub fn binary(Bytes) -> Value
+
+pub fn bool(Bool) -> Value
+
+pub fn bytes(Array[Int]) -> Bytes
+
+pub fn bytes_equal(Bytes, Bytes) -> Bool
+
+pub fn decode(Bytes) -> Value raise MsgPackError
+
+pub fn encode(Value) -> Bytes
+
+pub fn float(Double) -> Value
+
+pub fn int(Int) -> Value
+
+pub fn int64(Int64) -> Value
+
+pub fn map(Map[String, Value]) -> Value
+
+pub fn nil() -> Value
+
+pub fn string(String) -> Value
+
+pub fn uint64(UInt64) -> Value
+
+// Errors
+pub(all) suberror MsgPackError {
+  TypeMismatch(String)
+  InvalidData(String)
+}
+pub fn MsgPackError::to_string(Self) -> String
+
+// Types and methods
+pub enum Value {
+  Nil
+  Bool(Bool)
+  Int(Int)
+  Int64(Int64)
+  UInt64(UInt64)
+  Float(Double)
+  String(String)
+  Binary(Bytes)
+  Array(Array[Value])
+  Map(Map[String, Value])
+}
+pub fn Value::to_bool(Self) -> Result[Bool, MsgPackError]
+pub fn Value::to_int(Self) -> Result[Int, MsgPackError]
+pub fn Value::to_string(Self) -> Result[String, MsgPackError]
+pub impl ToJson for Value
+pub impl @debug.Debug for Value
+
+// Type aliases
+
+// Traits
+

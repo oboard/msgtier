@@ -6,13 +6,25 @@ import {
 }
 
 // Values
-pub fn add_peer(Array[String], String) -> Unit
+pub fn add_connected_peer(String, String, String) -> Unit
 
-pub fn merge_peers(Array[String], Array[String]) -> Unit
+pub fn clear_connected_peers() -> Unit
 
-pub fn message_decode(Bytes) -> Message?
+pub fn get_connected_peers() -> Array[PeerNode]
 
-pub fn message_encode(Message) -> Bytes
+pub fn get_global_peer_manager() -> PeerManager
+
+pub fn get_global_reconnect_manager() -> ReconnectManager
+
+pub fn network_address(String) -> NetworkAddress
+
+pub fn network_discovery_info(String, String, Array[NetworkAddress], peers? : Array[NetworkAddress]?) -> NetworkDiscoveryInfo
+
+pub fn remove_connected_peer(String) -> Unit
+
+pub fn update_global_peer_manager((PeerManager) -> PeerManager) -> Unit
+
+pub fn update_global_reconnect_manager((ReconnectManager) -> ReconnectManager) -> Unit
 
 // Errors
 
@@ -22,10 +34,59 @@ pub impl Show for Config
 pub impl ToJson for Config
 pub impl @json.FromJson for Config
 
+type Connection
+pub impl Show for Connection
+pub impl ToJson for Connection
+pub impl @json.FromJson for Connection
+
+type ConnectionManager
+pub impl Show for ConnectionManager
+
+type ConnectionState
+pub impl Eq for ConnectionState
+pub impl Show for ConnectionState
+pub impl ToJson for ConnectionState
+pub impl @json.FromJson for ConnectionState
+
 type Message
 pub impl Show for Message
 pub impl ToJson for Message
 pub impl @json.FromJson for Message
+
+type NetworkAddress
+pub impl Show for NetworkAddress
+pub impl ToJson for NetworkAddress
+pub impl @json.FromJson for NetworkAddress
+
+type NetworkDiscoveryInfo
+pub impl Show for NetworkDiscoveryInfo
+pub impl ToJson for NetworkDiscoveryInfo
+pub impl @json.FromJson for NetworkDiscoveryInfo
+
+type PeerManager
+pub impl Show for PeerManager
+
+type PeerNode
+pub impl Show for PeerNode
+pub impl ToJson for PeerNode
+pub impl @json.FromJson for PeerNode
+
+type PeerNodeStatus
+pub impl Eq for PeerNodeStatus
+pub impl Show for PeerNodeStatus
+pub impl ToJson for PeerNodeStatus
+pub impl @json.FromJson for PeerNodeStatus
+
+type PeerNodeWithStatus
+pub impl Show for PeerNodeWithStatus
+pub impl ToJson for PeerNodeWithStatus
+pub impl @json.FromJson for PeerNodeWithStatus
+
+type ReconnectManager
+pub impl Show for ReconnectManager
+
+type StatusInfo
+pub impl ToJson for StatusInfo
 
 // Type aliases
 
