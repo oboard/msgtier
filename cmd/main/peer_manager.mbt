@@ -156,3 +156,108 @@ fn PeerManager::update_connection_relay(
   )
   { ..self, connection_manager: updated_manager }
 }
+
+///|
+fn PeerManager::update_connection_latency(
+  self : PeerManager,
+  conn_id : String,
+  rtt_ms : Int,
+) -> PeerManager {
+  match self.connection_manager.connections.get(conn_id) {
+    Some(conn) => {
+      let mut history = conn.latency_history.copy()
+      history.push(rtt_ms)
+      // Keep only last 10 samples
+      if history.length() > 10 {
+        let start_idx = history.length() - 10
+        let new_history = []
+        for i in start_idx..<history.length() {
+          new_history.push(history[i])
+        }
+        history = new_history
+      }
+      let updated_conn = {
+        ..conn,
+        latency_ms: Some(rtt_ms),
+        latency_history: history,
+      }
+      let updated_manager = {
+        ..self.connection_manager,
+        connections: self.connection_manager.connections,
+      }
+      updated_manager.connections[conn_id] = updated_conn
+      { ..self, connection_manager: updated_manager }
+    }
+    None => self
+  }
+}
+
+///|
+fn PeerManager::update_connection_bytes(
+  self : PeerManager,
+  conn_id : String,
+  bytes_sent : UInt64,
+  bytes_received : UInt64,
+) -> PeerManager {
+  match self.connection_manager.connections.get(conn_id) {
+    Some(conn) => {
+      let updated_conn = {
+        ..conn,
+        bytes_sent: conn.bytes_sent + bytes_sent,
+        bytes_received: conn.bytes_received + bytes_received,
+      }
+      let updated_manager = {
+        ..self.connection_manager,
+        connections: self.connection_manager.connections,
+      }
+      updated_manager.connections[conn_id] = updated_conn
+      { ..self, connection_manager: updated_manager }
+    }
+    None => self
+  }
+}
+
+///|
+fn PeerManager::update_connection_packet_loss(
+  self : PeerManager,
+  conn_id : String,
+  packets_sent : Int,
+  packets_lost : Int,
+) -> PeerManager {
+  match self.connection_manager.connections.get(conn_id) {
+    Some(conn) => {
+      let updated_conn = {
+        ..conn,
+        packets_sent: conn.packets_sent + packets_sent,
+        packets_lost: conn.packets_lost + packets_lost,
+      }
+      let updated_manager = {
+        ..self.connection_manager,
+        connections: self.connection_manager.connections,
+      }
+      updated_manager.connections[conn_id] = updated_conn
+      { ..self, connection_manager: updated_manager }
+    }
+    None => self
+  }
+}
+
+///|
+fn PeerManager::update_connection_ping_time(
+  self : PeerManager,
+  conn_id : String,
+  ping_time : UInt64?,
+) -> PeerManager {
+  match self.connection_manager.connections.get(conn_id) {
+    Some(conn) => {
+      let updated_conn = { ..conn, last_ping_time: ping_time }
+      let updated_manager = {
+        ..self.connection_manager,
+        connections: self.connection_manager.connections,
+      }
+      updated_manager.connections[conn_id] = updated_conn
+      { ..self, connection_manager: updated_manager }
+    }
+    None => self
+  }
+}

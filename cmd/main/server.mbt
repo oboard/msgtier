@@ -107,7 +107,8 @@ async fn send_message(
   }
   try {
     let addr = @socket.Addr::parse(peer)
-    server.sendto(msg.to_msgpack(), addr)
+    let msgpack_bytes = msg.to_msgpack()
+    server.sendto(msgpack_bytes, addr)
     true
   } catch {
     _ => {
@@ -279,6 +280,14 @@ async fn handle_heartbeat(
           addr=local_addr,
           version=Some(VERSION),
         )
+        // Record ping time before sending
+        update_global_peer_manager(fn(manager) {
+          manager.update_connection_ping_time(conn.id, Some(current_time))
+        })
+        // Increment packets_sent counter
+        update_global_peer_manager(fn(manager) {
+          manager.update_connection_packet_loss(conn.id, 1, 0)
+        })
         ignore(send_message(server, conn.remote_addr, ping_msg))
 
         // Check if connection has timed out (no response for 30 seconds)
@@ -380,6 +389,11 @@ async fn listen_udp(
       peer_info?,
     )
 
+    // Track bytes received
+    update_global_peer_manager(fn(manager) {
+      manager.update_connection_bytes(conn.id, 0UL, n.to_uint64())
+    })
+
     // Update connection state to Connected and update last_seen timestamp
     update_global_peer_manager(fn(manager) {
       let manager = manager.update_connection_state(
@@ -462,6 +476,17 @@ async fn listen_udp(
         // Find the connection that matches this sender and update its last_seen
         for conn in peer_conns {
           if conn.remote_addr == sender_addr {
+            let current_time = @env.now()
+            // Calculate RTT if we have a ping timestamp
+            match conn.last_ping_time {
+              Some(ping_time) => {
+                let rtt_ms = (current_time - ping_time).to_int()
+                update_global_peer_manager(fn(manager) {
+                  manager.update_connection_latency(conn.id, rtt_ms)
+                })
+              }
+              None => ()
+            }
             update_global_peer_manager(fn(manager) {
               let timestamp = @env.now()
               manager.update_connection_last_seen(conn.id, timestamp)

@@ -11,6 +11,13 @@ struct Connection {
   quality : Int // connection quality metric (0-100)
   relay : Int // 1 = direct, 2+ = relayed through N-1 peers
   metadata : Map[String, String]?
+  latency_ms : Int? // Latest RTT in milliseconds (null if no pings yet)
+  latency_history : Array[Int] // Recent RTT samples (last 10)
+  packets_sent : Int // Total pings sent
+  packets_lost : Int // Pings without pong response
+  bytes_sent : UInt64 // Total bytes sent through connection
+  bytes_received : UInt64 // Total bytes received
+  last_ping_time : UInt64? // Timestamp when last ping was sent
 } derive(Show, ToJson, FromJson)
 
 ///|
@@ -38,6 +45,13 @@ fn Connection::new(
     quality: 0,
     relay: 1,
     metadata: None,
+    latency_ms: None,
+    latency_history: [],
+    packets_sent: 0,
+    packets_lost: 0,
+    bytes_sent: 0UL,
+    bytes_received: 0UL,
+    last_ping_time: None,
   }
 }
 
@@ -68,6 +82,40 @@ fn Connection::is_active(self : Connection) -> Bool {
   match self.state {
     Connected => true
     _ => false
+  }
+}
+
+///|
+fn Connection::calculate_average_latency(self : Connection) -> Int? {
+  if self.latency_history.is_empty() {
+    None
+  } else {
+    let sum = self.latency_history.fold(init=0, fn(acc, val) { acc + val })
+    Some(sum / self.latency_history.length())
+  }
+}
+
+///|
+fn Connection::calculate_packet_loss(self : Connection) -> Int {
+  if self.packets_sent == 0 {
+    0
+  } else {
+    self.packets_lost * 100 / self.packets_sent
+  }
+}
+
+///|
+fn Connection::calculate_bandwidth_mbps(
+  self : Connection,
+  elapsed_ms : UInt64,
+) -> Double {
+  if elapsed_ms == 0UL {
+    0.0
+  } else {
+    let bytes_in_mb = self.bytes_received.reinterpret_as_int64().to_double() /
+      1_000_000.0
+    let seconds = elapsed_ms.reinterpret_as_int64().to_double() / 1000.0
+    bytes_in_mb / seconds
   }
 }
 

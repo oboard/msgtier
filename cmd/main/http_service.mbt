@@ -2,6 +2,32 @@
 const PAGE_404 : Bytes = b"<html><head></head><body>Page Not Found</body></html>"
 
 ///|
+fn format_latency(latency_ms : Int?) -> String {
+  match latency_ms {
+    Some(ms) => "\{ms} ms"
+    None => "N/A"
+  }
+}
+
+///|
+fn format_bandwidth(mbps : Double) -> String {
+  if mbps == 0.0 {
+    "0 Mbps"
+  } else {
+    "\{mbps} Mbps"
+  }
+}
+
+///|
+fn format_packet_loss(rate : Int) -> String {
+  if rate == 0 {
+    "0%"
+  } else {
+    "\{rate}%"
+  }
+}
+
+///|
 pub fn add_connected_peer(
   id : String,
   address : String,
@@ -70,6 +96,12 @@ struct PeerConnectionInfo {
   relay : Int
   local_addr : String
   remote_addr : String
+  latency_ms : Int?
+  latency_display : String
+  bandwidth_mbps : Double
+  bandwidth_display : String
+  packet_loss_rate : Int
+  packet_loss_display : String
 } derive(ToJson)
 
 ///|
@@ -202,6 +234,14 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
   for peer in all_peers {
     let peer_conns = peer.get_all_connections(all_conns)
     for peer_conn in peer_conns {
+      // Calculate metrics
+      let latency_ms = peer_conn.latency_ms
+      let latency_display = format_latency(latency_ms)
+      let elapsed_ms = @env.now() - peer_conn.last_seen
+      let bandwidth_mbps = peer_conn.calculate_bandwidth_mbps(elapsed_ms)
+      let bandwidth_display = format_bandwidth(bandwidth_mbps)
+      let packet_loss_rate = peer_conn.calculate_packet_loss()
+      let packet_loss_display = format_packet_loss(packet_loss_rate)
       connections.push(PeerConnectionInfo::{
         peer_id: peer.id,
         version: peer.version,
@@ -209,6 +249,12 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
         relay: peer_conn.relay,
         local_addr: peer_conn.local_addr,
         remote_addr: peer_conn.remote_addr,
+        latency_ms,
+        latency_display,
+        bandwidth_mbps,
+        bandwidth_display,
+        packet_loss_rate,
+        packet_loss_display,
       })
     }
   }
