@@ -351,8 +351,8 @@ async fn listen_udp(
     let (n, sender) = server.recvfrom(buf)
     let bytes = buf.unsafe_reinterpret_as_bytes()[0:n].to_bytes()
     let msg : Message = Message::from_msgpack(@msgpack.decode(bytes)) catch {
-      _ => {
-        println("Failed to decode message")
+      e => {
+        println("Failed to decode message: \{e}")
         continue
       }
     }
