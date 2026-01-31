@@ -2,7 +2,7 @@
 /// Reconnection manager with exponential backoff
 struct ReconnectManager {
   retry_attempts : Map[String, Int] // peer_id -> attempt_count
-  last_retry_time : Map[String, Int64] // peer_id -> timestamp
+  last_retry_time : Map[String, UInt64] // peer_id -> timestamp
   base_delay_ms : Int
   max_delay_ms : Int
   max_attempts : Int
@@ -10,7 +10,7 @@ struct ReconnectManager {
 
 ///|
 fn ReconnectManager::new(
-  base_delay_ms? : Int = 1000,
+  base_delay_ms? : Int = 500,
   max_delay_ms? : Int = 60000,
   max_attempts? : Int = 10,
 ) -> ReconnectManager {
@@ -28,7 +28,7 @@ fn ReconnectManager::should_retry(
   self : ReconnectManager,
   peer_id : String,
 ) -> Bool {
-  let current_time = 0L // TODO: get actual timestamp
+  let current_time = @env.now()
 
   // Check if we've exceeded max attempts
   match self.retry_attempts.get(peer_id) {
@@ -39,7 +39,8 @@ fn ReconnectManager::should_retry(
         // Check if enough time has passed since last retry
         match self.last_retry_time.get(peer_id) {
           Some(last_time) =>
-            current_time - last_time >= self.get_next_delay(peer_id)
+            current_time - last_time >=
+            self.get_next_delay(peer_id).reinterpret_as_uint64()
           None => true // First retry
         }
       }
@@ -69,7 +70,7 @@ fn ReconnectManager::record_retry(
 ) -> ReconnectManager {
   let retry_attempts = self.retry_attempts
   let last_retry_time = self.last_retry_time
-  let current_time = 0L // TODO: get actual timestamp
+  let current_time = @env.now()
   let attempts = match retry_attempts.get(peer_id) {
     Some(count) => count + 1
     None => 1

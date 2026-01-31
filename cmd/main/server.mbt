@@ -145,24 +145,39 @@ async fn handle_reconnects(
         if get_global_reconnect_manager().should_retry(peer_id) {
           println("Attempting to reconnect to \{peer_id}")
 
-          // Try to send hello message, but skip invalid addresses
-          // Get connection addresses for this peer
+          // Get all connection addresses for this peer and send hello to each
           let peer_conns = get_global_peer_manager().get_peer_connections(
             peer_id,
           )
-          let peer_addr = if peer_conns.is_empty() {
-            peer_id // Fallback to peer ID if no connections
+          if peer_conns.is_empty() {
+            // No known addresses for this peer, skip
+            println(
+              "No known addresses for peer \{peer_id}, skipping reconnection",
+            )
           } else {
-            peer_conns[0].remote_addr // Use first connection's remote address
-          }
-          if !peer_addr.has_prefix("0.0.0.0:") {
-            let success = send_message(server, peer_addr, hello_msg)
-            if success {
+            // Send hello to all known addresses for this peer
+            let mut sent_any = false
+            for conn in peer_conns {
+              let peer_addr = conn.remote_addr
+              // Skip 0.0.0.0 addresses (bind-all, not connectable)
+              if !peer_addr.has_prefix("0.0.0.0:") {
+                let success = send_message(server, peer_addr, hello_msg)
+                if success {
+                  println(
+                    "Reconnection hello sent to \{peer_id} at \{peer_addr}",
+                  )
+                  sent_any = true
+                } else {
+                  println("Failed to send reconnection hello to \{peer_addr}")
+                }
+              }
+            }
+            if sent_any {
               // Reset retry counter on successful send
               update_global_reconnect_manager(fn(manager) {
                 manager.reset_retry(peer_id)
               })
-              println("Reconnection attempt sent to \{peer_id}")
+              println("Reconnection attempt succeeded for \{peer_id}")
             } else {
               // Record failed retry attempt
               update_global_reconnect_manager(fn(manager) {
@@ -175,8 +190,6 @@ async fn handle_reconnects(
                 "Reconnection failed to \{peer_id}, attempt \{attempts}, next retry in \{next_delay}ms",
               )
             }
-          } else {
-            println("Skipping invalid address \{peer_addr} for peer \{peer_id}")
           }
         }
       }

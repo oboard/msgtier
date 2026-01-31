@@ -38,11 +38,7 @@ test "uuid_show_implementation_snapshot" {
 
   // Verify the string has correct length and format
   let format_string = format_test_uuid.to_string()
-  inspect(format_string.length(), content="36") // 32 hex + 4 hyphens
-  inspect(format_string.get(8), content="Some(45)") // First hyphen
-  inspect(format_string.get(13), content="Some(45)") // Second hyphen  
-  inspect(format_string.get(18), content="Some(45)") // Third hyphen
-  inspect(format_string.get(23), content="Some(45)") // Fourth hyphen
+  inspect(format_string, content="01234567-89ab-cdef-0123-456789abcdef") // 32 hex + 4 hyphens
 }
 
 ///|

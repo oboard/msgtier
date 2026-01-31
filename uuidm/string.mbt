@@ -84,7 +84,7 @@ pub fn Uuid::to_string_simple(self : Uuid) -> String {
 ///|
 /// Parse UUID from string representation
 /// Accepts both hyphenated and non-hyphenated formats
-pub fn from_string(s : String) -> Uuid? {
+pub fn from_string(s : StringView) -> Uuid? {
   // Remove hyphens and convert to lowercase 
   let cleaned = s
 
@@ -123,11 +123,11 @@ pub fn Uuid::to_urn(self : Uuid) -> String {
 ///|
 /// Parse UUID from URN string representation
 pub fn from_urn(s : String) -> Uuid? {
-  if s.length() > 9 {
-    let uuid_part = s.substring(start=9)
+  try {
+    let uuid_part = s[9:]
     from_string(uuid_part)
-  } else {
-    None
+  } catch {
+    _ => None
   }
 }
 
