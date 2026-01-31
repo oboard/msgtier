@@ -13,8 +13,13 @@ fn format_latency(latency_ms : Int?) -> String {
 fn format_bandwidth(mbps : Double) -> String {
   if mbps == 0.0 {
     "0 Mbps"
+  } else if mbps < 0.0001 {
+    "< 0.0001 Mbps"
   } else {
-    "\{mbps} Mbps"
+    // Round to 4 decimal places
+    let multiplier = 10000.0
+    let rounded = ((mbps * multiplier).to_int().to_double()) / multiplier
+    "\{rounded} Mbps"
   }
 }
 
