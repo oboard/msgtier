@@ -2,6 +2,15 @@
 const PAGE_404 : Bytes = b"<html><head></head><body>Page Not Found</body></html>"
 
 ///|
+fn format_relay_display(relay_depth : Int) -> String {
+  match relay_depth {
+    1 => "direct"
+    2 => "1 hop"
+    n => "\{n - 1} hops"
+  }
+}
+
+///|
 pub fn add_connected_peer(
   id : String,
   address : String,
@@ -68,6 +77,7 @@ struct PeerConnectionInfo {
   version : String
   active : Bool
   relay : Int
+  relay_display : String // Human-readable relay depth (e.g., "direct", "1 hop", "2 hops")
   local_addr : String
   remote_addr : String
 } derive(ToJson)
@@ -207,6 +217,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
         version: peer.version,
         active: peer_conn.is_active(),
         relay: peer_conn.relay,
+        relay_display: format_relay_display(peer_conn.relay),
         local_addr: peer_conn.local_addr,
         remote_addr: peer_conn.remote_addr,
       })

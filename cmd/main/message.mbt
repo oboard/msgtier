@@ -9,6 +9,7 @@ struct Message {
   payload : String?
   target : String?
   data : String?
+  relay : Int // 1 = direct, 2+ = relayed through N-1 peers
 } derive(Show, ToJson, FromJson)
 
 ///|
@@ -22,6 +23,7 @@ fn Message::new(
   payload? : String? = None,
   target? : String? = None,
   data? : String? = None,
+  relay? : Int = 1,
 ) -> Message {
   {
     id: id.unwrap_or(
@@ -37,6 +39,7 @@ fn Message::new(
     payload,
     target,
     data,
+    relay,
   }
 }
 
@@ -48,6 +51,7 @@ fn Message::to_msgpack(self : Message) -> Bytes {
     "kind": @msgpack.string(self.kind),
     "from": @msgpack.string(self.from),
     "addr": @msgpack.string(self.addr),
+    "relay": @msgpack.int(self.relay),
   }
   match self.peers {
     Some(peers) => {
@@ -120,7 +124,22 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         { "version": String(s), .. } => Some(s)
         _ => None
       }
-      Message::{ id, kind, from, addr, version, peers, payload, target, data }
+      let relay = match msg_map {
+        { "relay": Int(r), .. } => r
+        _ => 1
+      }
+      Message::{
+        id,
+        kind,
+        from,
+        addr,
+        version,
+        peers,
+        payload,
+        target,
+        data,
+        relay,
+      }
     }
     _ => raise @msgpack.InvalidData("")
   }

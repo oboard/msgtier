@@ -2,7 +2,6 @@
 struct PendingMessage {
   target : String
   msg : Message
-  created_at : UInt64
   last_sent : UInt64
   retry_count : Int
   max_retries : Int
@@ -17,7 +16,6 @@ pub fn add_pending_message(target : String, msg : Message) -> Unit {
   let pending = PendingMessage::{
     target,
     msg,
-    created_at: now,
     last_sent: now,
     retry_count: 0,
     max_retries: 5,

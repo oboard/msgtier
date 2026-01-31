@@ -4,6 +4,7 @@ fn handle_new_connection(
   local_addr : String,
   remote_addr : String,
   peer_info? : NetworkDiscoveryInfo,
+  relay_depth? : Int = 1,
 ) -> Connection {
   // Get the actual peer ID (from peer_info if available, otherwise from peer_id parameter)
   let actual_peer_id = if peer_info is Some(info) { info.id } else { peer_id }
@@ -35,9 +36,19 @@ fn handle_new_connection(
     }
   }
 
-  // Add new connection
+  // Add new connection with relay depth
   update_global_peer_manager(fn(manager) {
-    manager.add_connection(actual_peer_id, local_addr, remote_addr)
+    let mgr = manager.add_connection(actual_peer_id, local_addr, remote_addr)
+    // Update relay depth for the new connection
+    let new_conns = mgr.get_peer_connections(actual_peer_id)
+    let mut updated_mgr = mgr
+    for conn in new_conns {
+      if conn.local_addr == local_addr && conn.remote_addr == remote_addr {
+        updated_mgr = mgr.update_connection_relay(conn.id, relay_depth)
+        break
+      }
+    }
+    updated_mgr
   })
   // Get the connection we just added
   let conns = get_global_peer_manager().get_peer_connections(actual_peer_id)
@@ -79,24 +90,10 @@ async fn execute_script(script_name : String, command : String) -> Unit {
 
 ///|
 fn get_best_connection_for_peer(peer_id : String) -> Connection? {
-  let active_conns = get_global_peer_manager().get_active_peer_connections(
+  // Use the intelligent connection selection that prefers direct connections
+  get_global_peer_manager().connection_manager.get_best_direct_connection(
     peer_id,
   )
-  if active_conns.is_empty() {
-    None
-  } else {
-    // Return the connection with best quality
-    let best = active_conns[0]
-    Some(
-      active_conns.fold(init=best, fn(best, conn) {
-        if conn.quality > best.quality {
-          conn
-        } else {
-          best
-        }
-      }),
-    )
-  }
 }
 
 ///|
@@ -412,6 +409,7 @@ async fn listen_udp(
       }
       { kind: "welcome", peers: Some(peers), .. } => {
         // Welcome message - discover new peers from the list
+        // These peers are discovered through a relay (the sender of this welcome message)
         // Send hello to each peer address, let their response bring us the actual peer ID
         let all_conns = get_global_peer_manager().get_all_connections()
         for peer_addr_obj in peers {
@@ -495,6 +493,7 @@ async fn listen_udp(
           from=msg.from,
           addr=msg.addr,
           data=Some(data),
+          relay=msg.relay + 1, // Increment relay depth as it passes through
         )
         ignore(send_message(server, target, forward))
       }
@@ -537,6 +536,7 @@ async fn listen_udp(
               addr=msg.addr,
               target=Some(target),
               data=Some(data),
+              relay=2, // Message will be relayed through one peer
             )
             ignore(send_message(server, relay_conn.remote_addr, request))
             ignore(send_message(server, relay_conn.remote_addr, relay))

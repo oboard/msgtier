@@ -144,3 +144,15 @@ fn PeerManager::remove_connection(
   let updated_manager = self.connection_manager.remove_connection(conn_id)
   { ..self, connection_manager: updated_manager }
 }
+
+///|
+fn PeerManager::update_connection_relay(
+  self : PeerManager,
+  conn_id : String,
+  relay_depth : Int,
+) -> PeerManager {
+  let updated_manager = self.connection_manager.update_connection_relay(
+    conn_id, relay_depth,
+  )
+  { ..self, connection_manager: updated_manager }
+}
