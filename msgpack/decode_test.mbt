@@ -8,7 +8,10 @@ test "decode positive fixint" {
   for i = 0; i <= 127; i = i + 1 {
     let data = bytes([i])
     let result = decode(data)
-    debug_inspect(result)
+    match result {
+      Int(v) => assert_eq(v, i)
+      _ => fail("Expected int")
+    }
   }
 }
 
@@ -19,17 +22,26 @@ test "decode basic values" {
   // Test nil
   let nil_data = bytes([0xc0])
   let nil_result = decode(nil_data)
-  debug_inspect(nil_result, content="true")
+  match nil_result {
+    Nil => ()
+    _ => fail("Expected nil")
+  }
 
   // Test false
   let false_data = bytes([0xc2])
   let false_result = decode(false_data)
-  debug_inspect(false_result, content="true")
+  match false_result {
+    Bool(false) => ()
+    _ => fail("Expected bool false")
+  }
 
   // Test true
   let true_data = bytes([0xc3])
   let true_result = decode(true_data)
-  debug_inspect(true_result, content="true")
+  match true_result {
+    Bool(true) => ()
+    _ => fail("Expected bool true")
+  }
 }
 
 // Test error cases
@@ -38,6 +50,9 @@ test "decode basic values" {
 test "error cases" {
   // Test empty data
   let empty_data = Bytes::from_array([])
-  let result = decode(empty_data)
-  debug_inspect(result, content="true")
+  let result : Result[Value, MsgPackError] = try? decode(empty_data)
+  match result {
+    Err(InvalidData(_)) => ()
+    _ => fail("Expected InvalidData error")
+  }
 }

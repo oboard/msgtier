@@ -68,6 +68,105 @@ pub fn decode(data : Bytes) -> Value raise MsgPackError {
       let signed_value = value
       Int(signed_value)
     }
+    0xd3 => {
+      // int64
+      if data.length() < 9 {
+        raise InvalidData("Incomplete int64")
+      }
+      let high = (data[1].to_int() << 24) |
+        (data[2].to_int() << 16) |
+        (data[3].to_int() << 8) |
+        data[4].to_int()
+      let low = (data[5].to_int() << 24) |
+        (data[6].to_int() << 16) |
+        (data[7].to_int() << 8) |
+        data[8].to_int()
+      // Combine high and low into Int64
+      let i64_value = high.to_int64() * 0x100000000L + low.to_int64()
+      Int64(i64_value)
+    }
+    0xcf => {
+      // uint64
+      if data.length() < 9 {
+        raise InvalidData("Incomplete uint64")
+      }
+      let high = (data[1].to_int() << 24) |
+        (data[2].to_int() << 16) |
+        (data[3].to_int() << 8) |
+        data[4].to_int()
+      let low = (data[5].to_int() << 24) |
+        (data[6].to_int() << 16) |
+        (data[7].to_int() << 8) |
+        data[8].to_int()
+      // Combine high and low into UInt64
+      let u64_value = high.reinterpret_as_uint().to_uint64() * 0x100000000UL +
+        low.reinterpret_as_uint().to_uint64()
+      UInt64(u64_value)
+    }
+    0xca => {
+      // float32
+      if data.length() < 5 {
+        raise InvalidData("Incomplete float32")
+      }
+      // For now, treat float32 as 0.0 (placeholder)
+      Float(0.0)
+    }
+    0xcb => {
+      // float64
+      if data.length() < 9 {
+        raise InvalidData("Incomplete float64")
+      }
+      // For now, treat float64 as 0.0 (placeholder)
+      Float(0.0)
+    }
+    0xc4 => {
+      // bin8
+      if data.length() < 2 {
+        raise InvalidData("Incomplete bin8 length")
+      }
+      let bin_length = data[1].to_int()
+      if data.length() < 2 + bin_length {
+        raise InvalidData("Incomplete bin8 data")
+      }
+      let bin_bytes : Array[Byte] = []
+      for i = 0; i < bin_length; i = i + 1 {
+        bin_bytes.push(data[2 + i])
+      }
+      Binary(Bytes::from_array(bin_bytes))
+    }
+    0xc5 => {
+      // bin16
+      if data.length() < 3 {
+        raise InvalidData("Incomplete bin16 length")
+      }
+      let bin_length = (data[1].to_int() << 8) | data[2].to_int()
+      if data.length() < 3 + bin_length {
+        raise InvalidData("Incomplete bin16 data")
+      }
+      let bin_bytes : Array[Byte] = []
+      for i = 0; i < bin_length; i = i + 1 {
+        bin_bytes.push(data[3 + i])
+      }
+      Binary(Bytes::from_array(bin_bytes))
+    }
+    0xc6 => {
+      // bin32
+      if data.length() < 5 {
+        raise InvalidData("Incomplete bin32 length")
+      }
+      let bin_length = (data[1].to_int() << 24) |
+        (data[2].to_int() << 16) |
+        (data[3].to_int() << 8) |
+        data[4].to_int()
+      if data.length() < 5 + bin_length {
+        raise InvalidData("Incomplete bin32 data")
+      }
+      let bin_bytes : Array[Byte] = []
+      for i = 0; i < bin_length; i = i + 1 {
+        bin_bytes.push(data[5 + i])
+      }
+      Binary(Bytes::from_array(bin_bytes))
+    }
     0xd9 => {
       // str8 (1-byte length)
       if data.length() < 2 {
@@ -114,6 +213,19 @@ pub fn decode(data : Bytes) -> Value raise MsgPackError {
         (value, _) => value
       }
     }
+    0xdd => {
+      // array32
+      if data.length() < 5 {
+        raise InvalidData("Incomplete array32")
+      }
+      let array_length = (data[1].to_int() << 24) |
+        (data[2].to_int() << 16) |
+        (data[3].to_int() << 8) |
+        data[4].to_int()
+      match decode_array(data, 5, array_length) {
+        (value, _) => value
+      }
+    }
     0xde => {
       // map16
       if data.length() < 3 {
@@ -121,6 +233,19 @@ pub fn decode(data : Bytes) -> Value raise MsgPackError {
       }
       let map_length = (data[1].to_int() << 8) | data[2].to_int()
       match decode_map(data, 3, map_length) {
+        (value, _) => value
+      }
+    }
+    0xdf => {
+      // map32
+      if data.length() < 5 {
+        raise InvalidData("Incomplete map32")
+      }
+      let map_length = (data[1].to_int() << 24) |
+        (data[2].to_int() << 16) |
+        (data[3].to_int() << 8) |
+        data[4].to_int()
+      match decode_map(data, 5, map_length) {
         (value, _) => value
       }
     }
@@ -315,6 +440,126 @@ fn decode_value_at_offset(
         data[offset + 4].to_int()
       (Int(value), offset + 5)
     }
+    0xd3 => {
+      // int64
+      if offset + 8 >= data.length() {
+        raise InvalidData("Incomplete int64")
+      }
+      let high = (data[offset + 1].to_int() << 24) |
+        (data[offset + 2].to_int() << 16) |
+        (data[offset + 3].to_int() << 8) |
+        data[offset + 4].to_int()
+      let low = (data[offset + 5].to_int() << 24) |
+        (data[offset + 6].to_int() << 16) |
+        (data[offset + 7].to_int() << 8) |
+        data[offset + 8].to_int()
+      let i64_value = high.to_int64() * 0x100000000L + low.to_int64()
+      (Int64(i64_value), offset + 9)
+    }
+    0xcf => {
+      // uint64
+      if offset + 8 >= data.length() {
+        raise InvalidData("Incomplete uint64")
+      }
+      let high = (data[offset + 1].to_int() << 24) |
+        (data[offset + 2].to_int() << 16) |
+        (data[offset + 3].to_int() << 8) |
+        data[offset + 4].to_int()
+      let low = (data[offset + 5].to_int() << 24) |
+        (data[offset + 6].to_int() << 16) |
+        (data[offset + 7].to_int() << 8) |
+        data[offset + 8].to_int()
+      let u64_value = high.reinterpret_as_uint().to_uint64() * 0x100000000UL +
+        low.reinterpret_as_uint().to_uint64()
+      (UInt64(u64_value), offset + 9)
+    }
+    0xca => {
+      // float32
+      if offset + 4 >= data.length() {
+        raise InvalidData("Incomplete float32")
+      }
+      // For now, treat float32 as 0.0 (placeholder)
+      (Float(0.0), offset + 5)
+    }
+    0xcb => {
+      // float64
+      if offset + 8 >= data.length() {
+        raise InvalidData("Incomplete float64")
+      }
+      // For now, treat float64 as 0.0 (placeholder)
+      (Float(0.0), offset + 9)
+    }
+    0xc4 => {
+      // bin8
+      if offset + 1 >= data.length() {
+        raise InvalidData("Incomplete bin8 length")
+      }
+      let bin_length = data[offset + 1].to_int()
+      if offset + 2 + bin_length > data.length() {
+        raise InvalidData("Incomplete bin8 data")
+      }
+      let bin_bytes : Array[Byte] = []
+      for i = 0; i < bin_length; i = i + 1 {
+        bin_bytes.push(data[offset + 2 + i])
+      }
+      (Binary(Bytes::from_array(bin_bytes)), offset + 2 + bin_length)
+    }
+    0xc5 => {
+      // bin16
+      if offset + 2 >= data.length() {
+        raise InvalidData("Incomplete bin16 length")
+      }
+      let bin_length = (data[offset + 1].to_int() << 8) |
+        data[offset + 2].to_int()
+      if offset + 3 + bin_length > data.length() {
+        raise InvalidData("Incomplete bin16 data")
+      }
+      let bin_bytes : Array[Byte] = []
+      for i = 0; i < bin_length; i = i + 1 {
+        bin_bytes.push(data[offset + 3 + i])
+      }
+      (Binary(Bytes::from_array(bin_bytes)), offset + 3 + bin_length)
+    }
+    0xc6 => {
+      // bin32
+      if offset + 4 >= data.length() {
+        raise InvalidData("Incomplete bin32 length")
+      }
+      let bin_length = (data[offset + 1].to_int() << 24) |
+        (data[offset + 2].to_int() << 16) |
+        (data[offset + 3].to_int() << 8) |
+        data[offset + 4].to_int()
+      if offset + 5 + bin_length > data.length() {
+        raise InvalidData("Incomplete bin32 data")
+      }
+      let bin_bytes : Array[Byte] = []
+      for i = 0; i < bin_length; i = i + 1 {
+        bin_bytes.push(data[offset + 5 + i])
+      }
+      (Binary(Bytes::from_array(bin_bytes)), offset + 5 + bin_length)
+    }
+    0xdd => {
+      // array32
+      if offset + 4 >= data.length() {
+        raise InvalidData("Incomplete array32")
+      }
+      let array_length = (data[offset + 1].to_int() << 24) |
+        (data[offset + 2].to_int() << 16) |
+        (data[offset + 3].to_int() << 8) |
+        data[offset + 4].to_int()
+      decode_array(data, offset + 5, array_length)
+    }
+    0xdf => {
+      // map32
+      if offset + 4 >= data.length() {
+        raise InvalidData("Incomplete map32")
+      }
+      let map_length = (data[offset + 1].to_int() << 24) |
+        (data[offset + 2].to_int() << 16) |
+        (data[offset + 3].to_int() << 8) |
+        data[offset + 4].to_int()
+      decode_map(data, offset + 5, map_length)
+    }
     0xd9 => {
       // str8 (1-byte length)
       if offset + 1 >= data.length() {
@@ -393,7 +638,7 @@ fn decode_value_at_offset(
         let map_length = first_byte.to_int() & 0x0f
         decode_map(data, offset + 1, map_length)
       } else {
-        raise InvalidData("Unsupported format")
+        raise InvalidData("Unsupported format: 0x\{first_byte.to_hex()}")
       }
   }
 }

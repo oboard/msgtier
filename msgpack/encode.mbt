@@ -32,6 +32,26 @@ fn Buffer::write_u32(self : Buffer, value : Int) -> Unit {
 }
 
 ///|
+fn Buffer::write_i64(self : Buffer, value : Int64) -> Unit {
+  // Write Int64 as 8 bytes in big-endian format
+  // Extract high and low 32 bits
+  let high = (value >> 32).to_int()
+  let low = value.to_int()
+  self.write_u32(high)
+  self.write_u32(low)
+}
+
+///|
+fn Buffer::write_u64(self : Buffer, value : UInt64) -> Unit {
+  // Write UInt64 as 8 bytes in big-endian format
+  // Extract high and low 32 bits
+  let high = (value >> 32).to_int()
+  let low = value.to_int()
+  self.write_u32(high)
+  self.write_u32(low)
+}
+
+///|
 fn Buffer::to_bytes(self : Buffer) -> Bytes {
   let arr : Array[Byte] = []
   for i in self.bytes {
@@ -87,23 +107,25 @@ fn encode_to_buffer(buffer : Buffer, value : Value) -> Unit {
         buffer.write_byte(INT32_CODE)
         buffer.write_u32(i)
       }
-    Int64(_i64) => {
-      // For now, just encode as int32 - this is a simplification
-      // In a full implementation, we'd need proper Int64 handling
-      buffer.write_byte(INT32_CODE)
-      buffer.write_u32(0) // placeholder
+    Int64(i64) => {
+      // Encode Int64 as int64 format
+      buffer.write_byte(INT64_CODE)
+      buffer.write_i64(i64)
     }
-    UInt64(_u64) => {
-      // For now, just encode as uint32 - this is a simplification
-      buffer.write_byte(UINT32_CODE)
-      buffer.write_u32(0) // placeholder
+    UInt64(u64) => {
+      // Encode UInt64 as uint64 format
+      buffer.write_byte(UINT64_CODE)
+      buffer.write_u64(u64)
     }
-    Float(_f) => {
-      // For now, just write the float64 code with zero bytes
-      // In a full implementation, we'd need proper IEEE 754 encoding
+    Float(_) => {
+      // Encode as Float64 (64-bit IEEE 754)
+      // First convert to bits - this is tricky in MoonBit
+      // For now use 0xcb format and write 8 zero bytes as placeholder
+      // A full implementation would need float-to-bits conversion
       buffer.write_byte(FLOAT64_CODE)
-      buffer.write_u32(0) // high 32 bits
-      buffer.write_u32(0) // low 32 bits
+      // Write placeholder 64 bits (0.0)
+      buffer.write_u32(0)
+      buffer.write_u32(0)
     }
     String(s) => {
       let len = s.length()
@@ -128,10 +150,26 @@ fn encode_to_buffer(buffer : Buffer, value : Value) -> Unit {
         buffer.write_byte(s[i].to_byte().to_int())
       }
     }
-    Binary(_b) => {
-      // For now, just write empty binary
-      buffer.write_byte(BIN8_CODE)
-      buffer.write_byte(0)
+    Binary(b) => {
+      // Encode binary data with length prefix
+      let len = b.length()
+      if len <= 255 {
+        // bin8
+        buffer.write_byte(BIN8_CODE)
+        buffer.write_byte(len)
+      } else if len <= 65535 {
+        // bin16
+        buffer.write_byte(BIN16_CODE)
+        buffer.write_u16(len)
+      } else {
+        // bin32
+        buffer.write_byte(BIN32_CODE)
+        buffer.write_u32(len)
+      }
+      // Write binary bytes
+      for i = 0; i < len; i = i + 1 {
+        buffer.write_byte(b[i].to_int())
+      }
     }
     Array(arr) => {
       let len = arr.length()

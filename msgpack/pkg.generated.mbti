@@ -10,6 +10,10 @@ pub const ARRAY16_CODE : Int = 0xdc
 
 pub const ARRAY32_CODE : Int = 0xdd
 
+pub const BIN16_CODE : Int = 0xc5
+
+pub const BIN32_CODE : Int = 0xc6
+
 pub const BIN8_CODE : Int = 0xc4
 
 pub const FALSE_CODE : Int = 0xc2
@@ -20,11 +24,15 @@ pub const FIXMAP_CODE : Int = 0x80
 
 pub const FIXSTR_CODE : Int = 0xa0
 
+pub const FLOAT32_CODE : Int = 0xca
+
 pub const FLOAT64_CODE : Int = 0xcb
 
 pub const INT16_CODE : Int = 0xd1
 
 pub const INT32_CODE : Int = 0xd2
+
+pub const INT64_CODE : Int = 0xd3
 
 pub const INT8_CODE : Int = 0xd0
 
@@ -45,6 +53,8 @@ pub const STR8_CODE : Int = 0xd9
 pub const TRUE_CODE : Int = 0xc3
 
 pub const UINT32_CODE : Int = 0xce
+
+pub const UINT64_CODE : Int = 0xcf
 
 pub fn array(Array[Value]) -> Value
 

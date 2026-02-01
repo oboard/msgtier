@@ -83,10 +83,25 @@ pub const INT16_CODE : Int = 0xd1
 pub const INT32_CODE : Int = 0xd2
 
 ///|
+pub const INT64_CODE : Int = 0xd3
+
+///|
+pub const UINT64_CODE : Int = 0xcf
+
+///|
 pub const UINT32_CODE : Int = 0xce
 
 ///|
+pub const FLOAT32_CODE : Int = 0xca
+
+///|
 pub const FLOAT64_CODE : Int = 0xcb
+
+///|
+pub const BIN16_CODE : Int = 0xc5
+
+///|
+pub const BIN32_CODE : Int = 0xc6
 
 ///|
 pub const FIXSTR_CODE : Int = 0xa0
