@@ -256,7 +256,7 @@ pub fn decode(data : Bytes) -> Value raise MsgPackError {
       } else if (first_byte.to_int() & 0xe0) == 0xe0 {
         // negative fixint
         Int(first_byte.to_int() - 256)
-      } else if (first_byte.to_int() & 0xf0) == 0xa0 {
+      } else if (first_byte.to_int() & 0xe0) == 0xa0 {
         // fixstr
         let str_length = first_byte.to_int() & 0x1f
         if data.length() < str_length + 1 {
@@ -613,7 +613,7 @@ fn decode_value_at_offset(
       } else if (first_byte.to_int() & 0xe0) == 0xe0 {
         // negative fixint
         (Int(first_byte.to_int() - 256), offset + 1)
-      } else if (first_byte.to_int() & 0xf0) == 0xa0 {
+      } else if (first_byte.to_int() & 0xe0) == 0xa0 {
         // fixstr
         let str_length = first_byte.to_int() & 0x1f
         if offset + str_length >= data.length() {
