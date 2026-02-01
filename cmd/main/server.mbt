@@ -139,6 +139,27 @@ async fn handle_reconnects(
   for {
     // Sleep for 5 seconds between retry checks
     @async.sleep(5000)
+
+    // Retry configured peers that have no active connections
+    match global_config.val {
+      Some(config) =>
+        for peer_url in config.peers {
+          let peer_host = peer_url.get_host()
+          // Check if any connection to this address is active
+          let has_active = get_global_peer_manager().has_active_connection_to_addr(
+            peer_host,
+          )
+          if !has_active {
+            let success = send_message(server, peer_host, hello_msg)
+            if success {
+              println("Retry hello sent to config peer at \{peer_host}")
+            }
+          }
+        }
+      None => ()
+    }
+
+    // Retry known peers that have lost their connections
     let all_peers = get_global_peer_manager().get_all_peers()
     for peer in all_peers {
       let peer_id = peer.id
@@ -367,9 +388,10 @@ async fn listen_udp(
     let buf = FixedArray::make(8192, b'0')
     let (n, sender) = server.recvfrom(buf)
     let bytes = buf.unsafe_reinterpret_as_bytes()[0:n].to_bytes()
-    let msg : Message = Message::from_msgpack(@msgpack.decode(bytes)) catch {
-      e => {
-        println("Failed to decode message: \{e}")
+    let msgpack_value = @msgpack.decode(bytes)
+    let msg : Message = Message::from_msgpack(msgpack_value) catch {
+      _ => {
+        println("Failed to decode message: \{msgpack_value.to_json()}")
         continue
       }
     }
