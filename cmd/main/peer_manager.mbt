@@ -36,17 +36,6 @@ fn PeerManager::update_peer_public_key(
 }
 
 ///|
-fn PeerManager::get_peer_public_key(
-  self : PeerManager,
-  peer_id : String,
-) -> String? {
-  match self.peers.get(peer_id) {
-    Some(peer) => peer.public_key
-    None => None
-  }
-}
-
-///|
 fn PeerManager::get_peer(self : PeerManager, peer_id : String) -> PeerNode? {
   self.peers.get(peer_id)
 }

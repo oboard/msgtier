@@ -156,18 +156,52 @@ pub fn decode(data : Bytes) -> Value raise MsgPackError {
   }
 }
 
-// Helper function to decode string bytes
+// Helper function to decode string bytes as UTF-8
 
 ///|
 fn decode_string_bytes(data : Bytes, offset : Int, length : Int) -> Value {
-  let str_bytes : Array[Byte] = []
-  for i = 0; i < length; i = i + 1 {
-    str_bytes.push(data[offset + i])
-  }
   let mut str_val = ""
-  for byte in str_bytes {
-    let char_val = Int::unsafe_to_char(byte.to_int())
-    str_val = str_val + char_val.to_string()
+  let mut i = 0
+  while i < length {
+    let b = data[offset + i].to_int()
+    if b < 0x80 {
+      // 1-byte sequence (ASCII)
+      str_val = str_val + Int::unsafe_to_char(b).to_string()
+      i = i + 1
+    } else if (b & 0xE0) == 0xC0 && i + 1 < length {
+      // 2-byte sequence
+      let b2 = data[offset + i + 1].to_int()
+      let code_point = ((b & 0x1F) << 6) | (b2 & 0x3F)
+      str_val = str_val + Int::unsafe_to_char(code_point).to_string()
+      i = i + 2
+    } else if (b & 0xF0) == 0xE0 && i + 2 < length {
+      // 3-byte sequence
+      let b2 = data[offset + i + 1].to_int()
+      let b3 = data[offset + i + 2].to_int()
+      let code_point = ((b & 0x0F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F)
+      str_val = str_val + Int::unsafe_to_char(code_point).to_string()
+      i = i + 3
+    } else if (b & 0xF8) == 0xF0 && i + 3 < length {
+      // 4-byte sequence (surrogate pair needed for JavaScript/MoonBit strings)
+      let b2 = data[offset + i + 1].to_int()
+      let b3 = data[offset + i + 2].to_int()
+      let b4 = data[offset + i + 3].to_int()
+      let code_point = ((b & 0x07) << 18) |
+        ((b2 & 0x3F) << 12) |
+        ((b3 & 0x3F) << 6) |
+        (b4 & 0x3F)
+      // Convert to surrogate pair
+      let adjusted = code_point - 0x10000
+      let high = 0xD800 + (adjusted >> 10)
+      let low = 0xDC00 + (adjusted & 0x3FF)
+      str_val = str_val +
+        Int::unsafe_to_char(high).to_string() +
+        Int::unsafe_to_char(low).to_string()
+      i = i + 4
+    } else {
+      // Invalid UTF-8, skip byte
+      i = i + 1
+    }
   }
   String(str_val)
 }
@@ -374,16 +408,10 @@ fn decode_value_at_offset(
         if offset + str_length >= data.length() {
           raise InvalidData("Incomplete fixstr")
         }
-        let str_bytes : Array[Byte] = []
-        for i = 1; i <= str_length; i = i + 1 {
-          str_bytes.push(data[offset + i])
-        }
-        let mut str_val = ""
-        for byte in str_bytes {
-          let char_val = Int::unsafe_to_char(byte.to_int())
-          str_val = str_val + char_val.to_string()
-        }
-        (String(str_val), offset + str_length + 1)
+        (
+          decode_string_bytes(data, offset + 1, str_length),
+          offset + str_length + 1,
+        )
       } else if (first_byte.to_int() & 0xf0) == 0x90 {
         // fixarray
         let array_length = first_byte.to_int() & 0x0f

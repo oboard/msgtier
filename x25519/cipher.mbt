@@ -4,7 +4,11 @@
 
 ///|
 /// Derive a key stream from shared secret and nonce
-fn derive_keystream(shared_secret : Bytes, nonce : Bytes, length : Int) -> Bytes {
+fn derive_keystream(
+  shared_secret : Bytes,
+  nonce : Bytes,
+  length : Int,
+) -> Bytes {
   let mut keystream = Bytes::new(0)
   let mut counter = 0
   while keystream.length() < length {
@@ -41,7 +45,11 @@ pub fn encrypt(shared_secret : Bytes, plaintext : Bytes) -> Bytes {
   let nonce_bytes = Bytes::from_array(nonce)
 
   // Derive keystream
-  let keystream = derive_keystream(shared_secret, nonce_bytes, plaintext.length())
+  let keystream = derive_keystream(
+    shared_secret,
+    nonce_bytes,
+    plaintext.length(),
+  )
 
   // XOR plaintext with keystream
   let ciphertext = FixedArray::make(plaintext.length(), b'\x00')
@@ -83,6 +91,5 @@ pub fn decrypt(shared_secret : Bytes, encrypted : Bytes) -> Bytes? {
   for i = 0; i < ciphertext_len; i = i + 1 {
     plaintext[i] = ciphertext[i] ^ keystream[i]
   }
-
   Some(Bytes::from_array(plaintext))
 }

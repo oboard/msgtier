@@ -1,0 +1,24 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/x25519"
+
+// Values
+pub fn compute_public_key(Bytes) -> Bytes
+
+pub fn compute_shared_secret(Bytes, Bytes) -> Bytes
+
+pub fn decrypt(Bytes, Bytes) -> Bytes?
+
+pub fn encrypt(Bytes, Bytes) -> Bytes
+
+pub fn generate_keypair() -> (Bytes, Bytes)
+
+pub fn generate_private_key() -> Bytes
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits
+

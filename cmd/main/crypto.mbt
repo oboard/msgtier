@@ -50,7 +50,10 @@ fn deserialize_public_key(s : String) -> Bytes? {
 
 ///|
 /// Compute and store shared secret with a peer
-fn compute_and_store_shared_secret(peer_id : String, peer_public_key : Bytes) -> Unit {
+fn compute_and_store_shared_secret(
+  peer_id : String,
+  peer_public_key : Bytes,
+) -> Unit {
   match get_private_key() {
     Some(priv_key) => {
       let shared = @x25519.compute_shared_secret(priv_key, peer_public_key)
@@ -189,7 +192,10 @@ fn encrypt_message_for_peer(peer_id : String, message : String) -> String? {
 
 ///|
 /// Decrypt a hex-encoded message from a peer
-fn decrypt_message_from_peer(peer_id : String, encrypted_hex : String) -> String? {
+fn decrypt_message_from_peer(
+  peer_id : String,
+  encrypted_hex : String,
+) -> String? {
   let encrypted = hex_to_bytes(encrypted_hex)
   match decrypt_from_peer(peer_id, encrypted) {
     Some(decrypted) => Some(bytes_to_string(decrypted))

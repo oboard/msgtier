@@ -7,7 +7,9 @@
 /// Prime p = 2^255 - 19 (represented as 4 limbs)
 /// Last limb is 0x7FFFFFFFFFFFFFFF (2^63 - 1)
 fn get_p() -> FixedArray[UInt64] {
-  [0xFFFFFFFFFFFFFFEDUL, 0xFFFFFFFFFFFFFFFFUL, 0xFFFFFFFFFFFFFFFFUL, 0x7FFFFFFFFFFFFFFFUL]
+  [
+    0xFFFFFFFFFFFFFFEDUL, 0xFFFFFFFFFFFFFFFFUL, 0xFFFFFFFFFFFFFFFFUL, 0x7FFFFFFFFFFFFFFFUL,
+  ]
 }
 
 ///|
@@ -68,7 +70,11 @@ fn fe_add(a : Fe, b : Fe) -> Fe {
   let mut carry = 0UL
   for i = 0; i < 4; i = i + 1 {
     let sum = a.l[i] + b.l[i] + carry
-    carry = if sum < a.l[i] || (carry > 0UL && sum <= a.l[i]) { 1UL } else { 0UL }
+    carry = if sum < a.l[i] || (carry > 0UL && sum <= a.l[i]) {
+      1UL
+    } else {
+      0UL
+    }
     r.l[i] = sum
   }
   fe_reduce(r)
@@ -156,17 +162,19 @@ fn fe_mul(a : Fe, b : Fe) -> Fe {
     }
     t[i + 4] = t[i + 4] + carry
   }
-
   let r = Fe::new()
   let mut carry = 0UL
   for i = 0; i < 4; i = i + 1 {
     let (lo, hi) = mul64(t[i + 4], 38UL)
     let sum1 = t[i] + lo + carry
-    let c1 = if sum1 < t[i] || (carry > 0UL && sum1 <= t[i]) { 1UL } else { 0UL }
+    let c1 = if sum1 < t[i] || (carry > 0UL && sum1 <= t[i]) {
+      1UL
+    } else {
+      0UL
+    }
     r.l[i] = sum1
     carry = hi + c1
   }
-
   while carry > 0UL {
     let (lo, _) = mul64(carry, 38UL)
     carry = 0UL
@@ -182,7 +190,6 @@ fn fe_mul(a : Fe, b : Fe) -> Fe {
       carry = 0UL
     }
   }
-
   fe_reduce(r)
 }
 
@@ -273,16 +280,14 @@ fn montgomery_ladder(k : Bytes, u : Fe) -> Fe {
   let mut z3 = Fe::new()
   z3.set_one()
   let mut swap = 0UL
-
   for t = 254; t >= 0; t = t - 1 {
     let byte_idx = t / 8
     let bit_idx = t % 8
     let kt = if byte_idx < k.length() {
-      ((k[byte_idx].to_uint64() >> bit_idx) & 1UL)
+      (k[byte_idx].to_uint64() >> bit_idx) & 1UL
     } else {
       0UL
     }
-
     let swap_bit = swap ^ kt
     if swap_bit != 0UL {
       let tmp = x2.copy()
@@ -293,7 +298,6 @@ fn montgomery_ladder(k : Bytes, u : Fe) -> Fe {
       z3 = tmp2
     }
     swap = kt
-
     let a = fe_add(x2, z2)
     let aa = fe_sq(a)
     let b = fe_sub(x2, z2)
@@ -311,7 +315,6 @@ fn montgomery_ladder(k : Bytes, u : Fe) -> Fe {
     let a24 = Fe::from_array([121665UL, 0UL, 0UL, 0UL])
     z2 = fe_mul(e, fe_add(aa, fe_mul(a24, e)))
   }
-
   if swap != 0UL {
     let tmp = x2.copy()
     x2 = x3.copy()
@@ -320,7 +323,6 @@ fn montgomery_ladder(k : Bytes, u : Fe) -> Fe {
     z2 = z3.copy()
     z3 = tmp2
   }
-
   fe_mul(x2, fe_inv(z2))
 }
 
@@ -362,7 +364,10 @@ pub fn compute_public_key(private_key : Bytes) -> Bytes {
 
 ///|
 /// Compute shared secret from private key and peer's public key
-pub fn compute_shared_secret(private_key : Bytes, peer_public_key : Bytes) -> Bytes {
+pub fn compute_shared_secret(
+  private_key : Bytes,
+  peer_public_key : Bytes,
+) -> Bytes {
   let k = clamp_scalar(private_key)
   let u = fe_from_bytes(peer_public_key)
   let result = montgomery_ladder(k, u)

@@ -414,8 +414,10 @@ async fn listen_udp(
       })
       // Compute and store shared secret for E2E encryption
       match deserialize_public_key(pk) {
-        Some(peer_pub_key) => compute_and_store_shared_secret(msg.from, peer_pub_key)
-        None => println("Failed to deserialize public key from peer \{msg.from}")
+        Some(peer_pub_key) =>
+          compute_and_store_shared_secret(msg.from, peer_pub_key)
+        None =>
+          println("Failed to deserialize public key from peer \{msg.from}")
       }
       println("Stored public key for peer \{msg.from}")
     }
