@@ -156,11 +156,20 @@ pub fn decode(data : Bytes) -> Value raise MsgPackError {
   }
 }
 
-// Helper function to decode string bytes as UTF-8
+// Helper function to decode string bytes
 
 ///|
 fn decode_string_bytes(data : Bytes, offset : Int, length : Int) -> Value {
-  String(@utf8.decode(data[offset:offset + length]) catch { _ => "" })
+  let str_bytes : Array[Byte] = []
+  for i = 0; i < length; i = i + 1 {
+    str_bytes.push(data[offset + i])
+  }
+  let mut str_val = ""
+  for byte in str_bytes {
+    let char_val = Int::unsafe_to_char(byte.to_int())
+    str_val = str_val + char_val.to_string()
+  }
+  String(str_val)
 }
 
 // Helper functions for decoding complex types
@@ -365,10 +374,16 @@ fn decode_value_at_offset(
         if offset + str_length >= data.length() {
           raise InvalidData("Incomplete fixstr")
         }
-        (
-          decode_string_bytes(data, offset + 1, str_length),
-          offset + str_length + 1,
-        )
+        let str_bytes : Array[Byte] = []
+        for i = 1; i <= str_length; i = i + 1 {
+          str_bytes.push(data[offset + i])
+        }
+        let mut str_val = ""
+        for byte in str_bytes {
+          let char_val = Int::unsafe_to_char(byte.to_int())
+          str_val = str_val + char_val.to_string()
+        }
+        (String(str_val), offset + str_length + 1)
       } else if (first_byte.to_int() & 0xf0) == 0x90 {
         // fixarray
         let array_length = first_byte.to_int() & 0x0f

@@ -102,8 +102,10 @@ fn bytes_to_hex(data : Bytes) -> String {
   for i = 0; i < data.length(); i = i + 1 {
     let byte = data.at(i).to_int()
     result = result +
-      hex_chars[(byte >> 4) & 0xF].to_string() +
-      hex_chars[byte & 0xF].to_string()
+      String::from_array([
+        hex_chars[(byte >> 4) & 0xF].unsafe_to_char(),
+        hex_chars[byte & 0xF].unsafe_to_char(),
+      ])
   }
   result
 }
@@ -138,52 +140,14 @@ fn hex_char_to_int_from_uint16(c : UInt16) -> Int {
 
 ///|
 /// Convert bytes to UTF-8 string
-fn bytes_to_string(data : Bytes) -> String {
-  let mut result = ""
-  let mut i = 0
-  while i < data.length() {
-    let b = data.at(i).to_int()
-    if b < 128 {
-      result = result + b.unsafe_to_char().to_string()
-      i = i + 1
-    } else if (b & 0xE0) == 0xC0 && i + 1 < data.length() {
-      let b2 = data.at(i + 1).to_int()
-      let code_point = ((b & 0x1F) << 6) | (b2 & 0x3F)
-      result = result + code_point.unsafe_to_char().to_string()
-      i = i + 2
-    } else if (b & 0xF0) == 0xE0 && i + 2 < data.length() {
-      let b2 = data.at(i + 1).to_int()
-      let b3 = data.at(i + 2).to_int()
-      let code_point = ((b & 0x0F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F)
-      result = result + code_point.unsafe_to_char().to_string()
-      i = i + 3
-    } else if (b & 0xF8) == 0xF0 && i + 3 < data.length() {
-      let b2 = data.at(i + 1).to_int()
-      let b3 = data.at(i + 2).to_int()
-      let b4 = data.at(i + 3).to_int()
-      let code_point = ((b & 0x07) << 18) |
-        ((b2 & 0x3F) << 12) |
-        ((b3 & 0x3F) << 6) |
-        (b4 & 0x3F)
-      result = result + code_point.unsafe_to_char().to_string()
-      i = i + 4
-    } else {
-      i = i + 1
-    }
-  }
-  result
-}
-
-///|
-/// Convert string to bytes (UTF-8)
-fn string_to_bytes(s : String) -> Bytes {
-  @utf8.encode(s)
+fn bytes_to_string(data : Bytes) -> String raise {
+  @utf8.decode(data)
 }
 
 ///|
 /// Encrypt a string message for a specific peer
 fn encrypt_message_for_peer(peer_id : String, message : String) -> String? {
-  let data = string_to_bytes(message)
+  let data = @utf8.encode(message)
   match encrypt_for_peer(peer_id, data) {
     Some(encrypted) => Some(bytes_to_hex(encrypted))
     None => None
@@ -195,7 +159,7 @@ fn encrypt_message_for_peer(peer_id : String, message : String) -> String? {
 fn decrypt_message_from_peer(
   peer_id : String,
   encrypted_hex : String,
-) -> String? {
+) -> String? raise {
   let encrypted = hex_to_bytes(encrypted_hex)
   match decrypt_from_peer(peer_id, encrypted) {
     Some(decrypted) => Some(bytes_to_string(decrypted))

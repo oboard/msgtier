@@ -106,9 +106,7 @@ fn encode_to_buffer(buffer : Buffer, value : Value) -> Unit {
       buffer.write_u32(0) // low 32 bits
     }
     String(s) => {
-      // Encode string as UTF-8 and get byte length
-      let utf8_bytes = @utf8.encode(s)
-      let len = utf8_bytes.length()
+      let len = s.length()
       if len <= 31 {
         // fixstr
         buffer.write_byte(FIXSTR_CODE | len)
@@ -125,9 +123,9 @@ fn encode_to_buffer(buffer : Buffer, value : Value) -> Unit {
         buffer.write_byte(STR32_CODE)
         buffer.write_u32(len)
       }
-      // Write UTF-8 encoded bytes
+      // Write string bytes
       for i = 0; i < len; i = i + 1 {
-        buffer.write_byte(utf8_bytes[i].to_int())
+        buffer.write_byte(s[i].to_byte().to_int())
       }
     }
     Binary(_b) => {

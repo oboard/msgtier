@@ -112,7 +112,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
             match peer_value {
               String(addr) =>
                 peers_array.push(NetworkAddress::{ address: addr })
-              _ => raise @msgpack.InvalidData("invalid peer address")
+              _ => fail("invalid peer address")
             }
           }
           Some(peers_array)
@@ -162,6 +162,6 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         encrypted,
       }
     }
-    _ => raise @msgpack.InvalidData("")
+    _ => fail(msgpack.to_json().stringify())
   }
 }

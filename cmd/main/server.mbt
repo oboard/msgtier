@@ -388,10 +388,17 @@ async fn listen_udp(
     let buf = FixedArray::make(8192, b'0')
     let (n, sender) = server.recvfrom(buf)
     let bytes = buf.unsafe_reinterpret_as_bytes()[0:n].to_bytes()
-    let msgpack_value = @msgpack.decode(bytes)
+    let msgpack_value = @msgpack.decode(bytes) catch {
+      e => {
+        println(e.to_string())
+        continue
+      }
+    }
     let msg : Message = Message::from_msgpack(msgpack_value) catch {
       _ => {
-        println("Failed to decode message: \{msgpack_value.to_json()}")
+        println(
+          "Failed to decode message: \{msgpack_value.to_json().stringify()}",
+        )
         continue
       }
     }
@@ -439,7 +446,9 @@ async fn listen_udp(
         Some(peer_pub_key) =>
           compute_and_store_shared_secret(msg.from, peer_pub_key)
         None =>
-          println("Failed to deserialize public key from peer \{msg.from}")
+          println(
+            "Failed to deserialize public key from peer \{msg.from}, raw=\{pk}",
+          )
       }
       println("Stored public key for peer \{msg.from}")
     }
@@ -645,7 +654,9 @@ async fn listen_udp(
           match decrypt_message_from_peer(msg.from, raw_data) {
             Some(decrypted) => decrypted
             None => {
-              println("Failed to decrypt message from \{msg.from}")
+              println(
+                "Failed to decrypt message from \{msg.from}, raw=\{raw_data}",
+              )
               raw_data // Fall back to raw data if decryption fails
             }
           }
