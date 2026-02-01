@@ -5,6 +5,7 @@ MsgTier is a lightweight, decentralized P2P messaging network written in **MoonB
 ## Features
 
 ✨ **Auto-Discovery** - Nodes automatically discover peers through the network
+🔐 **End-to-End Encryption** - X25519 ECDH key exchange with symmetric encryption
 🔄 **Message Relay** - Messages are automatically relayed through intermediate peers
 💓 **Health Checks** - Continuous heartbeat monitoring with automatic failure detection
 🔌 **Script Execution** - Execute custom scripts on message receipt
@@ -57,13 +58,43 @@ curl --location 'localhost:9000/send' \
 
 ### Message Types
 
-- **hello** - Initial greeting with version info
-- **welcome** - Response with known peer list for discovery
+- **hello** - Initial greeting with version info and public key
+- **welcome** - Response with known peer list and public key for discovery
 - **ping** - Health check heartbeat
 - **pong** - Heartbeat response
-- **data** - User message (triggers script execution)
+- **data** - User message (triggers script execution, can be encrypted)
 - **relay** - Forward message through intermediate peer
 - **punch** - NAT traversal request
+
+### End-to-End Encryption
+
+MsgTier implements X25519 Elliptic Curve Diffie-Hellman (ECDH) key exchange with symmetric encryption:
+
+1. **Key Generation** - Each node generates an X25519 key pair on startup (fast ECC)
+2. **Key Exchange** - Public keys are exchanged during the hello/welcome handshake
+3. **Shared Secret** - Both peers compute the same shared secret via ECDH
+4. **Encryption** - Messages are symmetrically encrypted using the shared secret
+
+**Encryption Flow:**
+```
+Sender                          Receiver
+   │                               │
+   │  1. Exchange public keys      │
+   │     (hello/welcome handshake) │
+   ├──────────────────────────────►│
+   │◄──────────────────────────────┤
+   │                               │
+   │  2. Both compute shared       │
+   │     secret via X25519 ECDH    │
+   │                               │
+   │  3. Encrypt with shared secret│
+   ├──────────────────────────────►│
+   │                               │
+   │  4. Decrypt with shared secret│
+   │                               │
+```
+
+Messages are automatically encrypted when sending via the `add_encrypted_pending_message()` function. If a peer's shared secret is not available, messages fall back to unencrypted transmission with a warning.
 
 ### Peer Discovery
 
@@ -209,6 +240,7 @@ Example scripts in config:
 
 On startup, the node:
 - Loads configuration from JSON file (node ID, listeners, peers, scripts)
+- **Generates X25519 key pair for end-to-end encryption**
 - Starts HTTP API server on configured address
 - Creates UDP listeners on all configured addresses
 - Spawns three background tasks per listener: heartbeat, reconnection, pending message processing
@@ -217,18 +249,20 @@ On startup, the node:
 
 For each listener, the system:
 - Reads initial peer list from configuration
-- Sends `hello` messages to all configured peer addresses
+- Sends `hello` messages to all configured peer addresses **with public key**
 - Builds a peer information structure as responses arrive
+- **Computes shared secrets with peers for encryption**
 - Creates and tracks connections (local_addr ↔ remote_addr pairs)
 - Handles version exchange for compatibility tracking
 
 ### 3. Peer Discovery via Gossip
 
 When a `hello` message is received:
-1. A `welcome` message is sent back containing all known peers
+1. A `welcome` message is sent back containing all known peers **and the node's public key**
 2. The sender extracts unknown peers from the welcome message
-3. New peers are automatically discovered and greeted with `hello`
-4. This creates an organic network topology without manual configuration
+3. **The sender computes a shared secret with the peer for future encrypted communication**
+4. New peers are automatically discovered and greeted with `hello`
+5. This creates an organic network topology without manual configuration
 
 ### 4. Health Management Loop
 
@@ -252,6 +286,7 @@ When HTTP POST /send is received:
 When UDP message arrives:
 - Message is decoded from MessagePack format
 - Connection state is updated (marked Active)
+- **If message is encrypted: decrypt using shared secret derived from X25519 ECDH**
 - If message type is `data`: extract script name from body
 - Lookup script name in configuration scripts map
 - If found: spawn async task to execute script with platform-specific shell

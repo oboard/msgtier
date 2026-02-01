@@ -16,7 +16,7 @@ hero:
 
 features:
   - title: Secure
-    details: End-to-end encryption.
+    details: End-to-end X25519 ECDH encryption with automatic key exchange during peer handshake.
   - title: Decentralized
     details: No distinction between the server and the client.
   - title: Cross-Platform

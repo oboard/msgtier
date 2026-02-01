@@ -114,7 +114,7 @@ curl http://localhost:9000/status
 
 ### POST /send
 
-Send a message to a target peer.
+Send a message to a target peer. Messages are automatically encrypted using X25519 ECDH shared secrets when available.
 
 **Request:**
 ```bash
@@ -261,10 +261,13 @@ Solution: Wait for peer to connect and become active
 
 When you send a message:
 
-1. **Direct Route**: If target peer has active connections, message is sent directly
-2. **Relay Route**: If target has no active connections but is reachable through another peer, message is relayed
-3. **Queued**: Message is queued if target isn't currently reachable
-4. **Failed**: Returns error if target peer doesn't exist in network
+1. **Encryption**: If a shared secret with the target peer is available, the message is encrypted using X25519 ECDH
+2. **Direct Route**: If target peer has active connections, message is sent directly
+3. **Relay Route**: If target has no active connections but is reachable through another peer, message is relayed
+4. **Queued**: Message is queued if target isn't currently reachable
+5. **Failed**: Returns error if target peer doesn't exist in network
+
+**Note:** Messages to peers without an established shared secret are sent unencrypted with a warning logged.
 
 ---
 

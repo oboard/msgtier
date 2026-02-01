@@ -1,6 +1,6 @@
 # Getting Started with MsgTier
 
-MsgTier is a decentralized P2P messaging network that enables nodes to discover each other and communicate without a central server.
+MsgTier is a decentralized P2P messaging network that enables nodes to discover each other and communicate securely without a central server.
 
 ## Installation
 
@@ -41,7 +41,7 @@ Create a `node.json` configuration file for each node:
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | String | Unique identifier for this node |
-| `secret` | String | Shared secret key (currently placeholder) |
+| `secret` | String | Shared secret key (reserved for future use) |
 | `listeners` | Array | UDP addresses to listen on (use 0.0.0.0 to bind all interfaces) |
 | `peers` | Array | Initial peer addresses to connect to |
 | `web_api` | String | HTTP server address (optional) |
@@ -57,6 +57,7 @@ Create a `node.json` configuration file for each node:
 
 Output:
 ```
+X25519 key pair generated successfully
 {
   "id": "1",
   "secret": "secret-key",
@@ -83,6 +84,27 @@ HTTP API listening on http://127.0.0.1:9000
 **Terminal 3 - Node 3:**
 ```bash
 ./msgtier node3.json
+```
+
+## End-to-End Encryption
+
+MsgTier automatically handles encryption using X25519 ECDH:
+
+1. **On startup**: Each node generates an X25519 key pair (fast elliptic curve)
+2. **During handshake**: Public keys are exchanged in hello/welcome messages
+3. **Shared secret**: Both peers compute the same shared secret via ECDH
+4. **When sending**: Messages are symmetrically encrypted with the shared secret
+5. **When receiving**: Messages are decrypted with the same shared secret
+
+You'll see log messages like:
+```
+X25519 key pair generated successfully
+Computed shared secret with peer 2
+```
+
+If a peer's shared secret is not available, messages are sent unencrypted with a warning:
+```
+Warning: Sending unencrypted message to peer_id (no shared secret available)
 ```
 
 ## Sending Messages
@@ -145,6 +167,15 @@ curl http://127.0.0.1:9000/status
 - Verify script name exactly matches config
 - Check script syntax (platform-specific shells)
 - View logs for script execution status
+
+### Encryption Issues
+
+**Problem:** "No public key available" warnings
+
+**Solution:**
+- Wait for peers to complete handshake (hello/welcome exchange)
+- Check that peers are running compatible versions
+- Verify network connectivity
 
 ### High Latency
 
