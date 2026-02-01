@@ -57,6 +57,9 @@ pub struct RsaPublicKey {
   modulus : @bigint.BigInt
   publicExponent : @bigint.BigInt
 }
+pub fn RsaPublicKey::get_modulus(Self) -> @bigint.BigInt
+pub fn RsaPublicKey::get_public_exponent(Self) -> @bigint.BigInt
+pub fn RsaPublicKey::new(modulus~ : @bigint.BigInt, public_exponent~ : @bigint.BigInt) -> Self
 
 pub enum RsaVersion {
   TWO_PRIME

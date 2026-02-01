@@ -1,12 +1,33 @@
 ///|
 /// RSA Public Key according to RFC 8017 PICS #1 v2.2
-/// 
+///
 /// Fields:
 /// * `modulus` : The RSA modulus n.
 /// * `publicExponent` : the RSA public exponent e.
 pub struct RsaPublicKey {
   modulus : BigInt
   publicExponent : BigInt
+}
+
+///|
+/// Create a new RSA public key from modulus and exponent
+pub fn RsaPublicKey::new(
+  modulus~ : BigInt,
+  public_exponent~ : BigInt,
+) -> RsaPublicKey {
+  { modulus, publicExponent: public_exponent }
+}
+
+///|
+/// Get the modulus of the public key
+pub fn RsaPublicKey::get_modulus(self : RsaPublicKey) -> BigInt {
+  self.modulus
+}
+
+///|
+/// Get the public exponent of the public key
+pub fn RsaPublicKey::get_public_exponent(self : RsaPublicKey) -> BigInt {
+  self.publicExponent
 }
 
 ///|

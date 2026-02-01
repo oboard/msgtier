@@ -124,11 +124,17 @@ async fn handle_reconnects(
   local_addr : String,
   node_id : String,
 ) -> Unit {
+  // Get our public key for key exchange
+  let our_public_key = match get_public_key() {
+    Some(key) => Some(serialize_public_key(key))
+    None => None
+  }
   let hello_msg = Message::new(
     kind="hello",
     from=node_id,
     addr=local_addr,
     version=Some(VERSION),
+    public_key=our_public_key,
   )
   for {
     // Sleep for 5 seconds between retry checks
@@ -311,6 +317,16 @@ async fn listen_udp(
   addr : @socket.Addr,
   id : String,
 ) -> Unit {
+  // Initialize RSA key pair if not already done
+  if global_keypair.val is None {
+    init_keypair()
+  }
+
+  // Get our public key for key exchange
+  let our_public_key = match get_public_key() {
+    Some(key) => Some(serialize_public_key(key))
+    None => None
+  }
   let server = @socket.UdpServer::new(addr)
   defer server.close()
   let local_addr = "\{server.addr()}"
@@ -329,6 +345,7 @@ async fn listen_udp(
         addr=local_addr,
         version=Some(VERSION),
         peers=Some(peer_addresses),
+        public_key=our_public_key,
       )
 
       // Send hello to all configured peer addresses from this listener
@@ -377,6 +394,7 @@ async fn listen_udp(
           },
           addresses: [NetworkAddress::{ address: sender_addr }], // Use actual sender address
           peers: msg.peers,
+          public_key: msg.public_key,
         })
       _ => None
     }
@@ -388,6 +406,14 @@ async fn listen_udp(
       sender_addr,
       peer_info?,
     )
+
+    // Store peer's public key if provided
+    if msg.public_key is Some(pk) {
+      update_global_peer_manager(fn(manager) {
+        manager.update_peer_public_key(msg.from, pk)
+      })
+      println("Stored public key for peer \{msg.from}")
+    }
 
     // Track bytes received
     update_global_peer_manager(fn(manager) {
@@ -431,6 +457,7 @@ async fn listen_udp(
           from=id,
           addr=local_addr,
           peers=Some(welcome_peer_addresses),
+          public_key=our_public_key,
         )
         ignore(send_message(server, sender_addr, reply))
       }
@@ -455,6 +482,7 @@ async fn listen_udp(
                 from=id,
                 addr=local_addr,
                 version=Some(VERSION),
+                public_key=our_public_key,
               )
               ignore(send_message(server, peer_addr, hello_msg))
               println("Greeting discovered peer at: \{peer_addr}")
@@ -582,7 +610,19 @@ async fn listen_udp(
           None => ()
         }
       }
-      { kind: "data", data: Some(script_name), .. } =>
+      { kind: "data", data: Some(raw_data), encrypted, .. } => {
+        // Decrypt data if encrypted
+        let script_name = if encrypted {
+          match decrypt_with_private_key(raw_data) {
+            Some(decrypted) => bytes_to_string(decrypted)
+            None => {
+              println("Failed to decrypt message from \{msg.from}")
+              raw_data // Fall back to raw data if decryption fails
+            }
+          }
+        } else {
+          raw_data
+        }
         // Check if a script exists with this name and execute it asynchronously
         root.spawn_bg(fn() {
           match global_config.val {
@@ -598,6 +638,7 @@ async fn listen_udp(
             None => println("Config not available")
           }
         })
+      }
       _ => ()
     }
     root.spawn_bg(fn() {  })

@@ -18,7 +18,7 @@ fn format_bandwidth(mbps : Double) -> String {
   } else {
     // Round to 4 decimal places
     let multiplier = 10000.0
-    let rounded = ((mbps * multiplier).to_int().to_double()) / multiplier
+    let rounded = (mbps * multiplier).to_int().to_double() / multiplier
     "\{rounded} Mbps"
   }
 }

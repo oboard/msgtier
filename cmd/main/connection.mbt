@@ -85,15 +85,15 @@ fn Connection::is_active(self : Connection) -> Bool {
   }
 }
 
-///|
-fn Connection::calculate_average_latency(self : Connection) -> Int? {
-  if self.latency_history.is_empty() {
-    None
-  } else {
-    let sum = self.latency_history.fold(init=0, fn(acc, val) { acc + val })
-    Some(sum / self.latency_history.length())
-  }
-}
+// ///|
+// fn Connection::calculate_average_latency(self : Connection) -> Int? {
+//   if self.latency_history.is_empty() {
+//     None
+//   } else {
+//     let sum = self.latency_history.fold(init=0, fn(acc, val) { acc + val })
+//     Some(sum / self.latency_history.length())
+//   }
+// }
 
 ///|
 fn Connection::calculate_packet_loss(self : Connection) -> Int {

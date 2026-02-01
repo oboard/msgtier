@@ -8,9 +8,13 @@ import {
 // Values
 pub fn add_connected_peer(String, String, String) -> Unit
 
+pub fn add_encrypted_pending_message(String, String, String, String) -> Unit
+
 pub fn add_pending_message(String, Message) -> Unit
 
 pub fn clear_connected_peers() -> Unit
+
+pub fn create_encrypted_data_message(String, String, String, String) -> Message?
 
 pub fn get_connected_peers() -> Array[PeerNode]
 
@@ -22,7 +26,7 @@ pub fn get_pending_messages() -> Array[PendingMessage]
 
 pub fn network_address(String) -> NetworkAddress
 
-pub fn network_discovery_info(String, String, Array[NetworkAddress], peers? : Array[NetworkAddress]?) -> NetworkDiscoveryInfo
+pub fn network_discovery_info(String, String, Array[NetworkAddress], peers? : Array[NetworkAddress]?, public_key? : String?) -> NetworkDiscoveryInfo
 
 pub fn remove_connected_peer(String) -> Unit
 

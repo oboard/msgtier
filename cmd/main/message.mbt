@@ -10,6 +10,8 @@ struct Message {
   target : String?
   data : String?
   relay : Int // 1 = direct, 2+ = relayed through N-1 peers
+  public_key : String? // RSA public key for E2E encryption (sent in hello/welcome)
+  encrypted : Bool // Whether the data field is encrypted
 } derive(Show, ToJson, FromJson)
 
 ///|
@@ -24,6 +26,8 @@ fn Message::new(
   target? : String? = None,
   data? : String? = None,
   relay? : Int = 1,
+  public_key? : String? = None,
+  encrypted? : Bool = false,
 ) -> Message {
   {
     id: id.unwrap_or(
@@ -40,6 +44,8 @@ fn Message::new(
     target,
     data,
     relay,
+    public_key,
+    encrypted,
   }
 }
 
@@ -52,6 +58,7 @@ fn Message::to_msgpack(self : Message) -> Bytes {
     "from": @msgpack.string(self.from),
     "addr": @msgpack.string(self.addr),
     "relay": @msgpack.int(self.relay),
+    "encrypted": @msgpack.bool(self.encrypted),
   }
   match self.peers {
     Some(peers) => {
@@ -78,6 +85,10 @@ fn Message::to_msgpack(self : Message) -> Bytes {
   match self.version {
     Some(version) => msg_map["version"] = @msgpack.string(version)
     None => msg_map["version"] = @msgpack.nil()
+  }
+  match self.public_key {
+    Some(public_key) => msg_map["public_key"] = @msgpack.string(public_key)
+    None => msg_map["public_key"] = @msgpack.nil()
   }
   @msgpack.encode(@msgpack.map(msg_map))
 }
@@ -128,6 +139,14 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         { "relay": Int(r), .. } => r
         _ => 1
       }
+      let public_key = match msg_map {
+        { "public_key": String(s), .. } => Some(s)
+        _ => None
+      }
+      let encrypted = match msg_map {
+        { "encrypted": Bool(b), .. } => b
+        _ => false
+      }
       Message::{
         id,
         kind,
@@ -139,6 +158,8 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         target,
         data,
         relay,
+        public_key,
+        encrypted,
       }
     }
     _ => raise @msgpack.InvalidData("")

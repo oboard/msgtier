@@ -92,3 +92,51 @@ pub fn get_global_peer_manager() -> PeerManager {
 pub fn get_global_reconnect_manager() -> ReconnectManager {
   global_reconnect_manager.val
 }
+
+///|
+/// Create an encrypted data message for a specific peer
+/// Returns the Message with encrypted data, or None if encryption fails
+pub fn create_encrypted_data_message(
+  from : String,
+  addr : String,
+  target_peer_id : String,
+  data : String,
+) -> Message? {
+  match encrypt_message_for_peer(target_peer_id, data) {
+    Some(encrypted_data) =>
+      Some(
+        Message::new(
+          kind="data",
+          from~,
+          addr~,
+          data=Some(encrypted_data),
+          encrypted=true,
+        ),
+      )
+    None => None
+  }
+}
+
+///|
+/// Add an encrypted pending message for a target peer
+/// Falls back to unencrypted if peer's public key is not available
+pub fn add_encrypted_pending_message(
+  from : String,
+  addr : String,
+  target : String,
+  data : String,
+) -> Unit {
+  let msg = match create_encrypted_data_message(from, addr, target, data) {
+    Some(encrypted_msg) => {
+      println("Created encrypted message for \{target}")
+      encrypted_msg
+    }
+    None => {
+      println(
+        "Warning: Sending unencrypted message to \{target} (no public key available)",
+      )
+      Message::new(kind="data", from~, addr~, data=Some(data), encrypted=false)
+    }
+  }
+  add_pending_message(target, msg)
+}
