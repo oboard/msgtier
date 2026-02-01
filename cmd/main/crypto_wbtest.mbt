@@ -87,3 +87,44 @@ test "decrypt_from_peer returns None for unknown peer" {
   let result = decrypt_from_peer("unknown", encrypted)
   inspect(result, content="None")
 }
+
+///|
+test "hash_secret produces consistent hash for same secret" {
+  let secret = "network_secret_123"
+  let hash1 = hash_secret(secret)
+  let hash2 = hash_secret(secret)
+  inspect(hash1 == hash2, content="true")
+}
+
+///|
+test "hash_secret produces different hashes for different secrets" {
+  let hash1 = hash_secret("secret_a")
+  let hash2 = hash_secret("secret_b")
+  inspect(hash1 == hash2, content="false")
+}
+
+///|
+test "hash_secret produces 64 character hex string" {
+  let hash = hash_secret("any_secret")
+  inspect(hash.length(), content="64")
+  // Should be valid hex characters
+  for c in hash {
+    let is_hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')
+    inspect(is_hex, content="true")
+  }
+}
+
+///|
+test "hash_secret handles short secrets by padding" {
+  let short_hash = hash_secret("short")
+  let long_hash = hash_secret("short_with_more_data_here_to_make_it_longer")
+  // Both should produce valid 64-char hex strings
+  inspect(short_hash.length(), content="64")
+  inspect(long_hash.length(), content="64")
+}
+
+///|
+test "hash_secret handles empty secret" {
+  let hash = hash_secret("")
+  inspect(hash.length(), content="64")
+}

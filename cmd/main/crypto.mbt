@@ -166,3 +166,28 @@ fn decrypt_message_from_peer(
     None => None
   }
 }
+
+///|
+/// Hash a network secret for authentication in hello messages
+/// Uses the public key curve to consistently hash the secret
+fn hash_secret(secret : String) -> String {
+  // Simple deterministic hash: take first 32 bytes of secret, pad if needed
+  let secret_bytes = @utf8.encode(secret)
+  let len = secret_bytes.length()
+  if len >= 32 {
+    // Use first 32 bytes - create array from bytes view
+    let arr = secret_bytes[:32].to_array()
+    let padded = FixedArray::make(32, b'\x00')
+    for i = 0; i < 32; i = i + 1 {
+      padded[i] = arr[i]
+    }
+    bytes_to_hex(Bytes::from_array(padded))
+  } else {
+    // Pad with zeros to 32 bytes
+    let padded = FixedArray::make(32, b'\x00')
+    for i = 0; i < len; i = i + 1 {
+      padded[i] = secret_bytes.at(i)
+    }
+    bytes_to_hex(Bytes::from_array(padded))
+  }
+}

@@ -62,6 +62,31 @@ pub fn get_pending_messages() -> Array[PendingMessage] {
 let global_peer_manager : Ref[PeerManager] = Ref::new(PeerManager::new())
 
 ///|
+/// Global list of all known peer addresses (configured + discovered)
+/// Used for active connection attempts
+let global_known_peers : Ref[Map[String, UInt64]] = Ref::new({})
+
+///|
+/// Add a peer address to the known peers list
+pub fn add_known_peer(peer_addr : String) -> Unit {
+  let peers = global_known_peers.val
+  if !peers.contains(peer_addr) {
+    peers[peer_addr] = @env.now() // Track when we first learned about this peer
+  }
+}
+
+///|
+/// Get all known peer addresses
+pub fn get_all_known_peers() -> Array[String] {
+  let peers = global_known_peers.val
+  let addresses : Array[String] = []
+  for addr, _ in peers {
+    addresses.push(addr)
+  }
+  addresses
+}
+
+///|
 /// Update global peer manager state
 pub fn update_global_peer_manager(
   fn_update : (PeerManager) -> PeerManager,
@@ -72,6 +97,12 @@ pub fn update_global_peer_manager(
 }
 
 ///|
+/// Get current global peer manager
+pub fn get_global_peer_manager() -> PeerManager {
+  global_peer_manager.val
+}
+
+///|
 /// Update global reconnect manager state
 pub fn update_global_reconnect_manager(
   fn_update : (ReconnectManager) -> ReconnectManager,
@@ -79,12 +110,6 @@ pub fn update_global_reconnect_manager(
   let current = global_reconnect_manager.val
   let updated = fn_update(current)
   global_reconnect_manager.val = updated
-}
-
-///|
-/// Get current global peer manager
-pub fn get_global_peer_manager() -> PeerManager {
-  global_peer_manager.val
 }
 
 ///|
