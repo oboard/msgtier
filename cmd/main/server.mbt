@@ -138,11 +138,30 @@ async fn handle_reconnects(
     Some(config) => Some(hash_secret(config.secret))
     None => None
   }
+
+  // Collect all our bind addresses to spread in discovery
+  let our_addresses : Array[NetworkAddress] = match global_config.val {
+    Some(config) => {
+      let addrs : Array[NetworkAddress] = []
+      for listener_url in config.listeners {
+        let addr_str = listener_url.get_host()
+        addrs.push(NetworkAddress::{ address: addr_str })
+      }
+      addrs
+    }
+    None => {
+      let addrs : Array[NetworkAddress] = []
+      addrs.push(NetworkAddress::{ address: local_addr })
+      addrs
+    }
+  }
+
   let hello_msg = Message::new(
     kind="hello",
     from=node_id,
     addr=local_addr,
     version=Some(VERSION),
+    peers=if our_addresses.is_empty() { None } else { Some(our_addresses) },
     public_key=our_public_key,
     secret_hash=our_secret_hash,
   )
@@ -589,7 +608,13 @@ async fn listen_udp(
     }
 
     match msg {
-      { kind: "hello", secret_hash: Some(peer_secret_hash), .. } =>
+      { kind: "hello", secret_hash: Some(peer_secret_hash), peers: advertised_peers, .. } => {
+        // Add all advertised peer addresses to our discovery list
+        if advertised_peers is Some(peer_addrs) {
+          for peer_addr in peer_addrs {
+            add_known_peer(peer_addr.address)
+          }
+        }
         // Validate secret before responding
         match global_config.val {
           Some(config) => {
@@ -669,6 +694,7 @@ async fn listen_udp(
             ignore(send_message(server, sender_addr, reply))
           }
         }
+      }
       { kind: "hello", .. } => {
         // Hello without secret_hash - reject it (backwards compatibility)
         println("Rejecting hello from \{msg.from}: no secret_hash provided")
