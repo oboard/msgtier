@@ -1,0 +1,6 @@
+{
+  "import": [
+    "moonbitlang/x/crypto",
+    "moonbitlang/core/env"
+  ]
+}

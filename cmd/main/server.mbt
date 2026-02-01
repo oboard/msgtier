@@ -317,7 +317,7 @@ async fn listen_udp(
   addr : @socket.Addr,
   id : String,
 ) -> Unit {
-  // Initialize RSA key pair if not already done
+  // Initialize X25519 key pair if not already done
   if global_keypair.val is None {
     init_keypair()
   }
@@ -364,7 +364,7 @@ async fn listen_udp(
   // Start pending message sender background task
   root.spawn_bg(fn() { handle_pending_messages(server, id, root) })
   for {
-    let buf = FixedArray::make(2048, b'0')
+    let buf = FixedArray::make(8192, b'0')
     let (n, sender) = server.recvfrom(buf)
     let bytes = buf.unsafe_reinterpret_as_bytes()[0:n].to_bytes()
     let msg : Message = Message::from_msgpack(@msgpack.decode(bytes)) catch {
@@ -407,11 +407,16 @@ async fn listen_udp(
       peer_info?,
     )
 
-    // Store peer's public key if provided
+    // Store peer's public key if provided and compute shared secret
     if msg.public_key is Some(pk) {
       update_global_peer_manager(fn(manager) {
         manager.update_peer_public_key(msg.from, pk)
       })
+      // Compute and store shared secret for E2E encryption
+      match deserialize_public_key(pk) {
+        Some(peer_pub_key) => compute_and_store_shared_secret(msg.from, peer_pub_key)
+        None => println("Failed to deserialize public key from peer \{msg.from}")
+      }
       println("Stored public key for peer \{msg.from}")
     }
 
@@ -613,8 +618,8 @@ async fn listen_udp(
       { kind: "data", data: Some(raw_data), encrypted, .. } => {
         // Decrypt data if encrypted
         let script_name = if encrypted {
-          match decrypt_with_private_key(raw_data) {
-            Some(decrypted) => bytes_to_string(decrypted)
+          match decrypt_message_from_peer(msg.from, raw_data) {
+            Some(decrypted) => decrypted
             None => {
               println("Failed to decrypt message from \{msg.from}")
               raw_data // Fall back to raw data if decryption fails

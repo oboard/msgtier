@@ -10,7 +10,7 @@
     "moonbitlang/async/fs",
     "oboard/msgtier/url",
     "oboard/msgtier/msgpack",
-    "oboard/msgtier/rsa",
+    "oboard/msgtier/x25519",
     "moonbitlang/async/http",
     "moonbitlang/async/io",
     "moonbitlang/async/process",
