@@ -602,6 +602,14 @@ async fn listen_udp(
         ()
       }
       { kind: "welcome", peers: Some(peers), .. } => {
+        // Store the welcome sender's public key if provided
+        if msg.public_key is Some(pk) {
+          update_global_peer_manager(fn(manager) {
+            manager.update_peer_public_key(msg.from, pk)
+          })
+          println("Stored public key for peer \{msg.from} from welcome message")
+        }
+
         // Welcome message - discover new peers from the list
         // These peers are discovered through a relay (the sender of this welcome message)
         // Send hello to each peer address, let their response bring us the actual peer ID
@@ -637,9 +645,15 @@ async fn listen_udp(
           }
         }
       }
-      { kind: "welcome", .. } =>
-        // Welcome message without peer list
-        ()
+      { kind: "welcome", .. } => {
+        // Welcome message without peer list - but may still have public_key
+        if msg.public_key is Some(pk) {
+          update_global_peer_manager(fn(manager) {
+            manager.update_peer_public_key(msg.from, pk)
+          })
+          println("Stored public key for peer \{msg.from} from welcome message")
+        }
+      }
       { kind: "ping", .. } => {
         let reply = Message::new(kind="pong", from=id, addr=local_addr)
         ignore(send_message(server, sender_addr, reply))
