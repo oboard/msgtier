@@ -69,7 +69,7 @@ fn PeerNode::get_all_connections(
 /// NetworkAddress represents a network endpoint (IP:port or hostname:port)
 struct NetworkAddress {
   address : String
-} derive(Show, ToJson, FromJson)
+} derive(Show, ToJson, FromJson, Eq)
 
 ///|
 /// NetworkDiscoveryInfo represents information exchanged during network discovery
