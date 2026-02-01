@@ -20,13 +20,19 @@ pub fn create_encrypted_data_message(String, String, String, String) -> Message?
 
 pub fn get_all_known_peers() -> Array[String]
 
+pub fn get_all_learned_addresses() -> Array[NetworkAddress]
+
 pub fn get_connected_peers() -> Array[PeerNode]
 
 pub fn get_global_peer_manager() -> PeerManager
 
 pub fn get_global_reconnect_manager() -> ReconnectManager
 
+pub fn get_learned_addresses(String) -> Array[String]
+
 pub fn get_pending_messages() -> Array[PendingMessage]
+
+pub fn learn_peer_address(String, String) -> Unit
 
 pub fn network_address(String) -> NetworkAddress
 

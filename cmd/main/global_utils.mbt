@@ -87,6 +87,47 @@ pub fn get_all_known_peers() -> Array[String] {
 }
 
 ///|
+/// Global mapping of peer_id -> set of learned addresses for that peer
+/// This implements the gossip protocol for address discovery:
+/// - When a peer connects from address X claiming to be peer_id Y, we learn "Y can be reached at X"
+/// - When we send welcome to a new peer, we gossip all learned addresses for all other peers
+let global_learned_addresses : Ref[Map[String, Array[String]]] = Ref::new({})
+
+///|
+/// Learn a new address for a peer (called when we receive a message from peer X at address Y)
+pub fn learn_peer_address(peer_id : String, address : String) -> Unit {
+  let learned = global_learned_addresses.val
+  match learned.get(peer_id) {
+    Some(addrs) => if !addrs.contains(address) { addrs.push(address) }
+    None => learned[peer_id] = [address]
+  }
+}
+
+///|
+/// Get all learned addresses for a specific peer
+pub fn get_learned_addresses(peer_id : String) -> Array[String] {
+  let learned = global_learned_addresses.val
+  match learned.get(peer_id) {
+    Some(addrs) => addrs
+    None => []
+  }
+}
+
+///|
+/// Get all learned addresses across all peers (for gossip broadcast)
+/// Returns Array[NetworkAddress] containing all addresses we've discovered
+pub fn get_all_learned_addresses() -> Array[NetworkAddress] {
+  let learned = global_learned_addresses.val
+  let all_addresses : Array[NetworkAddress] = []
+  for _peer_id, addrs in learned {
+    for addr in addrs {
+      all_addresses.push(NetworkAddress::{ address: addr })
+    }
+  }
+  all_addresses
+}
+
+///|
 /// Update global peer manager state
 pub fn update_global_peer_manager(
   fn_update : (PeerManager) -> PeerManager,

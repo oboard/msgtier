@@ -155,7 +155,6 @@ async fn handle_reconnects(
       addrs
     }
   }
-
   let hello_msg = Message::new(
     kind="hello",
     from=node_id,
@@ -263,16 +262,12 @@ async fn handle_reconnects(
         // Try direct connection first (relay=1)
         let success = send_message(server, peer_addr, hello_msg)
         if success {
-          println(
-            "Discovered peer at \{peer_addr}",
-          )
+          println("Discovered peer at \{peer_addr}")
         } else {
           // Direct connection failed (UDP send failed) - try relaying through intermediaries
           // Note: send_message() returning false is rare (socket error)
           // But we still try relay as a fallback
-          println(
-            "Direct connection failed to \{peer_addr}, attempting relay",
-          )
+          println("Direct connection failed to \{peer_addr}, attempting relay")
           let all_peers = get_global_peer_manager().get_all_peers()
 
           // Try to relay through all active peers (can't know which relay will work)
@@ -606,9 +601,16 @@ async fn listen_udp(
       }
       // Continue processing this message locally as well (don't return)
     }
-
     match msg {
-      { kind: "hello", secret_hash: Some(peer_secret_hash), peers: advertised_peers, .. } => {
+      {
+        kind: "hello",
+        secret_hash: Some(peer_secret_hash),
+        peers: advertised_peers,
+        ..,
+      } => {
+        // Learn that this peer can be reached at sender_addr (the address they contacted us from)
+        learn_peer_address(msg.from, sender_addr)
+
         // Add all advertised peer addresses to our discovery list
         if advertised_peers is Some(peer_addrs) {
           for peer_addr in peer_addrs {
@@ -626,22 +628,46 @@ async fn listen_udp(
               )
               () // Don't send welcome
             } else {
-              // Secret matches - send welcome with known peers
+              // Secret matches - send welcome with known peers and learned addresses (gossip)
               let welcome_peer_addresses : Array[NetworkAddress] = []
               let all_peers = get_global_peer_manager().get_all_peers()
               let all_conns = get_global_peer_manager().get_all_connections()
+
+              // Include all learned addresses for each peer (gossip protocol)
+              for peer in all_peers {
+                let learned_addrs = get_learned_addresses(peer.id)
+                for learned_addr in learned_addrs {
+                  // Don't include the sender in our peer list to avoid loops
+                  if learned_addr != sender_addr {
+                    welcome_peer_addresses.push(NetworkAddress::{
+                      address: learned_addr,
+                    })
+                  }
+                }
+              }
+
+              // Also include connection addresses from peers we're connected to
               for peer in all_peers {
                 // Get connection addresses for this peer
                 let peer_conns = peer.get_all_connections(all_conns)
                 for conn in peer_conns {
                   // Don't include the sender in our peer list to avoid loops
                   if conn.remote_addr != sender_addr {
-                    welcome_peer_addresses.push(NetworkAddress::{
-                      address: conn.remote_addr,
+                    // Check if not already in learned addresses
+                    let not_already_included = !welcome_peer_addresses.any(fn(
+                      np,
+                    ) {
+                      np.address == conn.remote_addr
                     })
+                    if not_already_included {
+                      welcome_peer_addresses.push(NetworkAddress::{
+                        address: conn.remote_addr,
+                      })
+                    }
                   }
                 }
               }
+
               // Also include configured peers to help with initial discovery
               for peer_url in config.peers {
                 let peer_addr = peer_url.get_host()
@@ -666,7 +692,9 @@ async fn listen_udp(
                 secret_hash=Some(our_secret_hash),
               )
               ignore(send_message(server, sender_addr, reply))
-              println("Accepted peer \{msg.from} - sent welcome")
+              println(
+                "Accepted peer \{msg.from} - sent welcome with \{welcome_peer_addresses.length()} addresses",
+              )
             }
           }
           None => {
@@ -674,13 +702,35 @@ async fn listen_udp(
             let welcome_peer_addresses : Array[NetworkAddress] = []
             let all_peers = get_global_peer_manager().get_all_peers()
             let all_conns = get_global_peer_manager().get_all_connections()
+
+            // Include learned addresses
+            for peer in all_peers {
+              let learned_addrs = get_learned_addresses(peer.id)
+              for learned_addr in learned_addrs {
+                if learned_addr != sender_addr {
+                  welcome_peer_addresses.push(NetworkAddress::{
+                    address: learned_addr,
+                  })
+                }
+              }
+            }
+
+            // Include connection addresses
             for peer in all_peers {
               let peer_conns = peer.get_all_connections(all_conns)
               for conn in peer_conns {
                 if conn.remote_addr != sender_addr {
-                  welcome_peer_addresses.push(NetworkAddress::{
-                    address: conn.remote_addr,
+                  // Check if not already in learned addresses
+                  let not_already_included = !welcome_peer_addresses.any(fn(
+                    np,
+                  ) {
+                    np.address == conn.remote_addr
                   })
+                  if not_already_included {
+                    welcome_peer_addresses.push(NetworkAddress::{
+                      address: conn.remote_addr,
+                    })
+                  }
                 }
               }
             }
@@ -701,6 +751,9 @@ async fn listen_udp(
         ()
       }
       { kind: "welcome", peers: Some(peers), .. } => {
+        // Learn that this peer can be reached at sender_addr
+        learn_peer_address(msg.from, sender_addr)
+
         // Store the welcome sender's public key if provided
         if msg.public_key is Some(pk) {
           update_global_peer_manager(fn(manager) {
@@ -746,6 +799,8 @@ async fn listen_udp(
       }
       { kind: "welcome", .. } => {
         // Welcome message without peer list - but may still have public_key
+        // Learn that this peer can be reached at sender_addr
+        learn_peer_address(msg.from, sender_addr)
         if msg.public_key is Some(pk) {
           update_global_peer_manager(fn(manager) {
             manager.update_peer_public_key(msg.from, pk)
