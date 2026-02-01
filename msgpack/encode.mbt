@@ -3,45 +3,6 @@
 // Buffer for building MessagePack data
 
 ///|
-/// Convert string to UTF-8 bytes
-fn string_to_utf8_bytes(s : String) -> Bytes {
-  let bytes : Array[Byte] = []
-  for i = 0; i < s.length(); i = i + 1 {
-    let code = s[i].to_int()
-    if code < 0x80 {
-      // 1-byte sequence (ASCII)
-      bytes.push(code.to_byte())
-    } else if code < 0x800 {
-      // 2-byte sequence
-      bytes.push((0xC0 | (code >> 6)).to_byte())
-      bytes.push((0x80 | (code & 0x3F)).to_byte())
-    } else if code >= 0xD800 && code <= 0xDBFF && i + 1 < s.length() {
-      // Surrogate pair (4-byte UTF-8)
-      let low = s[i + 1].to_int()
-      if low >= 0xDC00 && low <= 0xDFFF {
-        let codepoint = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00)
-        bytes.push((0xF0 | (codepoint >> 18)).to_byte())
-        bytes.push((0x80 | ((codepoint >> 12) & 0x3F)).to_byte())
-        bytes.push((0x80 | ((codepoint >> 6) & 0x3F)).to_byte())
-        bytes.push((0x80 | (codepoint & 0x3F)).to_byte())
-        continue i + 2
-      } else {
-        // Invalid surrogate, encode as 3-byte
-        bytes.push((0xE0 | (code >> 12)).to_byte())
-        bytes.push((0x80 | ((code >> 6) & 0x3F)).to_byte())
-        bytes.push((0x80 | (code & 0x3F)).to_byte())
-      }
-    } else {
-      // 3-byte sequence
-      bytes.push((0xE0 | (code >> 12)).to_byte())
-      bytes.push((0x80 | ((code >> 6) & 0x3F)).to_byte())
-      bytes.push((0x80 | (code & 0x3F)).to_byte())
-    }
-  }
-  Bytes::from_array(bytes)
-}
-
-///|
 priv struct Buffer {
   bytes : Array[Int]
 }
@@ -146,7 +107,7 @@ fn encode_to_buffer(buffer : Buffer, value : Value) -> Unit {
     }
     String(s) => {
       // Encode string as UTF-8 and get byte length
-      let utf8_bytes = string_to_utf8_bytes(s)
+      let utf8_bytes = @utf8.encode(s)
       let len = utf8_bytes.length()
       if len <= 31 {
         // fixstr

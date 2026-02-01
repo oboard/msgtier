@@ -160,50 +160,7 @@ pub fn decode(data : Bytes) -> Value raise MsgPackError {
 
 ///|
 fn decode_string_bytes(data : Bytes, offset : Int, length : Int) -> Value {
-  let mut str_val = ""
-  let mut i = 0
-  while i < length {
-    let b = data[offset + i].to_int()
-    if b < 0x80 {
-      // 1-byte sequence (ASCII)
-      str_val = str_val + Int::unsafe_to_char(b).to_string()
-      i = i + 1
-    } else if (b & 0xE0) == 0xC0 && i + 1 < length {
-      // 2-byte sequence
-      let b2 = data[offset + i + 1].to_int()
-      let code_point = ((b & 0x1F) << 6) | (b2 & 0x3F)
-      str_val = str_val + Int::unsafe_to_char(code_point).to_string()
-      i = i + 2
-    } else if (b & 0xF0) == 0xE0 && i + 2 < length {
-      // 3-byte sequence
-      let b2 = data[offset + i + 1].to_int()
-      let b3 = data[offset + i + 2].to_int()
-      let code_point = ((b & 0x0F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F)
-      str_val = str_val + Int::unsafe_to_char(code_point).to_string()
-      i = i + 3
-    } else if (b & 0xF8) == 0xF0 && i + 3 < length {
-      // 4-byte sequence (surrogate pair needed for JavaScript/MoonBit strings)
-      let b2 = data[offset + i + 1].to_int()
-      let b3 = data[offset + i + 2].to_int()
-      let b4 = data[offset + i + 3].to_int()
-      let code_point = ((b & 0x07) << 18) |
-        ((b2 & 0x3F) << 12) |
-        ((b3 & 0x3F) << 6) |
-        (b4 & 0x3F)
-      // Convert to surrogate pair
-      let adjusted = code_point - 0x10000
-      let high = 0xD800 + (adjusted >> 10)
-      let low = 0xDC00 + (adjusted & 0x3FF)
-      str_val = str_val +
-        Int::unsafe_to_char(high).to_string() +
-        Int::unsafe_to_char(low).to_string()
-      i = i + 4
-    } else {
-      // Invalid UTF-8, skip byte
-      i = i + 1
-    }
-  }
-  String(str_val)
+  String(@utf8.decode(data[offset:offset + length]) catch { _ => "" })
 }
 
 // Helper functions for decoding complex types
