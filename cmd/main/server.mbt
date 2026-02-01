@@ -248,20 +248,22 @@ async fn handle_reconnects(
             "Discovered peer at \{peer_addr}",
           )
         } else {
-          // Direct connection failed - try relaying through intermediaries (relay=2)
+          // Direct connection failed (UDP send failed) - try relaying through intermediaries
+          // Note: send_message() returning false is rare (socket error)
+          // But we still try relay as a fallback
           println(
             "Direct connection failed to \{peer_addr}, attempting relay",
           )
           let all_peers = get_global_peer_manager().get_all_peers()
 
-          // Find peers with active connections to relay through
-          let mut relay_sent = false
+          // Try to relay through all active peers (can't know which relay will work)
           for relay_peer in all_peers {
             let active_conns = get_global_peer_manager().get_active_peer_connections(
               relay_peer.id,
             )
             if !active_conns.is_empty() {
-              // This peer has active connections, use the first one as relay
+              // This peer has active connections
+              // Try relaying through them (can't prove success with UDP)
               let relay_addr = active_conns[0].remote_addr
 
               // Create a relayed hello message (relay=2 means relayed through 1 intermediary)
@@ -277,21 +279,13 @@ async fn handle_reconnects(
               )
 
               // Send the relayed message to the intermediary
-              let relay_success = send_message(server, relay_addr, relayed_hello)
-              if relay_success {
-                println(
-                  "Relayed hello to \{peer_addr} via \{relay_peer.id}",
-                )
-                relay_sent = true
-                break // Successfully sent via relay
-              }
+              // We can't prove it will be forwarded, but try anyway
+              ignore(send_message(server, relay_addr, relayed_hello))
+              println(
+                "Attempted relay of hello to \{peer_addr} via \{relay_peer.id}",
+              )
+              // Continue to next relay (can't know if this one worked)
             }
-          }
-
-          if !relay_sent {
-            println(
-              "Failed to relay discovery to \{peer_addr} - no active relays available",
-            )
           }
         }
       }
