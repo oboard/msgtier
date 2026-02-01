@@ -241,12 +241,58 @@ async fn handle_reconnects(
         peer_addr,
       )
       if !has_active {
-        // Try to connect to this peer address
+        // Try direct connection first (relay=1)
         let success = send_message(server, peer_addr, hello_msg)
         if success {
           println(
-            "Active connection attempt sent to discovered peer at \{peer_addr}",
+            "Discovered peer at \{peer_addr}",
           )
+        } else {
+          // Direct connection failed - try relaying through intermediaries (relay=2)
+          println(
+            "Direct connection failed to \{peer_addr}, attempting relay",
+          )
+          let all_peers = get_global_peer_manager().get_all_peers()
+
+          // Find peers with active connections to relay through
+          let mut relay_sent = false
+          for relay_peer in all_peers {
+            let active_conns = get_global_peer_manager().get_active_peer_connections(
+              relay_peer.id,
+            )
+            if !active_conns.is_empty() {
+              // This peer has active connections, use the first one as relay
+              let relay_addr = active_conns[0].remote_addr
+
+              // Create a relayed hello message (relay=2 means relayed through 1 intermediary)
+              let relayed_hello = Message::new(
+                kind="hello",
+                from=node_id,
+                addr=local_addr,
+                target=Some(peer_addr),
+                version=Some(VERSION),
+                public_key=our_public_key,
+                secret_hash=our_secret_hash,
+                relay=2, // This is a relayed message
+              )
+
+              // Send the relayed message to the intermediary
+              let relay_success = send_message(server, relay_addr, relayed_hello)
+              if relay_success {
+                println(
+                  "Relayed hello to \{peer_addr} via \{relay_peer.id}",
+                )
+                relay_sent = true
+                break // Successfully sent via relay
+              }
+            }
+          }
+
+          if !relay_sent {
+            println(
+              "Failed to relay discovery to \{peer_addr} - no active relays available",
+            )
+          }
         }
       }
     }
@@ -446,7 +492,7 @@ async fn listen_udp(
       }
     }
     // println("Received message: \{msg}")
-    println("\{msg.id}(\{sender}): \{msg.kind} from \{msg.from}")
+    println("\{msg.from}(\{sender}): \{msg.kind}")
     let sender_addr = "\{sender}"
     let local_addr = "\{server.addr()}"
 
@@ -515,6 +561,39 @@ async fn listen_udp(
     // Don't create peers from peer list - wait for welcome message
 
     // Don't create peer from sender address - wait for welcome message
+
+    // Handle message relaying: if this message is marked for relay and has a target,
+    // forward it to the target address
+    if msg.relay > 1 && msg.target is Some(target_addr) {
+      // This is a relayed message, forward it to the target
+      let relay_msg = Message::new(
+        id=msg.id,
+        kind=msg.kind,
+        from=msg.from,
+        addr=msg.addr,
+        version=msg.version,
+        peers=msg.peers,
+        payload=msg.payload,
+        target=msg.target,
+        data=msg.data,
+        relay=msg.relay - 1, // Decrement relay counter
+        public_key=msg.public_key,
+        secret_hash=msg.secret_hash,
+        encrypted=msg.encrypted,
+      )
+      let relay_success = send_message(server, target_addr, relay_msg)
+      if relay_success {
+        println(
+          "Relayed \{msg.kind} from \{msg.from} to \{target_addr} (relay depth: \{msg.relay})",
+        )
+      } else {
+        println(
+          "Failed to relay \{msg.kind} from \{msg.from} to \{target_addr}",
+        )
+      }
+      // Continue processing this message locally as well (don't return)
+    }
+
     match msg {
       { kind: "hello", secret_hash: Some(peer_secret_hash), .. } =>
         // Validate secret before responding
@@ -682,7 +761,6 @@ async fn listen_udp(
             })
           }
         }
-        println("Received pong from \{peer_id}")
       }
       { kind: "punch_request", target: Some(target), .. } => {
         let punch_to_target = Message::new(
