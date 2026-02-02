@@ -1,4 +1,7 @@
 ///|
+const HELLO_DEBOUNCE_MS : UInt64 = 5000
+
+///|
 fn handle_new_connection(
   peer_id : String,
   local_addr : String,
@@ -405,8 +408,8 @@ async fn handle_heartbeat(
         })
         ignore(send_message(server, conn.remote_addr, ping_msg))
 
-        // Check if connection has timed out (no response for 30 seconds)
-        if current_time - conn.last_seen > 30000UL && conn.is_active() {
+        // Check if connection has timed out (no response for HELLO_DEBOUNCE_MS)
+        if current_time - conn.last_seen > HELLO_DEBOUNCE_MS && conn.is_active() {
           println("Connection to \{peer_id} at \{conn.remote_addr} timed out")
           update_global_peer_manager(fn(manager) {
             manager.update_connection_state(
@@ -822,9 +825,10 @@ async fn listen_udp(
             // Also skip 0.0.0.0 addresses (bind-all, not connectable)
             if peer_addr != sender_addr && !peer_addr.has_prefix("0.0.0.0:") {
               ignore(send_message(server, peer_addr, msg))
-              println(
-                "Re-broadcasting hello from \{msg.from} to known peer at \{peer_addr}",
-              )
+              // silently re-broadcast hello to all other known peers
+              // println(
+              //   "Re-broadcasting hello from \{msg.from} to known peer at \{peer_addr}",
+              // )
             }
           }
         } else {

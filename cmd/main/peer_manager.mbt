@@ -177,19 +177,19 @@ fn PeerManager::get_all_connections(self : PeerManager) -> Array[Connection] {
 }
 
 ///|
-/// Check if there is any active connection to a specific remote address
-fn PeerManager::has_active_connection_to_addr(
-  self : PeerManager,
-  addr : String,
-) -> Bool {
-  let all_conns = self.connection_manager.get_all_connections()
-  for conn in all_conns {
-    if conn.remote_addr == addr && conn.state == Connected {
-      return true
-    }
-  }
-  false
-}
+// /// Check if there is any active connection to a specific remote address
+// fn PeerManager::has_active_connection_to_addr(
+//   self : PeerManager,
+//   addr : String,
+// ) -> Bool {
+//   let all_conns = self.connection_manager.get_all_connections()
+//   for conn in all_conns {
+//     if conn.remote_addr == addr && conn.state == Connected {
+//       return true
+//     }
+//   }
+//   false
+// }
 
 ///|
 fn PeerManager::remove_connection(
