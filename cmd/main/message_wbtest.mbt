@@ -91,14 +91,15 @@ test "message with peers" {
 
 ///|
 test "message with short array (pre-optional fields)" {
-  // Simulate a message encoded with only the required fields (6 elements)
-  // Structure: [id, kind, from, addr, relay, encrypted]
+  // Simulate a message encoded with only the required fields (7 elements)
+  // Structure: [id, kind, from, addr, relay, visited, encrypted]
   let short_array : Array[@msgpack.Value] = [
     @msgpack.string("msg-id"),
     @msgpack.string("hello"),
     @msgpack.string("node-a"),
     @msgpack.string("127.0.0.1:8000"),
     @msgpack.int(1),
+    @msgpack.array([]),
     @msgpack.bool(false),
   ]
   let msgpack_value = @msgpack.array(short_array)
@@ -110,6 +111,7 @@ test "message with short array (pre-optional fields)" {
   assert_eq(decoded.from, "node-a")
   assert_eq(decoded.addr, "127.0.0.1:8000")
   assert_eq(decoded.relay, 1)
+  assert_eq(decoded.visited.length(), 0)
   assert_eq(decoded.encrypted, false)
 
   // Verify optional fields are None

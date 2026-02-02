@@ -190,6 +190,7 @@ async fn handle_reconnects(
     kind="hello",
     from=node_id,
     addr=local_addr,
+    relay=1,
     version=Some(VERSION),
     peers=if our_addresses.is_empty() { None } else { Some(our_addresses) },
     public_key=our_public_key,
@@ -298,13 +299,13 @@ async fn handle_reconnects(
               relay_via_peer_id,
             )
             if !relay_conns.is_empty() {
-              // Send hello as relayed message through this peer (relay=2 because going through 1 intermediary)
+              // Send hello as direct message to the relay peer (NOT through target)
+              // The relay peer will receive it and respond with welcome
               let relayed_hello = Message::new(
                 kind="hello",
                 from=node_id,
                 addr=local_addr,
                 relay=2,
-                target=Some(peer_addr),
                 version=Some(VERSION),
                 public_key=our_public_key,
                 secret_hash=our_secret_hash,
@@ -312,7 +313,7 @@ async fn handle_reconnects(
               let relay_addr = relay_conns[0].remote_addr
               ignore(send_message(server, relay_addr, relayed_hello))
               println(
-                "Sending relayed hello to discovered peer at \{peer_addr} via \{relay_via_peer_id}",
+                "Sending hello to relay peer \{relay_via_peer_id} at \{relay_addr}",
               )
             }
           }
@@ -337,22 +338,21 @@ async fn handle_reconnects(
                   // This peer has active connections
                   let relay_addr = active_conns[0].remote_addr
 
-                  // Create a relayed hello message (relay=2 because going through 1 intermediary)
+                  // Create a hello message (send directly, no target field for hello)
                   let relayed_hello = Message::new(
                     kind="hello",
                     from=node_id,
                     addr=local_addr,
                     relay=2,
-                    target=Some(peer_addr),
                     version=Some(VERSION),
                     public_key=our_public_key,
                     secret_hash=our_secret_hash,
                   )
 
-                  // Send the relayed message to the intermediary
+                  // Send the hello directly to the relay peer
                   ignore(send_message(server, relay_addr, relayed_hello))
                   println(
-                    "Attempted fallback relay of hello to \{peer_addr} via \{relay_peer.id}",
+                    "Attempted hello to relay peer \{relay_peer.id} at \{relay_addr}",
                   )
                 }
               }
@@ -682,30 +682,44 @@ async fn listen_udp(
 
     // Handle message relaying: if target is set and we're not the target, forward it
     if msg.target is Some(target_addr) {
-      // This is a relayed message, forward it to the target with incremented relay depth
-      let relay_msg = Message::new(
-        id=msg.id,
-        kind=msg.kind,
-        from=msg.from,
-        addr=msg.addr,
-        relay=msg.relay + 1,
-        version=msg.version,
-        peers=msg.peers,
-        payload=msg.payload,
-        target=msg.target,
-        data=msg.data,
-        public_key=msg.public_key,
-        secret_hash=msg.secret_hash,
-        encrypted=msg.encrypted,
-      )
-      let relay_success = send_message(server, target_addr, relay_msg)
-      if relay_success {
-        println(
-          "Relayed \{msg.kind} from \{msg.from} to \{target_addr} (relay hop \{relay_msg.relay})",
+      // Check if this node has already processed this message (prevent loops using DFS path tracking)
+      let already_visited = msg.visited.any(fn(node_id) { node_id == id })
+      if !already_visited {
+        // This is a relayed message, forward it to the target with incremented relay depth
+        // Add current node to visited list to track the path and prevent loops
+        let updated_visited = msg.visited
+        updated_visited.push(id)
+        let relay_msg = Message::new(
+          id=msg.id,
+          kind=msg.kind,
+          from=msg.from,
+          addr=msg.addr,
+          relay=msg.relay + 1,
+          visited=updated_visited,
+          version=msg.version,
+          peers=msg.peers,
+          payload=msg.payload,
+          target=msg.target,
+          data=msg.data,
+          public_key=msg.public_key,
+          secret_hash=msg.secret_hash,
+          encrypted=msg.encrypted,
         )
+        let relay_success = send_message(server, target_addr, relay_msg)
+        if relay_success {
+          let path_str = relay_msg.visited.join(" -> ")
+          println(
+            "Relayed \{msg.kind} from \{msg.from} to \{target_addr} (relay hop \{relay_msg.relay}), path: \{path_str}",
+          )
+        } else {
+          println(
+            "Failed to relay \{msg.kind} from \{msg.from} to \{target_addr}",
+          )
+        }
       } else {
+        let path_str = msg.visited.join(" -> ")
         println(
-          "Failed to relay \{msg.kind} from \{msg.from} to \{target_addr}",
+          "Dropping message from \{msg.from} to \{target_addr}: already visited this node (loop detected), path: \{path_str}",
         )
       }
       // Continue processing this message locally as well (don't return)
@@ -933,16 +947,16 @@ async fn listen_udp(
                     kind="hello",
                     from=id,
                     addr=local_addr,
+                    relay=2,
                     version=Some(VERSION),
                     public_key=our_public_key,
                     secret_hash=our_secret_hash,
-                    target=Some(peer_addr),
                   )
-                  // Send the relayed hello through the peer that advertised it
+                  // Send hello directly to the peer that advertised the new peer
                   let relay_addr = sender_addr
                   ignore(send_message(server, relay_addr, hello_msg))
                   println(
-                    "Greeting discovered peer at \{peer_addr} via relay through \{msg.from}",
+                    "Greeting discovered peer via relay through \{msg.from}",
                   )
                 }
               }
