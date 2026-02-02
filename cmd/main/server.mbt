@@ -313,54 +313,55 @@ async fn handle_pending_messages(
         // Try to find and send to remote peer
         let target_peer = get_global_peer_manager().get_peer(target)
         match target_peer {
-          Some(_) =>
-            // Get best connection for target peer
-            match get_best_connection_for_peer(target) {
-              Some(conn) =>
-                // Check if this connection requires relay (relay > 1)
-                if conn.relay > 1 {
-                  // This peer is only reachable via relay
-                  // Find the relay intermediary from relay paths
-                  match get_relay_path(conn.remote_addr) {
-                    Some((_, relay_via_peer_id)) => {
-                      // Find a direct connection to the relay peer
-                      let relay_conns = get_global_peer_manager().get_active_peer_connections(
-                        relay_via_peer_id,
-                      )
-                      if !relay_conns.is_empty() {
-                        // Send message as relay through the intermediary (relay=2 because going through 1 intermediary)
-                        let relayed_msg = Message::new(
-                          kind="data",
-                          from=msg.from,
-                          addr=msg.addr,
-                          relay=2,
-                          target=Some(conn.remote_addr), // Route to target's address
-                          data=msg.data,
-                          version=msg.version,
-                        )
-                        let relay_addr = relay_conns[0].remote_addr
-                        ignore(send_message(server, relay_addr, relayed_msg))
-                        println(
-                          "Sent relayed data to \{target} via \{relay_via_peer_id} at \{relay_addr}",
-                        )
-                      } else {
-                        println(
-                          "No active connection to relay peer \{relay_via_peer_id} for target \{target}",
-                        )
-                      }
-                    }
-                    None =>
-                      println(
-                        "No relay path found for relay connection to \{target}",
-                      )
-                  }
-                } else {
-                  // Direct connection, send normally
-                  ignore(send_message(server, conn.remote_addr, msg))
-                  println("Sent message to \{target} via \{conn.remote_addr}")
-                }
-              None => println("No active connection to target \{target}")
+          Some(_) => {
+            // Try BOTH direct and relay paths simultaneously (UDP fire-and-forget)
+            // This increases chances of reaching the peer through multiple paths
+
+            // First, try direct connections to the target peer
+            let target_conns = get_global_peer_manager().get_active_peer_connections(
+              target,
+            )
+            if !target_conns.is_empty() {
+              // Send directly to the target peer on all active connections
+              for conn in target_conns {
+                ignore(send_message(server, conn.remote_addr, msg))
+                println(
+                  "Sent data to \{target} directly via \{conn.remote_addr}",
+                )
+              }
+            } else {
+              println("No direct connections to target \{target}, trying relay")
             }
+
+            // Second, try relay paths through other connected peers
+            // This ensures delivery even if direct path fails (due to NAT/firewall)
+            let all_peers = get_global_peer_manager().get_all_peers()
+            for relay_peer in all_peers {
+              let relay_conns = get_global_peer_manager().get_active_peer_connections(
+                relay_peer.id,
+              )
+              if !relay_conns.is_empty() && relay_peer.id != target {
+                // This relay peer has active connections, use it to reach the target
+                let relayed_msg = Message::new(
+                  kind=msg.kind,
+                  from=msg.from,
+                  addr=msg.addr,
+                  relay=2, // Relayed through 1 intermediary
+                  target=Some(target), // Route to target peer ID
+                  data=msg.data,
+                  version=msg.version,
+                  public_key=msg.public_key,
+                  secret_hash=msg.secret_hash,
+                  encrypted=msg.encrypted,
+                )
+                let relay_addr = relay_conns[0].remote_addr
+                ignore(send_message(server, relay_addr, relayed_msg))
+                println(
+                  "Sent relayed data to \{target} through \{relay_peer.id} at \{relay_addr}",
+                )
+              }
+            }
+          }
           None => println("Target peer \{target} not found")
         }
       }
@@ -800,6 +801,20 @@ async fn listen_udp(
               public_key=our_public_key,
             )
             ignore(send_message(server, sender_addr, reply))
+          }
+        }
+
+        // Re-broadcast hello to all other known peers so they also learn about this peer
+        // This ensures peer discovery propagates through the network even for peers
+        // we only know via relay paths
+        let known_peers = get_all_known_peers()
+        for peer_addr in known_peers {
+          // Don't send back to the peer we just received it from
+          if peer_addr != sender_addr {
+            ignore(send_message(server, peer_addr, msg))
+            println(
+              "Re-broadcasting hello from \{msg.from} to known peer at \{peer_addr}",
+            )
           }
         }
       }
