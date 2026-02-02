@@ -535,11 +535,9 @@ async fn listen_udp(
     }
 
     // Always handle connection, even if peer_info is None
-    // Connection relay is determined by relay_path (if discovered) or default to 1 (direct)
-    let relay_depth_to_use = match get_relay_path(sender_addr) {
-      Some(_) => 2 // Has relay path - this connection goes through relay
-      None => 1 // No relay path - direct connection
-    }
+    // Use the message's relay count as the hop depth for this connection
+    // msg.relay already indicates how many hops the message took to reach us
+    let relay_depth_to_use = msg.relay
     let conn = handle_new_connection(
       msg.from,
       local_addr,
