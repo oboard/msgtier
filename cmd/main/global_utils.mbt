@@ -78,12 +78,7 @@ pub fn add_known_peer(peer_addr : String) -> Unit {
 ///|
 /// Get all known peer addresses
 pub fn get_all_known_peers() -> Array[String] {
-  let peers = global_known_peers.val
-  let addresses : Array[String] = []
-  for addr, _ in peers {
-    addresses.push(addr)
-  }
-  addresses
+  global_known_peers.val.keys().to_array()
 }
 
 ///|
