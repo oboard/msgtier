@@ -17,6 +17,13 @@ fn handle_new_connection(
       public_key=info.public_key,
     )
     update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
+
+    // Add all addresses provided in peer_info to the peer manager
+    for addr_obj in info.addresses {
+      update_global_peer_manager(fn(manager) {
+        manager.add_peer_address(info.id, addr_obj.address)
+      })
+    }
   } else {
     // Only create peer if it doesn't exist yet
     match get_global_peer_manager().get_peer(actual_peer_id) {
@@ -729,6 +736,18 @@ async fn listen_udp(
         peers: advertised_peers,
         ..,
       } => {
+        // Ensure peer exists in manager before learning address
+        match get_global_peer_manager().get_peer(msg.from) {
+          None => {
+            // Peer doesn't exist yet, create it
+            let peer_node = PeerNode::new(id=msg.from, version=VERSION)
+            update_global_peer_manager(fn(manager) {
+              manager.add_peer(peer_node)
+            })
+          }
+          Some(_) => () // Peer exists
+        }
+
         // Learn that this peer can be reached at sender_addr (the address they contacted us from)
         learn_peer_address(msg.from, sender_addr)
 
@@ -889,6 +908,18 @@ async fn listen_udp(
         ()
       }
       { kind: "welcome", peers: Some(peers), .. } => {
+        // Ensure peer exists in manager before learning address
+        match get_global_peer_manager().get_peer(msg.from) {
+          None => {
+            // Peer doesn't exist yet, create it
+            let peer_node = PeerNode::new(id=msg.from, version=VERSION)
+            update_global_peer_manager(fn(manager) {
+              manager.add_peer(peer_node)
+            })
+          }
+          Some(_) => () // Peer exists
+        }
+
         // Learn that this peer can be reached at sender_addr
         learn_peer_address(msg.from, sender_addr)
 
@@ -964,6 +995,18 @@ async fn listen_udp(
       }
       { kind: "welcome", .. } => {
         // Welcome message without peer list - but may still have public_key
+        // Ensure peer exists in manager before learning address
+        match get_global_peer_manager().get_peer(msg.from) {
+          None => {
+            // Peer doesn't exist yet, create it
+            let peer_node = PeerNode::new(id=msg.from, version=VERSION)
+            update_global_peer_manager(fn(manager) {
+              manager.add_peer(peer_node)
+            })
+          }
+          Some(_) => () // Peer exists
+        }
+
         // Learn that this peer can be reached at sender_addr
         learn_peer_address(msg.from, sender_addr)
         if msg.public_key is Some(pk) {
