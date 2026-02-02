@@ -604,21 +604,29 @@ async fn listen_udp(
       relay_depth=relay_depth_to_use,
     )
 
-    // Store peer's public key if provided and compute shared secret
+    // Store peer's public key if provided and compute shared secret (only if not already stored)
     if msg.public_key is Some(pk) {
-      update_global_peer_manager(fn(manager) {
-        manager.update_peer_public_key(msg.from, pk)
-      })
-      // Compute and store shared secret for E2E encryption
-      match deserialize_public_key(pk) {
-        Some(peer_pub_key) =>
-          compute_and_store_shared_secret(msg.from, peer_pub_key)
-        None =>
-          println(
-            "Failed to deserialize public key from peer \{msg.from}, raw=\{pk}",
-          )
+      let peer_manager = get_global_peer_manager()
+      let peer_already_has_key = match peer_manager.get_peer(msg.from) {
+        Some(peer) => peer.public_key is Some(_)
+        None => false
       }
-      println("Stored public key for peer \{msg.from}")
+      // Only store if we don't already have a public key for this peer
+      if !peer_already_has_key {
+        update_global_peer_manager(fn(manager) {
+          manager.update_peer_public_key(msg.from, pk)
+        })
+        // Compute and store shared secret for E2E encryption
+        match deserialize_public_key(pk) {
+          Some(peer_pub_key) =>
+            compute_and_store_shared_secret(msg.from, peer_pub_key)
+          None =>
+            println(
+              "Failed to deserialize public key from peer \{msg.from}, raw=\{pk}",
+            )
+        }
+        println("Stored public key for peer \{msg.from}")
+      }
     }
 
     // Track bytes received
@@ -703,18 +711,23 @@ async fn listen_udp(
               let all_peers = get_global_peer_manager().get_all_peers()
               let all_conns = get_global_peer_manager().get_all_connections()
 
-              // Include all learned addresses for each peer (gossip protocol)
+              // Include all learned addresses for each peer (gossip protocol) - deduplicated
               for peer in all_peers {
                 let learned_addrs = get_learned_addresses(peer.id)
                 for learned_addr in learned_addrs {
                   // Don't include the sender in our peer list to avoid loops
                   if learned_addr != sender_addr {
-                    welcome_peer_addresses.push(NetworkAddress::{
-                      address: learned_addr,
+                    // Only add if not already in the list (deduplicate)
+                    let not_already_included = !welcome_peer_addresses.any(fn(
+                      np,
+                    ) {
+                      np.address == learned_addr
                     })
-                    println(
-                      "DEBUG: Adding learned address for peer \{peer.id}: \{learned_addr}",
-                    )
+                    if not_already_included {
+                      welcome_peer_addresses.push(NetworkAddress::{
+                        address: learned_addr,
+                      })
+                    }
                   }
                 }
               }
@@ -836,12 +849,21 @@ async fn listen_udp(
         // Learn that this peer can be reached at sender_addr
         learn_peer_address(msg.from, sender_addr)
 
-        // Store the welcome sender's public key if provided
+        // Store the welcome sender's public key if provided (only if not already stored)
         if msg.public_key is Some(pk) {
-          update_global_peer_manager(fn(manager) {
-            manager.update_peer_public_key(msg.from, pk)
-          })
-          println("Stored public key for peer \{msg.from} from welcome message")
+          let peer_manager = get_global_peer_manager()
+          let peer_already_has_key = match peer_manager.get_peer(msg.from) {
+            Some(peer) => peer.public_key is Some(_)
+            None => false
+          }
+          if !peer_already_has_key {
+            update_global_peer_manager(fn(manager) {
+              manager.update_peer_public_key(msg.from, pk)
+            })
+            println(
+              "Stored public key for peer \{msg.from} from welcome message",
+            )
+          }
         }
 
         // Welcome message - discover new peers from the list
@@ -902,10 +924,19 @@ async fn listen_udp(
         // Learn that this peer can be reached at sender_addr
         learn_peer_address(msg.from, sender_addr)
         if msg.public_key is Some(pk) {
-          update_global_peer_manager(fn(manager) {
-            manager.update_peer_public_key(msg.from, pk)
-          })
-          println("Stored public key for peer \{msg.from} from welcome message")
+          let peer_manager = get_global_peer_manager()
+          let peer_already_has_key = match peer_manager.get_peer(msg.from) {
+            Some(peer) => peer.public_key is Some(_)
+            None => false
+          }
+          if !peer_already_has_key {
+            update_global_peer_manager(fn(manager) {
+              manager.update_peer_public_key(msg.from, pk)
+            })
+            println(
+              "Stored public key for peer \{msg.from} from welcome message",
+            )
+          }
         }
       }
       { kind: "ping", .. } => {
