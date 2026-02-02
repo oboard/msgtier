@@ -267,16 +267,16 @@ async fn handle_reconnects(
               relay_via_peer_id,
             )
             if !relay_conns.is_empty() {
-              // Send hello as relayed message through this peer
+              // Send hello as relayed message through this peer (relay=2 because going through 1 intermediary)
               let relayed_hello = Message::new(
                 kind="hello",
                 from=node_id,
                 addr=local_addr,
+                relay=2,
                 target=Some(peer_addr),
                 version=Some(VERSION),
                 public_key=our_public_key,
                 secret_hash=our_secret_hash,
-                relay=2, // Relayed through 1 intermediary
               )
               let relay_addr = relay_conns[0].remote_addr
               ignore(send_message(server, relay_addr, relayed_hello))
@@ -306,16 +306,16 @@ async fn handle_reconnects(
                   // This peer has active connections
                   let relay_addr = active_conns[0].remote_addr
 
-                  // Create a relayed hello message
+                  // Create a relayed hello message (relay=2 because going through 1 intermediary)
                   let relayed_hello = Message::new(
                     kind="hello",
                     from=node_id,
                     addr=local_addr,
+                    relay=2,
                     target=Some(peer_addr),
                     version=Some(VERSION),
                     public_key=our_public_key,
                     secret_hash=our_secret_hash,
-                    relay=2,
                   )
 
                   // Send the relayed message to the intermediary
@@ -391,14 +391,14 @@ async fn handle_pending_messages(
                         relay_via_peer_id,
                       )
                       if !relay_conns.is_empty() {
-                        // Send message as relay through the intermediary
+                        // Send message as relay through the intermediary (relay=2 because going through 1 intermediary)
                         let relayed_msg = Message::new(
                           kind="data",
                           from=msg.from,
                           addr=msg.addr,
+                          relay=2,
                           target=Some(conn.remote_addr), // Route to target's address
                           data=msg.data,
-                          relay=2, // Relayed message
                           version=msg.version,
                         )
                         let relay_addr = relay_conns[0].remote_addr
@@ -591,10 +591,10 @@ async fn listen_udp(
     }
 
     // Always handle connection, even if peer_info is None
-    // Determine relay depth: if this connection has a relay path, it requires relay
+    // Connection relay is determined by relay_path (if discovered) or default to 1 (direct)
     let relay_depth_to_use = match get_relay_path(sender_addr) {
       Some(_) => 2 // Has relay path - this connection goes through relay
-      None => msg.relay // No relay path - use the message relay level
+      None => 1 // No relay path - direct connection
     }
     let conn = handle_new_connection(
       msg.from,
@@ -641,21 +641,20 @@ async fn listen_udp(
 
     // Don't create peer from sender address - wait for welcome message
 
-    // Handle message relaying: if this message is marked for relay and has a target,
-    // forward it to the target address
-    if msg.relay > 1 && msg.target is Some(target_addr) {
-      // This is a relayed message, forward it to the target
+    // Handle message relaying: if target is set and we're not the target, forward it
+    if msg.target is Some(target_addr) {
+      // This is a relayed message, forward it to the target with incremented relay depth
       let relay_msg = Message::new(
         id=msg.id,
         kind=msg.kind,
         from=msg.from,
         addr=msg.addr,
+        relay=msg.relay + 1,
         version=msg.version,
         peers=msg.peers,
         payload=msg.payload,
         target=msg.target,
         data=msg.data,
-        relay=msg.relay - 1, // Decrement relay counter
         public_key=msg.public_key,
         secret_hash=msg.secret_hash,
         encrypted=msg.encrypted,
@@ -663,7 +662,7 @@ async fn listen_udp(
       let relay_success = send_message(server, target_addr, relay_msg)
       if relay_success {
         println(
-          "Relayed \{msg.kind} from \{msg.from} to \{target_addr} (relay depth: \{msg.relay})",
+          "Relayed \{msg.kind} from \{msg.from} to \{target_addr} (relay hop \{relay_msg.relay})",
         )
       } else {
         println(
@@ -885,7 +884,6 @@ async fn listen_udp(
                     public_key=our_public_key,
                     secret_hash=our_secret_hash,
                     target=Some(peer_addr),
-                    relay=2, // Send via relay, not directly
                   )
                   // Send the relayed hello through the peer that advertised it
                   let relay_addr = sender_addr
@@ -944,12 +942,14 @@ async fn listen_udp(
           kind="punch",
           from=id,
           addr=local_addr,
+          relay=2,
           target=Some(sender_addr),
         )
         let punch_to_sender = Message::new(
           kind="punch",
           from=id,
           addr=local_addr,
+          relay=2,
           target=Some(target),
         )
         ignore(send_message(server, target, punch_to_target))
@@ -974,8 +974,9 @@ async fn listen_udp(
           kind="data",
           from=msg.from,
           addr=msg.addr,
+          relay=2,
           data=Some(data),
-          relay=msg.relay + 1, // Increment relay depth as it passes through
+          target=Some(target),
         )
         ignore(send_message(server, target, forward))
       }
@@ -1010,15 +1011,16 @@ async fn listen_udp(
               kind="punch_request",
               from=id,
               addr=local_addr,
+              relay=2,
               target=Some(target),
             )
             let relay = Message::new(
               kind="relay",
               from=msg.from,
               addr=msg.addr,
+              relay=2,
               target=Some(target),
               data=Some(data),
-              relay=2, // Message will be relayed through one peer
             )
             ignore(send_message(server, relay_conn.remote_addr, request))
             ignore(send_message(server, relay_conn.remote_addr, relay))

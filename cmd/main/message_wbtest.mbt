@@ -6,8 +6,8 @@ test "message roundtrip encoding/decoding" {
     kind="hello",
     from="node-a",
     addr="127.0.0.1:8000",
-    version=Some("1.0"),
     relay=1,
+    version=Some("1.0"),
     encrypted=false,
   )
 
@@ -22,8 +22,8 @@ test "message roundtrip encoding/decoding" {
   assert_eq(decoded.kind, original.kind)
   assert_eq(decoded.from, original.from)
   assert_eq(decoded.addr, original.addr)
-  assert_eq(decoded.version, original.version)
   assert_eq(decoded.relay, original.relay)
+  assert_eq(decoded.version, original.version)
   assert_eq(decoded.encrypted, original.encrypted)
 }
 
@@ -35,8 +35,8 @@ test "message with optional fields subset 1" {
     kind="data",
     from="node-a",
     addr="127.0.0.1:8000",
-    version=Some("1.0"),
     relay=2,
+    version=Some("1.0"),
     encrypted=true,
   )
 
@@ -51,8 +51,8 @@ test "message with optional fields subset 1" {
   assert_eq(decoded.kind, original.kind)
   assert_eq(decoded.from, original.from)
   assert_eq(decoded.addr, original.addr)
-  assert_eq(decoded.version, original.version)
   assert_eq(decoded.relay, original.relay)
+  assert_eq(decoded.version, original.version)
   assert_eq(decoded.encrypted, original.encrypted)
 }
 
@@ -68,6 +68,7 @@ test "message with peers" {
     kind="data",
     from="node-a",
     addr="127.0.0.1:8000",
+    relay=1,
     peers=Some(peers_list),
   )
 
@@ -91,6 +92,7 @@ test "message with peers" {
 ///|
 test "message with short array (pre-optional fields)" {
   // Simulate a message encoded with only the required fields (6 elements)
+  // Structure: [id, kind, from, addr, relay, encrypted]
   let short_array : Array[@msgpack.Value] = [
     @msgpack.string("msg-id"),
     @msgpack.string("hello"),

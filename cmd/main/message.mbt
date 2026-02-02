@@ -4,12 +4,12 @@ struct Message {
   kind : String
   from : String
   addr : String
+  relay : Int // Relay depth: 1=direct, 2=relayed once, 3+=relayed multiple times
   version : String?
   peers : Array[NetworkAddress]?
   payload : String?
-  target : String?
+  target : String? // If set, relay to this address; if unset, process locally
   data : String?
-  relay : Int // 1 = direct, 2+ = relayed through N-1 peers
   public_key : String? // X25519 public key for E2E encryption (sent in hello/welcome)
   secret_hash : String? // Hash of network secret for authentication
   encrypted : Bool // Whether the data field is encrypted
@@ -21,12 +21,12 @@ fn Message::new(
   kind~ : String,
   from~ : String,
   addr~ : String,
+  relay? : Int = 1,
   version? : String? = None,
   peers? : Array[NetworkAddress]? = None,
   payload? : String? = None,
   target? : String? = None,
   data? : String? = None,
-  relay? : Int = 1,
   public_key? : String? = None,
   secret_hash? : String? = None,
   encrypted? : Bool = false,
@@ -40,12 +40,12 @@ fn Message::new(
     kind,
     from,
     addr,
+    relay,
     version,
     peers,
     payload,
     target,
     data,
-    relay,
     public_key,
     secret_hash,
     encrypted,
@@ -110,7 +110,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         fail("Message array too short: expected at least 6 elements")
       }
 
-      // Extract required fields (positions 0-3)
+      // Extract required fields (positions 0-4)
       let id = match arr[0] {
         String(v) => v
         _ => fail("Invalid or missing id at position 0")
@@ -128,7 +128,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         _ => fail("Invalid or missing addr at position 3")
       }
 
-      // Extract relay (position 4, default 1)
+      // Extract relay (position 4, default 1 for direct connections)
       let relay = match arr[4] {
         Int(v) => v
         Nil => 1
@@ -221,12 +221,12 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         kind,
         from,
         addr,
+        relay,
         version,
         peers,
         payload,
         target,
         data,
-        relay,
         public_key,
         secret_hash,
         encrypted,
