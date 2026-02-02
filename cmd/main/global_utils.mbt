@@ -129,9 +129,9 @@ pub fn set_relay_path(
 ) -> Unit {
   let paths = global_relay_paths.val
   paths[discovered_address] = (peer_id, relay_via_peer_id)
-  println(
-    "DEBUG: Set relay path - reach \{peer_id} at \{discovered_address} via relay through \{relay_via_peer_id}",
-  )
+  // println(
+  //   "DEBUG: Set relay path - reach \{peer_id} at \{discovered_address} via relay through \{relay_via_peer_id}",
+  // )
 }
 
 ///|

@@ -755,14 +755,14 @@ async fn listen_udp(
                 secret_hash=Some(our_secret_hash),
               )
               ignore(send_message(server, sender_addr, reply))
-              let addr_list = if welcome_peer_addresses.is_empty() {
-                "none"
-              } else {
-                welcome_peer_addresses.map(fn(na) { na.address }).join(", ")
-              }
-              println(
-                "Accepted peer \{msg.from} at \{sender_addr} - sent welcome with \{welcome_peer_addresses.length()} addresses: [\{addr_list}]",
-              )
+              // let addr_list = if welcome_peer_addresses.is_empty() {
+              //   "none"
+              // } else {
+              //   welcome_peer_addresses.map(fn(na) { na.address }).join(", ")
+              // }
+              // println(
+              //   "Accepted peer \{msg.from} at \{sender_addr} - sent welcome with \{welcome_peer_addresses.length()} addresses: [\{addr_list}]",
+              // )
             }
           }
           None => {
@@ -831,8 +831,6 @@ async fn listen_udp(
               // )
             }
           }
-        } else {
-          println("Skipping re-broadcast of hello from \{msg.from} (debounced)")
         }
       }
       { kind: "hello", .. } => {
