@@ -93,8 +93,15 @@ let global_learned_addresses : Ref[Map[String, Array[String]]] = Ref::new({})
 pub fn learn_peer_address(peer_id : String, address : String) -> Unit {
   let learned = global_learned_addresses.val
   match learned.get(peer_id) {
-    Some(addrs) => if !addrs.contains(address) { addrs.push(address) }
-    None => learned[peer_id] = [address]
+    Some(addrs) =>
+      if !addrs.contains(address) {
+        addrs.push(address)
+        println("DEBUG: Learned new address for peer \{peer_id}: \{address}")
+      }
+    None => {
+      learned[peer_id] = [address]
+      println("DEBUG: Learned first address for peer \{peer_id}: \{address}")
+    }
   }
 }
 

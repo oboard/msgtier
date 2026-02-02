@@ -642,6 +642,9 @@ async fn listen_udp(
                     welcome_peer_addresses.push(NetworkAddress::{
                       address: learned_addr,
                     })
+                    println(
+                      "DEBUG: Adding learned address for peer \{peer.id}: \{learned_addr}",
+                    )
                   }
                 }
               }
@@ -663,6 +666,9 @@ async fn listen_udp(
                       welcome_peer_addresses.push(NetworkAddress::{
                         address: conn.remote_addr,
                       })
+                      println(
+                        "DEBUG: Adding connection address for peer \{peer.id}: \{conn.remote_addr}",
+                      )
                     }
                   }
                 }
@@ -681,6 +687,7 @@ async fn listen_udp(
                   welcome_peer_addresses.push(NetworkAddress::{
                     address: peer_addr,
                   })
+                  println("DEBUG: Adding configured peer: \{peer_addr}")
                 }
               }
               let reply = Message::new(
@@ -692,8 +699,13 @@ async fn listen_udp(
                 secret_hash=Some(our_secret_hash),
               )
               ignore(send_message(server, sender_addr, reply))
+              let addr_list = if welcome_peer_addresses.is_empty() {
+                "none"
+              } else {
+                welcome_peer_addresses.map(fn(na) { na.address }).join(", ")
+              }
               println(
-                "Accepted peer \{msg.from} - sent welcome with \{welcome_peer_addresses.length()} addresses",
+                "Accepted peer \{msg.from} at \{sender_addr} - sent welcome with \{welcome_peer_addresses.length()} addresses: [\{addr_list}]",
               )
             }
           }
