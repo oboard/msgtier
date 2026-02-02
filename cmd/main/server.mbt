@@ -318,11 +318,9 @@ async fn handle_reconnects(
             }
           }
           None => {
-            // No relay path (configured peer) - try direct connection first
+            // No relay path (gured peer) - try direct connection first
             let success = send_message(server, peer_addr, hello_msg)
-            if success {
-              println("Discovered peer at \{peer_addr}")
-            } else {
+            if !success {
               // Direct connection failed (UDP send failed) - try relaying through intermediaries
               println(
                 "Direct connection failed to \{peer_addr}, attempting relay fallback",
