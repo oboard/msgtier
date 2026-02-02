@@ -245,10 +245,13 @@ async fn handle_reconnects(
     // This floods the network so that all peers learn about us through multiple paths
     let known_peers = get_all_known_peers()
     for peer_addr in known_peers {
-      // Send hello to each peer - broadcast with visited path tracking
-      // The visited array prevents loops as peers forward this hello
-      send_message(server, peer_addr, hello_msg) |> ignore
-      println("Broadcasting hello to known peer at \{peer_addr}")
+      // Skip 0.0.0.0 addresses (bind-all, not connectable)
+      if !peer_addr.has_prefix("0.0.0.0:") {
+        // Send hello to each peer - broadcast with visited path tracking
+        // The visited array prevents loops as peers forward this hello
+        send_message(server, peer_addr, hello_msg) |> ignore
+        println("Broadcasting hello to known peer at \{peer_addr}")
+      }
     }
 
     // Also broadcast through all active direct connections (relay to reach peers through them)
@@ -656,7 +659,10 @@ async fn listen_udp(
         // Add all advertised peer addresses to our discovery list
         if advertised_peers is Some(peer_addrs) {
           for peer_addr in peer_addrs {
-            add_known_peer(peer_addr.address)
+            // Skip 0.0.0.0 addresses (bind-all, not connectable)
+            if !peer_addr.address.has_prefix("0.0.0.0:") {
+              add_known_peer(peer_addr.address)
+            }
           }
         }
         // Validate secret before responding
@@ -810,7 +816,8 @@ async fn listen_udp(
         let known_peers = get_all_known_peers()
         for peer_addr in known_peers {
           // Don't send back to the peer we just received it from
-          if peer_addr != sender_addr {
+          // Also skip 0.0.0.0 addresses (bind-all, not connectable)
+          if peer_addr != sender_addr && !peer_addr.has_prefix("0.0.0.0:") {
             ignore(send_message(server, peer_addr, msg))
             println(
               "Re-broadcasting hello from \{msg.from} to known peer at \{peer_addr}",
