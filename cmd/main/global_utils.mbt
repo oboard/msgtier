@@ -82,6 +82,30 @@ pub fn get_all_known_peers() -> Array[String] {
 }
 
 ///|
+/// Global mapping of peer_id -> last time we received/processed hello from them
+/// Used to debounce re-broadcasting of hello messages
+let global_hello_times : Ref[Map[String, UInt64]] = Ref::new({})
+
+///|
+/// Check if we should re-broadcast hello for this peer (debounce check)
+/// Only re-broadcast once per 30 second period
+pub fn should_rebroadcast_hello(peer_id : String) -> Bool {
+  let times = global_hello_times.val
+  let now = @env.now()
+  match times.get(peer_id) {
+    Some(last_time) => now - last_time > 30000UL // 30 seconds
+    None => true // Never seen this peer before, always process
+  }
+}
+
+///|
+/// Record that we processed a hello from this peer
+pub fn record_hello_time(peer_id : String) -> Unit {
+  let times = global_hello_times.val
+  times[peer_id] = @env.now()
+}
+
+///|
 /// Global mapping of peer_id -> set of learned addresses for that peer
 /// This implements the gossip protocol for address discovery:
 /// - When a peer connects from address X claiming to be peer_id Y, we learn "Y can be reached at X"

@@ -813,16 +813,22 @@ async fn listen_udp(
         // Re-broadcast hello to all other known peers so they also learn about this peer
         // This ensures peer discovery propagates through the network even for peers
         // we only know via relay paths
-        let known_peers = get_all_known_peers()
-        for peer_addr in known_peers {
-          // Don't send back to the peer we just received it from
-          // Also skip 0.0.0.0 addresses (bind-all, not connectable)
-          if peer_addr != sender_addr && !peer_addr.has_prefix("0.0.0.0:") {
-            ignore(send_message(server, peer_addr, msg))
-            println(
-              "Re-broadcasting hello from \{msg.from} to known peer at \{peer_addr}",
-            )
+        // Debounce: only re-broadcast once per peer per 30 seconds
+        if should_rebroadcast_hello(msg.from) {
+          record_hello_time(msg.from)
+          let known_peers = get_all_known_peers()
+          for peer_addr in known_peers {
+            // Don't send back to the peer we just received it from
+            // Also skip 0.0.0.0 addresses (bind-all, not connectable)
+            if peer_addr != sender_addr && !peer_addr.has_prefix("0.0.0.0:") {
+              ignore(send_message(server, peer_addr, msg))
+              println(
+                "Re-broadcasting hello from \{msg.from} to known peer at \{peer_addr}",
+              )
+            }
           }
+        } else {
+          println("Skipping re-broadcast of hello from \{msg.from} (debounced)")
         }
       }
       { kind: "hello", .. } => {
