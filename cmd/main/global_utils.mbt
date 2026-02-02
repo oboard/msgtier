@@ -89,6 +89,35 @@ pub fn get_all_known_peers() -> Array[String] {
 let global_learned_addresses : Ref[Map[String, Array[String]]] = Ref::new({})
 
 ///|
+/// Global mapping of discovered_address -> (peer_id, relay_via_peer_id)
+/// Tracks the relay path for discovered peers:
+/// - discovered_address: the address we learned about (e.g., "192.168.1.5:6668")
+/// - peer_id: the peer at that address
+/// - relay_via_peer_id: which peer told us about this address (relay through this peer)
+let global_relay_paths : Ref[Map[String, (String, String)]] = Ref::new({})
+
+///|
+/// Record a relay path: when peer B advertises peer C's address, relay through B to reach C
+pub fn set_relay_path(
+  discovered_address : String,
+  peer_id : String,
+  relay_via_peer_id : String,
+) -> Unit {
+  let paths = global_relay_paths.val
+  paths[discovered_address] = (peer_id, relay_via_peer_id)
+  println(
+    "DEBUG: Set relay path - reach \{peer_id} at \{discovered_address} via relay through \{relay_via_peer_id}",
+  )
+}
+
+///|
+/// Get the relay path for a discovered address
+pub fn get_relay_path(address : String) -> (String, String)? {
+  let paths = global_relay_paths.val
+  paths.get(address)
+}
+
+///|
 /// Learn a new address for a peer (called when we receive a message from peer X at address Y)
 pub fn learn_peer_address(peer_id : String, address : String) -> Unit {
   let learned = global_learned_addresses.val
