@@ -811,38 +811,45 @@ async fn listen_udp(
             // Track this peer address for active connection attempts
             add_known_peer(peer_addr)
 
-            // Set relay path: this peer's address is reachable via relay through msg.from
-            // We don't know the peer_id yet, but we can infer it from the response
-            // For now, mark that this address should be reached via relay through msg.from
-            set_relay_path(peer_addr, "unknown", msg.from)
+            // Check if we already have a relay path for this address
+            // If so, we've already sent a hello to it before
+            match get_relay_path(peer_addr) {
+              Some(_) =>
+                // Already greeted this address, skip to avoid duplicate hellos
+                ()
+              None => {
+                // First time seeing this address - set relay path and send hello
+                set_relay_path(peer_addr, "unknown", msg.from)
 
-            // Check if we already have ANY connection to this address (active or not)
-            let already_connected = all_conns.any(fn(conn) {
-              conn.remote_addr == peer_addr
-            })
-            if !already_connected {
-              // Send hello to discover this peer via relay through msg.from
-              // The hello response will bring us the actual peer ID
-              let our_secret_hash = match global_config.val {
-                Some(config) => Some(hash_secret(config.secret))
-                None => None
+                // Check if we already have ANY connection to this address (active or not)
+                let already_connected = all_conns.any(fn(conn) {
+                  conn.remote_addr == peer_addr
+                })
+                if !already_connected {
+                  // Send hello to discover this peer via relay through msg.from
+                  // The hello response will bring us the actual peer ID
+                  let our_secret_hash = match global_config.val {
+                    Some(config) => Some(hash_secret(config.secret))
+                    None => None
+                  }
+                  let hello_msg = Message::new(
+                    kind="hello",
+                    from=id,
+                    addr=local_addr,
+                    version=Some(VERSION),
+                    public_key=our_public_key,
+                    secret_hash=our_secret_hash,
+                    target=Some(peer_addr),
+                    relay=2, // Send via relay, not directly
+                  )
+                  // Send the relayed hello through the peer that advertised it
+                  let relay_addr = sender_addr
+                  ignore(send_message(server, relay_addr, hello_msg))
+                  println(
+                    "Greeting discovered peer at \{peer_addr} via relay through \{msg.from}",
+                  )
+                }
               }
-              let hello_msg = Message::new(
-                kind="hello",
-                from=id,
-                addr=local_addr,
-                version=Some(VERSION),
-                public_key=our_public_key,
-                secret_hash=our_secret_hash,
-                target=Some(peer_addr),
-                relay=2, // Send via relay, not directly
-              )
-              // Send the relayed hello through the peer that advertised it
-              let relay_addr = sender_addr
-              ignore(send_message(server, relay_addr, hello_msg))
-              println(
-                "Greeting discovered peer at \{peer_addr} via relay through \{msg.from}",
-              )
             }
           }
         }
