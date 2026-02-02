@@ -379,10 +379,49 @@ async fn handle_pending_messages(
           Some(_) =>
             // Get best connection for target peer
             match get_best_connection_for_peer(target) {
-              Some(conn) => {
-                ignore(send_message(server, conn.remote_addr, msg))
-                println("Sent message to \{target} via \{conn.remote_addr}")
-              }
+              Some(conn) =>
+                // Check if this connection requires relay (relay > 1)
+                if conn.relay > 1 {
+                  // This peer is only reachable via relay
+                  // Find the relay intermediary from relay paths
+                  match get_relay_path(conn.remote_addr) {
+                    Some((_, relay_via_peer_id)) => {
+                      // Find a direct connection to the relay peer
+                      let relay_conns = get_global_peer_manager().get_active_peer_connections(
+                        relay_via_peer_id,
+                      )
+                      if !relay_conns.is_empty() {
+                        // Send message as relay through the intermediary
+                        let relayed_msg = Message::new(
+                          kind="data",
+                          from=msg.from,
+                          addr=msg.addr,
+                          target=Some(conn.remote_addr), // Route to target's address
+                          data=msg.data,
+                          relay=2, // Relayed message
+                          version=msg.version,
+                        )
+                        let relay_addr = relay_conns[0].remote_addr
+                        ignore(send_message(server, relay_addr, relayed_msg))
+                        println(
+                          "Sent relayed data to \{target} via \{relay_via_peer_id} at \{relay_addr}",
+                        )
+                      } else {
+                        println(
+                          "No active connection to relay peer \{relay_via_peer_id} for target \{target}",
+                        )
+                      }
+                    }
+                    None =>
+                      println(
+                        "No relay path found for relay connection to \{target}",
+                      )
+                  }
+                } else {
+                  // Direct connection, send normally
+                  ignore(send_message(server, conn.remote_addr, msg))
+                  println("Sent message to \{target} via \{conn.remote_addr}")
+                }
               None => println("No active connection to target \{target}")
             }
           None => println("Target peer \{target} not found")
@@ -557,6 +596,7 @@ async fn listen_udp(
       local_addr,
       sender_addr,
       peer_info?,
+      relay_depth=msg.relay,
     )
 
     // Store peer's public key if provided and compute shared secret
