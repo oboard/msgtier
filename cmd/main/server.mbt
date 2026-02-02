@@ -161,6 +161,40 @@ async fn send_message(
 }
 
 ///|
+// Try sending to both primary and fallback addresses (UDP fire-and-forget)
+// We send to both because UDP doesn't guarantee delivery anyway
+async fn send_message_with_fallback(
+  server : @socket.UdpServer,
+  primary_addr : String,
+  fallback_addr : String,
+  msg : Message,
+) -> Unit {
+  // Try primary address - fire and forget
+  if !primary_addr.is_empty() {
+    try {
+      let addr = @socket.Addr::parse(primary_addr)
+      let msgpack_bytes = msg.to_msgpack()
+      server.sendto(msgpack_bytes, addr)
+      println("Sent to primary \{primary_addr}")
+    } catch {
+      _ => println("Failed to send to primary \{primary_addr}")
+    }
+  }
+
+  // Try fallback address - fire and forget
+  if !fallback_addr.is_empty() && fallback_addr != primary_addr {
+    try {
+      let addr = @socket.Addr::parse(fallback_addr)
+      let msgpack_bytes = msg.to_msgpack()
+      server.sendto(msgpack_bytes, addr)
+      println("Sent to fallback \{fallback_addr}")
+    } catch {
+      _ => println("Failed to send to fallback \{fallback_addr}")
+    }
+  }
+}
+
+///|
 async fn handle_reconnects(
   server : @socket.UdpServer,
   local_addr : String,
@@ -207,162 +241,29 @@ async fn handle_reconnects(
     // Sleep for 5 seconds between retry checks
     @async.sleep(5000)
 
-    // Retry configured peers that have no active connections
-    match global_config.val {
-      Some(config) =>
-        for peer_url in config.peers {
-          let peer_host = peer_url.get_host()
-          // Check if any connection to this address is active
-          let has_active = get_global_peer_manager().has_active_connection_to_addr(
-            peer_host,
-          )
-          if !has_active {
-            let success = send_message(server, peer_host, hello_msg)
-            if success {
-              println("Retry hello sent to config peer at \{peer_host}")
-            }
-          }
-        }
-      None => ()
-    }
-
-    // Retry known peers that have lost their connections
-    let all_peers = get_global_peer_manager().get_all_peers()
-    for peer in all_peers {
-      let peer_id = peer.id
-
-      // Check if peer has active connections
-      let active_conns = get_global_peer_manager().get_active_peer_connections(
-        peer_id,
-      )
-      if active_conns.is_empty() {
-        // No active connections, check if we should retry
-        if get_global_reconnect_manager().should_retry(peer_id) {
-          println("Attempting to reconnect to \{peer_id}")
-
-          // Get all connection addresses for this peer and send hello to each
-          let peer_conns = get_global_peer_manager().get_peer_connections(
-            peer_id,
-          )
-          if peer_conns.is_empty() {
-            // No known addresses for this peer, skip
-            println(
-              "No known addresses for peer \{peer_id}, skipping reconnection",
-            )
-          } else {
-            // Send hello to all known addresses for this peer
-            let mut sent_any = false
-            for conn in peer_conns {
-              let peer_addr = conn.remote_addr
-              // Skip 0.0.0.0 addresses (bind-all, not connectable)
-              if !peer_addr.has_prefix("0.0.0.0:") {
-                let success = send_message(server, peer_addr, hello_msg)
-                if success {
-                  println(
-                    "Reconnection hello sent to \{peer_id} at \{peer_addr}",
-                  )
-                  sent_any = true
-                } else {
-                  println("Failed to send reconnection hello to \{peer_addr}")
-                }
-              }
-            }
-            if sent_any {
-              // Reset retry counter on successful send
-              update_global_reconnect_manager(fn(manager) {
-                manager.reset_retry(peer_id)
-              })
-              println("Reconnection attempt succeeded for \{peer_id}")
-            } else {
-              // Record failed retry attempt
-              update_global_reconnect_manager(fn(manager) {
-                manager.record_retry(peer_id)
-              })
-              let (attempts, next_delay) = get_global_reconnect_manager().get_retry_info(
-                peer_id,
-              )
-              println(
-                "Reconnection failed to \{peer_id}, attempt \{attempts}, next retry in \{next_delay}ms",
-              )
-            }
-          }
-        }
-      }
-    }
-
-    // Also actively try to connect to ALL known peer addresses (configured + discovered)
+    // Broadcast hello to all known peers (both configured and discovered)
+    // This floods the network so that all peers learn about us through multiple paths
     let known_peers = get_all_known_peers()
     for peer_addr in known_peers {
-      // Check if we already have an active connection to this address
-      let has_active = get_global_peer_manager().has_active_connection_to_addr(
-        peer_addr,
+      // Send hello to each peer - broadcast with visited path tracking
+      // The visited array prevents loops as peers forward this hello
+      send_message(server, peer_addr, hello_msg) |> ignore
+      println("Broadcasting hello to known peer at \{peer_addr}")
+    }
+
+    // Also broadcast through all active direct connections (relay to reach peers through them)
+    let all_peers = get_global_peer_manager().get_all_peers()
+    for peer in all_peers {
+      let active_conns = get_global_peer_manager().get_active_peer_connections(
+        peer.id,
       )
-      if !has_active {
-        // Check if this peer has a relay path (discovered through gossip)
-        match get_relay_path(peer_addr) {
-          Some((_, relay_via_peer_id)) => {
-            // This peer was discovered via relay - find active connection to the relay peer
-            let relay_conns = get_global_peer_manager().get_active_peer_connections(
-              relay_via_peer_id,
-            )
-            if !relay_conns.is_empty() {
-              // Send hello as direct message to the relay peer (NOT through target)
-              // The relay peer will receive it and respond with welcome
-              let relayed_hello = Message::new(
-                kind="hello",
-                from=node_id,
-                addr=local_addr,
-                relay=2,
-                version=Some(VERSION),
-                public_key=our_public_key,
-                secret_hash=our_secret_hash,
-              )
-              let relay_addr = relay_conns[0].remote_addr
-              ignore(send_message(server, relay_addr, relayed_hello))
-              println(
-                "Sending hello to relay peer \{relay_via_peer_id} at \{relay_addr}",
-              )
-            }
-          }
-          None => {
-            // No relay path (gured peer) - try direct connection first
-            let success = send_message(server, peer_addr, hello_msg)
-            if !success {
-              // Direct connection failed (UDP send failed) - try relaying through intermediaries
-              println(
-                "Direct connection failed to \{peer_addr}, attempting relay fallback",
-              )
-              let all_peers = get_global_peer_manager().get_all_peers()
-
-              // Try to relay through all active peers (can't know which relay will work)
-              for relay_peer in all_peers {
-                let active_conns = get_global_peer_manager().get_active_peer_connections(
-                  relay_peer.id,
-                )
-                if !active_conns.is_empty() {
-                  // This peer has active connections
-                  let relay_addr = active_conns[0].remote_addr
-
-                  // Create a hello message (send directly, no target field for hello)
-                  let relayed_hello = Message::new(
-                    kind="hello",
-                    from=node_id,
-                    addr=local_addr,
-                    relay=2,
-                    version=Some(VERSION),
-                    public_key=our_public_key,
-                    secret_hash=our_secret_hash,
-                  )
-
-                  // Send the hello directly to the relay peer
-                  ignore(send_message(server, relay_addr, relayed_hello))
-                  println(
-                    "Attempted hello to relay peer \{relay_peer.id} at \{relay_addr}",
-                  )
-                }
-              }
-            }
-          }
+      for conn in active_conns {
+        if conn.state == ConnectionState::Connected {
+          // Send hello through this connection so they can relay it further
+          send_message(server, conn.remote_addr, hello_msg) |> ignore
+          println(
+            "Relaying hello through connected peer \{peer.id} at \{conn.remote_addr}",
+          )
         }
       }
     }
@@ -981,11 +882,13 @@ async fn listen_udp(
                     public_key=our_public_key,
                     secret_hash=our_secret_hash,
                   )
-                  // Send hello directly to the peer that advertised the new peer
-                  let relay_addr = sender_addr
-                  ignore(send_message(server, relay_addr, hello_msg))
+                  // Send to both direct and relay addresses (fire and forget)
+                  // Since UDP has no delivery guarantee, sending to both increases chances of reaching the peer
+                  send_message_with_fallback(
+                    server, peer_addr, sender_addr, hello_msg,
+                  )
                   println(
-                    "Greeting discovered peer via relay through \{msg.from}",
+                    "Sent hello to discovered peer at \{peer_addr} (fallback: \{sender_addr})",
                   )
                 }
               }
