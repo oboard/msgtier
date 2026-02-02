@@ -14,7 +14,7 @@ fn format_bandwidth(mbps : Double) -> String {
   if mbps == 0.0 {
     "0 Mbps"
   } else if mbps < 0.0001 {
-    "< 0.0001 Mbps"
+    "0.0001 Mbps"
   } else {
     // Round to 4 decimal places
     let multiplier = 10000.0
