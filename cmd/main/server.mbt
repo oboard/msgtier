@@ -591,12 +591,17 @@ async fn listen_udp(
     }
 
     // Always handle connection, even if peer_info is None
+    // Determine relay depth: if this connection has a relay path, it requires relay
+    let relay_depth_to_use = match get_relay_path(sender_addr) {
+      Some(_) => 2 // Has relay path - this connection goes through relay
+      None => msg.relay // No relay path - use the message relay level
+    }
     let conn = handle_new_connection(
       msg.from,
       local_addr,
       sender_addr,
       peer_info?,
-      relay_depth=msg.relay,
+      relay_depth=relay_depth_to_use,
     )
 
     // Store peer's public key if provided and compute shared secret
