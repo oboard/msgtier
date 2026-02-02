@@ -97,10 +97,18 @@ pub fn learn_peer_address(peer_id : String, address : String) -> Unit {
       if !addrs.contains(address) {
         addrs.push(address)
         println("DEBUG: Learned new address for peer \{peer_id}: \{address}")
+        // Also update the peer's addresses field in peer manager
+        update_global_peer_manager(fn(manager) {
+          manager.add_peer_address(peer_id, address)
+        })
       }
     None => {
       learned[peer_id] = [address]
       println("DEBUG: Learned first address for peer \{peer_id}: \{address}")
+      // Also update the peer's addresses field in peer manager
+      update_global_peer_manager(fn(manager) {
+        manager.add_peer_address(peer_id, address)
+      })
     }
   }
 }

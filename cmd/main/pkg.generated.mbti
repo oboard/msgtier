@@ -66,9 +66,6 @@ pub impl Show for ConnectionState
 pub impl ToJson for ConnectionState
 pub impl @json.FromJson for ConnectionState
 
-type LearnedAddressInfo
-pub impl ToJson for LearnedAddressInfo
-
 type Message
 pub impl Show for Message
 pub impl ToJson for Message

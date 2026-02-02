@@ -6,6 +6,7 @@ struct PeerNode {
   version : String
   metadata : Map[String, String]?
   public_key : String? // Serialized RSA public key for E2E encryption
+  addresses : Array[String] // All known addresses for this peer (from gossip discovery)
 } derive(Show, ToJson, FromJson)
 
 ///|
@@ -30,8 +31,9 @@ fn PeerNode::new(
   id~ : String,
   version~ : String,
   public_key? : String? = None,
+  addresses? : Array[String] = [],
 ) -> PeerNode {
-  { id, version, metadata: None, public_key }
+  { id, version, metadata: None, public_key, addresses }
 }
 
 // ///|

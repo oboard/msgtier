@@ -110,12 +110,6 @@ struct PeerConnectionInfo {
 } derive(ToJson)
 
 ///|
-struct LearnedAddressInfo {
-  peer_id : String
-  addresses : Array[String]
-} derive(ToJson)
-
-///|
 struct StatusInfo {
   status : String
   peers : Array[PeerNode]
@@ -124,7 +118,6 @@ struct StatusInfo {
   node_id : String
   listeners : Array[String]
   known_peers : Array[String]
-  learned_addresses : Array[LearnedAddressInfo]
 } derive(ToJson)
 
 ///|
@@ -274,18 +267,6 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
 
   // Build known peers list (from active discovery)
   let known_peers = get_all_known_peers()
-
-  // Build learned addresses info (gossip protocol state)
-  let learned_addresses : Array[LearnedAddressInfo] = []
-  for peer in all_peers {
-    let peer_learned = get_learned_addresses(peer.id)
-    if !peer_learned.is_empty() {
-      learned_addresses.push(LearnedAddressInfo::{
-        peer_id: peer.id,
-        addresses: peer_learned,
-      })
-    }
-  }
   let status_info = StatusInfo::{
     status: "ok",
     peers: all_peers,
@@ -300,7 +281,6 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
       None => []
     },
     known_peers,
-    learned_addresses,
   }
   conn
   ..send_response(200, "OK", extra_headers={

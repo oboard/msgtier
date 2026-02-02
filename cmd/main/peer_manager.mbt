@@ -36,6 +36,29 @@ fn PeerManager::update_peer_public_key(
 }
 
 ///|
+fn PeerManager::add_peer_address(
+  self : PeerManager,
+  peer_id : String,
+  address : String,
+) -> PeerManager {
+  match self.peers.get(peer_id) {
+    Some(peer) =>
+      // Only add if not already present
+      if !peer.addresses.contains(address) {
+        let updated_addrs = peer.addresses
+        updated_addrs.push(address)
+        let updated_peer = { ..peer, addresses: updated_addrs }
+        let peers = self.peers
+        peers[peer_id] = updated_peer
+        { ..self, peers, }
+      } else {
+        self
+      }
+    None => self
+  }
+}
+
+///|
 fn PeerManager::get_peer(self : PeerManager, peer_id : String) -> PeerNode? {
   self.peers.get(peer_id)
 }
