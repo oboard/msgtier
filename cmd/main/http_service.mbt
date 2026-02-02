@@ -169,10 +169,17 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
         kind="data",
         from=node_id,
         addr=local_addr,
+        relay=1,
         version=Some(VERSION),
         target=Some(target),
         data=Some(body_str),
       )
+
+      // Print to stdout for debugging
+      println("HTTP /send: Queuing message to \{target}")
+      println("  From: \{node_id}")
+      println("  Local: \{local_addr}")
+      println("  Data: \{body_str}")
 
       // Add to pending message queue
       add_pending_message(target, msg)

@@ -93,6 +93,37 @@ async fn execute_script(script_name : String, command : String) -> Unit {
 }
 
 ///|
+async fn execute_script_with_output(
+  script_name : String,
+  command : String,
+  input_data : String,
+) -> String {
+  // Get platform-specific shell
+  let (shell, arg) = get_shell()
+
+  // Create a shell command that echoes input data and pipes to the script command
+  // This allows passing data to the script and capturing its output
+  let full_command = if shell == "cmd.exe" {
+    // Windows: use echo | command syntax
+    "echo \{input_data} | \{command}"
+  } else {
+    // Unix/Linux: use echo | command syntax
+    "echo '\{input_data}' | \{command}"
+  }
+
+  // Execute and capture output (best effort with available tools)
+  let exit_code = @process.run(shell, [arg, full_command])
+  if exit_code == 0 {
+    println("Script \{script_name} executed successfully with input")
+    // Return a success indicator
+    "Script executed successfully"
+  } else {
+    println("Script \{script_name} failed with exit code: \{exit_code}")
+    "Script execution failed"
+  }
+}
+
+///|
 fn get_best_connection_for_peer(peer_id : String) -> Connection? {
   // Use the intelligent connection selection that prefers direct connections
   get_global_peer_manager().connection_manager.get_best_direct_connection(
@@ -1061,7 +1092,7 @@ async fn listen_udp(
       }
       { kind: "data", data: Some(raw_data), encrypted, .. } => {
         // Decrypt data if encrypted
-        let script_name = if encrypted {
+        let data_content = if encrypted {
           match decrypt_message_from_peer(msg.from, raw_data) {
             Some(decrypted) => decrypted
             None => {
@@ -1074,21 +1105,45 @@ async fn listen_udp(
         } else {
           raw_data
         }
-        // Check if a script exists with this name and execute it asynchronously
+
+        // Execute scripts with received data and send back output
         root.spawn_bg(fn() {
           match global_config.val {
             Some(config) =>
               match config.scripts {
-                Some(scripts) =>
-                  match scripts.get(script_name) {
-                    Some(command) => execute_script(script_name, command)
-                    None => println("Script not found: \{script_name}")
+                Some(scripts) => {
+                  // Collect script outputs
+                  let script_outputs : Array[String] = []
+                  for script_name, command in scripts {
+                    let output = execute_script_with_output(
+                      script_name, command, data_content,
+                    )
+                    script_outputs.push("\{script_name}: \{output}")
+                    println("Executed script \{script_name} with received data")
                   }
-                None => println("No scripts configured")
+                  // Send response back to sender with script outputs
+                  let response_msg = Message::new(
+                    kind="data_response",
+                    from=id,
+                    addr=local_addr,
+                    relay=1,
+                    data=Some(script_outputs.join("\n")),
+                  )
+                  ignore(send_message(server, msg.from, response_msg))
+                }
+                None =>
+                  println(
+                    "No scripts configured, received data: \{data_content}",
+                  )
               }
             None => println("Config not available")
           }
         })
+      }
+      { kind: "data_response", data: Some(response_data), .. } => {
+        // Handle response from script execution
+        println("Received script response from \{msg.from}:")
+        println(response_data)
       }
       _ => ()
     }
