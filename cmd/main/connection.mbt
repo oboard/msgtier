@@ -85,16 +85,6 @@ fn Connection::is_active(self : Connection) -> Bool {
   }
 }
 
-// ///|
-// fn Connection::calculate_average_latency(self : Connection) -> Int? {
-//   if self.latency_history.is_empty() {
-//     None
-//   } else {
-//     let sum = self.latency_history.fold(init=0, fn(acc, val) { acc + val })
-//     Some(sum / self.latency_history.length())
-//   }
-// }
-
 ///|
 fn Connection::calculate_packet_loss(self : Connection) -> Int {
   if self.packets_sent == 0 {
@@ -119,99 +109,10 @@ fn Connection::calculate_bandwidth_mbps(
   }
 }
 
-// ///|
-// ///  // This function is used for connection serialization
-// fn Connection::to_msgpack(self : Connection) -> @msgpack.Value {
-//   let msg_map = {
-//     "id": @msgpack.string(self.id),
-//     "local_addr": @msgpack.string(self.local_addr),
-//     "remote_addr": @msgpack.string(self.remote_addr),
-//     "peer_id": @msgpack.string(self.peer_id),
-//     "state": @msgpack.string(self.state.to_string()),
-//     "last_seen": @msgpack.int64(self.last_seen),
-//     "quality": @msgpack.int(self.quality),
-//   }
-//   match self.metadata {
-//     Some(metadata) => {
-//       let meta_map = {}
-//       for k, v in metadata {
-//         meta_map[k] = @msgpack.string(v)
-//       }
-//       msg_map["metadata"] = @msgpack.map(meta_map)
-//     }
-//     None => msg_map["metadata"] = @msgpack.nil()
-//   }
-//   @msgpack.map(msg_map)
-// }
-
-// ///|
-// ///  // This function is used for connection deserialization
-// fn Connection::from_msgpack(value : @msgpack.Value) -> Connection raise {
-//   match value {
-//     Map(msg_map) => {
-//       let id = match msg_map["id"] {
-//         String(s) => s
-//         _ => raise @msgpack.InvalidData("missing connection id")
-//       }
-//       let local_addr = match msg_map["local_addr"] {
-//         String(s) => s
-//         _ => raise @msgpack.InvalidData("missing local_addr")
-//       }
-//       let remote_addr = match msg_map["remote_addr"] {
-//         String(s) => s
-//         _ => raise @msgpack.InvalidData("missing remote_addr")
-//       }
-//       let peer_id = match msg_map["peer_id"] {
-//         String(s) => s
-//         _ => raise @msgpack.InvalidData("missing peer_id")
-//       }
-//       let state = match msg_map["state"] {
-//         String(s) =>
-//           match s {
-//             "Init" => Init
-//             "Connecting" => Connecting
-//             "Connected" => Connected
-//             "Disconnected" => Disconnected
-//             "Failed" => Failed
-//             _ => raise @msgpack.InvalidData("invalid state")
-//           }
-//         _ => raise @msgpack.InvalidData("missing state")
-//       }
-//       let last_seen = match msg_map["last_seen"] {
-//         Int64(i) => i
-//         _ => 0L
-//       }
-//       let quality = match msg_map["quality"] {
-//         Int(i) => i
-//         _ => 0
-//       }
-//       let metadata = match msg_map["metadata"] {
-//         Map(meta_map) => {
-//           let metadata_map = {}
-//           for k, v in meta_map {
-//             match v {
-//               String(s) => metadata_map[k] = s
-//               _ => ()
-//             }
-//           }
-//           Some(metadata_map)
-//         }
-//         _ => None
-//       }
-//       Connection::{
-//         id,
-//         local_addr,
-//         remote_addr,
-//         peer_id,
-//         state,
-//         last_seen,
-//         quality,
-//         metadata,
-//       }
-//     }
-//     _ => raise @msgpack.InvalidData("invalid connection data")
-//   }
-// }
+///|
+fn Connection::update_last_ping_time(self : Connection, time : UInt64?) -> Connection {
+  { ..self, last_ping_time: time }
+}
 
 ///|
 /// Connection manager to handle multiple connections per peer
@@ -355,5 +256,129 @@ fn ConnectionManager::get_best_direct_connection(
         }),
       )
     }
+  }
+}
+
+///|
+fn ConnectionManager::update_connection_state(
+  self : ConnectionManager,
+  conn_id : String,
+  state : ConnectionState,
+) -> ConnectionManager {
+  let connections = self.connections
+  match connections.get(conn_id) {
+    Some(conn) => {
+      connections[conn_id] = conn.update_state(state)
+      { connections, peer_connections: self.peer_connections }
+    }
+    None => self
+  }
+}
+
+///|
+fn ConnectionManager::update_connection_last_seen(
+  self : ConnectionManager,
+  conn_id : String,
+  timestamp : UInt64,
+) -> ConnectionManager {
+  let connections = self.connections
+  match connections.get(conn_id) {
+    Some(conn) => {
+      connections[conn_id] = conn.update_last_seen(timestamp)
+      { connections, peer_connections: self.peer_connections }
+    }
+    None => self
+  }
+}
+
+///|
+fn ConnectionManager::update_connection_latency(
+  self : ConnectionManager,
+  conn_id : String,
+  rtt_ms : Int,
+) -> ConnectionManager {
+  let connections = self.connections
+  match connections.get(conn_id) {
+    Some(conn) => {
+      let mut history = conn.latency_history.copy()
+      history.push(rtt_ms)
+      if history.length() > 10 {
+        let start_idx = history.length() - 10
+        let new_history = []
+        for i in start_idx..<history.length() {
+          new_history.push(history[i])
+        }
+        history = new_history
+      }
+      let updated_conn = {
+        ..conn,
+        latency_ms: Some(rtt_ms),
+        latency_history: history,
+      }
+      connections[conn_id] = updated_conn
+      { connections, peer_connections: self.peer_connections }
+    }
+    None => self
+  }
+}
+
+///|
+fn ConnectionManager::update_connection_bytes(
+  self : ConnectionManager,
+  conn_id : String,
+  bytes_sent : UInt64,
+  bytes_received : UInt64,
+) -> ConnectionManager {
+  let connections = self.connections
+  match connections.get(conn_id) {
+    Some(conn) => {
+      let updated_conn = {
+        ..conn,
+        bytes_sent: conn.bytes_sent + bytes_sent,
+        bytes_received: conn.bytes_received + bytes_received,
+      }
+      connections[conn_id] = updated_conn
+      { connections, peer_connections: self.peer_connections }
+    }
+    None => self
+  }
+}
+
+///|
+fn ConnectionManager::update_connection_packet_loss(
+  self : ConnectionManager,
+  conn_id : String,
+  packets_sent : Int,
+  packets_lost : Int,
+) -> ConnectionManager {
+  let connections = self.connections
+  match connections.get(conn_id) {
+    Some(conn) => {
+      let updated_conn = {
+        ..conn,
+        packets_sent: conn.packets_sent + packets_sent,
+        packets_lost: conn.packets_lost + packets_lost,
+      }
+      connections[conn_id] = updated_conn
+      { connections, peer_connections: self.peer_connections }
+    }
+    None => self
+  }
+}
+
+///|
+fn ConnectionManager::update_connection_ping_time(
+  self : ConnectionManager,
+  conn_id : String,
+  ping_time : UInt64?,
+) -> ConnectionManager {
+  let connections = self.connections
+  match connections.get(conn_id) {
+    Some(conn) => {
+      let updated_conn = conn.update_last_ping_time(ping_time)
+      connections[conn_id] = updated_conn
+      { connections, peer_connections: self.peer_connections }
+    }
+    None => self
   }
 }

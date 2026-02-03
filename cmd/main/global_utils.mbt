@@ -172,19 +172,23 @@ pub fn get_global_peer_manager() -> PeerManager {
 }
 
 ///|
-/// Update global reconnect manager state
-pub fn update_global_reconnect_manager(
-  fn_update : (ReconnectManager) -> ReconnectManager,
+/// Global state for the connection manager
+let global_connection_manager : Ref[ConnectionManager] = Ref::new(ConnectionManager::new())
+
+///|
+/// Update global connection manager state
+pub fn update_global_connection_manager(
+  fn_update : (ConnectionManager) -> ConnectionManager,
 ) -> Unit {
-  let current = global_reconnect_manager.val
+  let current = global_connection_manager.val
   let updated = fn_update(current)
-  global_reconnect_manager.val = updated
+  global_connection_manager.val = updated
 }
 
 ///|
-/// Get current global reconnect manager
-pub fn get_global_reconnect_manager() -> ReconnectManager {
-  global_reconnect_manager.val
+/// Get current global connection manager
+pub fn get_global_connection_manager() -> ConnectionManager {
+  global_connection_manager.val
 }
 
 ///|

@@ -5,11 +5,6 @@ const VERSION = "0.1.0"
 let global_config : Ref[Config?] = Ref::new(None)
 
 ///|
-let global_reconnect_manager : Ref[ReconnectManager] = Ref::new(
-  ReconnectManager::new(),
-)
-
-///|
 async fn main {
   @async.with_task_group(fn(root) {
     let args = @env.args()[1:]
@@ -21,6 +16,11 @@ async fn main {
 
         // Store config globally for access by listeners
         global_config.val = Some(config)
+
+        // Initialize known peers from config
+        for peer_url in config.peers {
+          add_known_peer(peer_url.get_host())
+        }
 
         // Don't pre-create peers - they will be created when hello messages arrive
         for addr in config.listeners {

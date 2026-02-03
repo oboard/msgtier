@@ -61,16 +61,16 @@ pub fn get_connected_peers() -> Array[PeerNode] {
 pub fn remove_connected_peer(address : String) -> Unit {
   // Find peer by connection address and remove it
   let all_peers = get_global_peer_manager().get_all_peers()
-  let all_conns = get_global_peer_manager().get_all_connections()
+  let all_conns = get_global_connection_manager().get_all_connections()
   for peer in all_peers {
     // Check if any connection for this peer has this address
     let peer_conns = peer.get_all_connections(all_conns)
     let has_address = peer_conns.any(fn(conn) { conn.remote_addr == address })
     if has_address {
       // Remove all connections for this peer
-      let conns = get_global_peer_manager().get_peer_connections(peer.id)
+      let conns = get_global_connection_manager().get_peer_connections(peer.id)
       for conn in conns {
-        update_global_peer_manager(fn(manager) {
+        update_global_connection_manager(fn(manager) {
           manager.remove_connection(conn.id)
         })
       }
@@ -84,9 +84,9 @@ pub fn clear_connected_peers() -> Unit {
   // Clear all peers and connections
   let all_peers = get_global_peer_manager().get_all_peers()
   for peer in all_peers {
-    let conns = get_global_peer_manager().get_peer_connections(peer.id)
+    let conns = get_global_connection_manager().get_peer_connections(peer.id)
     for conn in conns {
-      update_global_peer_manager(fn(manager) {
+      update_global_connection_manager(fn(manager) {
         manager.remove_connection(conn.id)
       })
     }
@@ -240,7 +240,7 @@ async fn get_config_handler(conn : @http.ServerConnection) -> Unit {
 ///|
 async fn status_handler(conn : @http.ServerConnection) -> Unit {
   let all_peers = get_global_peer_manager().get_all_peers()
-  let all_conns = get_global_peer_manager().get_all_connections()
+  let all_conns = get_global_connection_manager().get_all_connections()
 
   // Build connection info for each peer
   let connections : Array[PeerConnectionInfo] = []
