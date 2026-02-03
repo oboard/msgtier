@@ -3,21 +3,16 @@ package "oboard/msgtier/cmd/main"
 
 import {
   "moonbitlang/core/json",
-  "oboard/msgtier/msgpack",
 }
 
 // Values
 pub fn add_connected_peer(String, String, String) -> Unit
-
-pub fn add_encrypted_pending_message(String, String, String, @msgpack.Value) -> Unit
 
 pub fn add_known_peer(String) -> Unit
 
 pub fn add_pending_message(String, Message) -> Unit
 
 pub fn clear_connected_peers() -> Unit
-
-pub fn create_encrypted_data_message(String, String, String, @msgpack.Value) -> Message?
 
 pub fn get_all_known_peers() -> Array[String]
 
@@ -28,8 +23,6 @@ pub fn get_connected_peers() -> Array[PeerNode]
 pub fn get_global_connection_manager() -> ConnectionManager
 
 pub fn get_global_peer_manager() -> PeerManager
-
-pub fn get_global_reconnect_manager() -> ReconnectManager
 
 pub fn get_pending_messages() -> Array[PendingMessage]
 
@@ -50,8 +43,6 @@ pub fn should_rebroadcast_hello(String) -> Bool
 pub fn update_global_connection_manager((ConnectionManager) -> ConnectionManager) -> Unit
 
 pub fn update_global_peer_manager((PeerManager) -> PeerManager) -> Unit
-
-pub fn update_global_reconnect_manager((ReconnectManager) -> ReconnectManager) -> Unit
 
 // Errors
 
@@ -113,12 +104,13 @@ pub impl @json.FromJson for PeerNodeWithStatus
 
 type PendingMessage
 
-type ReconnectManager
-pub impl Show for ReconnectManager
+type Route
+pub impl Show for Route
+pub impl ToJson for Route
+pub impl @json.FromJson for Route
 
-type SimpleScheduler
-pub fn SimpleScheduler::new() -> Self
-pub fn SimpleScheduler::schedule(Self, UInt64, () -> Unit) -> Unit
+type RouteInfo
+pub impl ToJson for RouteInfo
 
 type StatusInfo
 pub impl ToJson for StatusInfo
@@ -126,8 +118,4 @@ pub impl ToJson for StatusInfo
 // Type aliases
 
 // Traits
-pub trait Scheduler {
-  schedule(Self, UInt64, () -> Unit) -> Unit
-  schedule_repeat(Self, UInt64, () -> Unit) -> Unit
-}
 

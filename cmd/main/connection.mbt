@@ -110,7 +110,10 @@ fn Connection::calculate_bandwidth_mbps(
 }
 
 ///|
-fn Connection::update_last_ping_time(self : Connection, time : UInt64?) -> Connection {
+fn Connection::update_last_ping_time(
+  self : Connection,
+  time : UInt64?,
+) -> Connection {
   { ..self, last_ping_time: time }
 }
 

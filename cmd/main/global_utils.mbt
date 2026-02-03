@@ -173,7 +173,9 @@ pub fn get_global_peer_manager() -> PeerManager {
 
 ///|
 /// Global state for the connection manager
-let global_connection_manager : Ref[ConnectionManager] = Ref::new(ConnectionManager::new())
+let global_connection_manager : Ref[ConnectionManager] = Ref::new(
+  ConnectionManager::new(),
+)
 
 ///|
 /// Update global connection manager state

@@ -118,6 +118,15 @@ struct StatusInfo {
   peer_id : String
   listeners : Array[String]
   known_peers : Array[String]
+  routes : Array[RouteInfo]
+} derive(ToJson)
+
+///|
+struct RouteInfo {
+  target_peer_id : String
+  next_hop : String
+  hops : Int
+  timestamp : UInt64
 } derive(ToJson)
 
 ///|
@@ -274,6 +283,18 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
     }
   }
 
+  // Include routing table info
+  let all_routes = get_global_peer_manager().get_all_routes()
+  let routes_info : Array[RouteInfo] = []
+  for target_id, route in all_routes {
+    routes_info.push(RouteInfo::{
+      target_peer_id: target_id,
+      next_hop: route.next_hop,
+      hops: route.hops,
+      timestamp: route.timestamp,
+    })
+  }
+
   // Build known peers list (from active discovery)
   let known_peers = get_all_known_peers()
   let status_info = StatusInfo::{
@@ -290,6 +311,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
       None => []
     },
     known_peers,
+    routes: routes_info,
   }
   conn
   ..send_response(200, "OK", extra_headers={
