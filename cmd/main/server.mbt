@@ -1,5 +1,5 @@
 ///|
-const HELLO_DEBOUNCE_MS : UInt64 = 15000
+const HELLO_DEBOUNCE_MS : UInt64 = 5000
 
 ///|
 fn handle_new_connection(
@@ -528,8 +528,8 @@ async fn listen_udp(
     let sender_addr = "\{sender}"
     let local_addr = "\{server.addr()}"
 
-    // Skip messages from self
-    if msg.from == id {
+    // Skip messages from self, unless target is self
+    if msg.from == id && msg.target != Some(id) {
       continue
     }
 
