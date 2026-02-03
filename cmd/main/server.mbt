@@ -257,7 +257,6 @@ async fn handle_reconnects(
       // Skip 0.0.0.0 addresses (bind-all, not connectable)
       if !peer_addr.has_prefix("0.0.0.0:") {
         send_message(server, peer_addr, hello_msg) |> ignore
-        println("Broadcasting hello to known peer at \{peer_addr}")
       }
     }
 
@@ -282,9 +281,6 @@ async fn handle_reconnects(
         if conn.state == ConnectionState::Connected {
           // Send hello through relay peer with relay=2
           send_message(server, conn.remote_addr, hello_msg_relay) |> ignore
-          println(
-            "Relaying hello through peer \{peer.id} at \{conn.remote_addr}",
-          )
         }
       }
     }
@@ -524,7 +520,6 @@ async fn listen_udp(
       }
     }
     // println("Received message: \{msg}")
-    println("\{msg.from}(\{sender}): \{msg.kind}")
     let sender_addr = "\{sender}"
     let local_addr = "\{server.addr()}"
 
@@ -533,6 +528,7 @@ async fn listen_udp(
       continue
     }
 
+    println("\{msg.from}(\{sender}): \{msg.kind}")
     // Handle the connection - always create/update connection for any message
     let peer_info = match msg.kind {
       "hello" =>
@@ -663,7 +659,7 @@ async fn listen_udp(
         }
       }
     }
-    println("Broadcast hello on new connection from \{msg.from}")
+    // println("Broadcast hello on new connection from \{msg.from}")
 
     // Don't create peers from peer list - wait for welcome message
 
@@ -799,7 +795,7 @@ async fn listen_udp(
                         address: conn.remote_addr,
                       })
                       println(
-                        "DEBUG: Adding connection address for peer \{peer.id}: \{conn.remote_addr}",
+                        "Adding connection address for peer \{peer.id}: \{conn.remote_addr}",
                       )
                     }
                   }
@@ -819,7 +815,7 @@ async fn listen_udp(
                   welcome_peer_addresses.push(NetworkAddress::{
                     address: peer_addr,
                   })
-                  println("DEBUG: Adding configured peer: \{peer_addr}")
+                  println("Adding configured peer: \{peer_addr}")
                 }
               }
               let reply = Message::new(
