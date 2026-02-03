@@ -7,7 +7,7 @@ test "message roundtrip encoding/decoding" {
     from="node-a",
     addr="127.0.0.1:8000",
     relay=1,
-    version=Some("1.0"),
+    version="1.0",
     encrypted=false,
   )
 
@@ -36,7 +36,7 @@ test "message with optional fields subset 1" {
     from="node-a",
     addr="127.0.0.1:8000",
     relay=2,
-    version=Some("1.0"),
+    version="1.0",
     encrypted=true,
   )
 
@@ -69,7 +69,7 @@ test "message with peers" {
     from="node-a",
     addr="127.0.0.1:8000",
     relay=1,
-    peers=Some(peers_list),
+    peers=peers_list,
   )
 
   // Encode to msgpack

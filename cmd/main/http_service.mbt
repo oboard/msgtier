@@ -170,9 +170,9 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
         from=node_id,
         addr=local_addr,
         relay=1,
-        version=Some(VERSION),
-        target=Some(target),
-        data=Some(body_str),
+        version=VERSION,
+        target~,
+        data=body_str,
       )
 
       // Print to stdout for debugging

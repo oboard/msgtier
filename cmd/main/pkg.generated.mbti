@@ -38,7 +38,7 @@ pub fn learn_peer_address(String, String) -> Unit
 
 pub fn network_address(String) -> NetworkAddress
 
-pub fn network_discovery_info(String, String, Array[NetworkAddress], peers? : Array[NetworkAddress]?, public_key? : String?) -> NetworkDiscoveryInfo
+pub fn network_discovery_info(String, String, Array[NetworkAddress], peers? : Array[NetworkAddress], public_key? : String) -> NetworkDiscoveryInfo
 
 pub fn record_hello_time(String) -> Unit
 

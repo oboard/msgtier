@@ -238,7 +238,7 @@ pub fn create_encrypted_data_message(
           kind="data",
           from~,
           addr~,
-          data=Some(encrypted_data),
+          data=encrypted_data,
           encrypted=true,
         ),
       )
@@ -264,7 +264,7 @@ pub fn add_encrypted_pending_message(
       println(
         "Warning: Sending unencrypted message to \{target} (no public key available)",
       )
-      Message::new(kind="data", from~, addr~, data=Some(data), encrypted=false)
+      Message::new(kind="data", from~, addr~, data~, encrypted=false)
     }
   }
   add_pending_message(target, msg)

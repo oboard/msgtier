@@ -30,7 +30,7 @@ struct PeerNodeWithStatus {
 fn PeerNode::new(
   id~ : String,
   version~ : String,
-  public_key? : String? = None,
+  public_key? : String,
   addresses? : Array[String] = [],
 ) -> PeerNode {
   { id, version, metadata: None, public_key, addresses }
@@ -95,8 +95,8 @@ pub fn network_discovery_info(
   id : String,
   version : String,
   addresses : Array[NetworkAddress],
-  peers? : Array[NetworkAddress]? = None,
-  public_key? : String? = None,
+  peers? : Array[NetworkAddress],
+  public_key? : String,
 ) -> NetworkDiscoveryInfo {
   NetworkDiscoveryInfo::{ id, version, addresses, peers, public_key }
 }

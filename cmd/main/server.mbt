@@ -17,7 +17,7 @@ fn handle_new_connection(
     let peer_node = PeerNode::new(
       id=info.id,
       version=info.version,
-      public_key=info.public_key,
+      public_key?=info.public_key,
     )
     update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
 
@@ -198,24 +198,21 @@ async fn send_message_with_fallback(
 }
 
 ///|
-async fn handle_reconnects(
-  server : @socket.UdpServer,
-  local_addr : String,
-  node_id : String,
-) -> Unit {
-  // Get our public key for key exchange
+fn get_identity_info() -> (String?, String?) {
   let our_public_key = match get_public_key() {
     Some(key) => Some(serialize_public_key(key))
     None => None
   }
-  // Get secret hash for authentication
   let our_secret_hash = match global_config.val {
     Some(config) => Some(hash_secret(config.secret))
     None => None
   }
+  (our_public_key, our_secret_hash)
+}
 
-  // Collect all our bind addresses to spread in discovery
-  let our_addresses : Array[NetworkAddress] = match global_config.val {
+///|
+fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
+  match global_config.val {
     Some(config) => {
       let addrs : Array[NetworkAddress] = []
       for listener_url in config.listeners {
@@ -230,15 +227,44 @@ async fn handle_reconnects(
       addrs
     }
   }
-  let hello_msg = Message::new(
+}
+
+///|
+fn create_hello_message(
+  node_id : String,
+  local_addr : String,
+  relay : Int,
+  peers? : Array[NetworkAddress],
+) -> Message {
+  let (public_key, secret_hash) = get_identity_info()
+  let peers_opt = match peers {
+    Some(p) => if p.is_empty() { None } else { Some(p) }
+    None => None
+  }
+  Message::new(
     kind="hello",
     from=node_id,
     addr=local_addr,
-    relay=1,
-    version=Some(VERSION),
-    peers=if our_addresses.is_empty() { None } else { Some(our_addresses) },
-    public_key=our_public_key,
-    secret_hash=our_secret_hash,
+    relay~,
+    version=VERSION,
+    peers?=peers_opt,
+    public_key?,
+    secret_hash?,
+  )
+}
+
+///|
+async fn handle_reconnects(
+  server : @socket.UdpServer,
+  local_addr : String,
+  node_id : String,
+) -> Unit {
+  let our_addresses = get_our_addresses(local_addr)
+  let hello_msg = create_hello_message(
+    node_id,
+    local_addr,
+    1,
+    peers=our_addresses,
   )
   let mut reconnect_interval = 500 // Start fast: 500ms
   let max_reconnect_interval = 5000 // Max: 5s
@@ -262,15 +288,11 @@ async fn handle_reconnects(
 
     // Also broadcast hello through all active relay peer connections
     // This ensures hello reaches peers through relay paths with relay=2
-    let hello_msg_relay = Message::new(
-      kind="hello",
-      from=node_id,
-      addr=local_addr,
-      relay=2, // Relay hop
-      version=Some(VERSION),
-      peers=if our_addresses.is_empty() { None } else { Some(our_addresses) },
-      public_key=our_public_key,
-      secret_hash=our_secret_hash,
+    let hello_msg_relay = create_hello_message(
+      node_id,
+      local_addr,
+      2,
+      peers=our_addresses,
     )
     let all_peers = get_global_peer_manager().get_all_peers()
     for peer in all_peers {
@@ -364,11 +386,11 @@ async fn handle_pending_messages(
                   from=msg.from,
                   addr=msg.addr,
                   relay=2, // Relayed through 1 intermediary
-                  target=Some(target), // Route to target peer ID
-                  data=msg.data,
-                  version=msg.version,
-                  public_key=msg.public_key,
-                  secret_hash=msg.secret_hash,
+                  target~, // Route to target peer ID
+                  data?=msg.data,
+                  version?=msg.version,
+                  public_key?=msg.public_key,
+                  secret_hash?=msg.secret_hash,
                   encrypted=msg.encrypted,
                 )
                 let relay_addr = relay_conns[0].remote_addr
@@ -407,7 +429,7 @@ async fn handle_heartbeat(
           kind="ping",
           from=node_id,
           addr=local_addr,
-          version=Some(VERSION),
+          version=VERSION,
         )
         // Record ping time before sending
         update_global_peer_manager(fn(manager) {
@@ -464,16 +486,7 @@ async fn listen_udp(
         // Add configured peers to known peers list for active connection attempts
         add_known_peer(peer_host)
       }
-      let secret_hash = Some(hash_secret(config.secret))
-      let hello = Message::new(
-        kind="hello",
-        from=id,
-        addr=local_addr,
-        version=Some(VERSION),
-        peers=Some(peer_addresses),
-        public_key=our_public_key,
-        secret_hash~,
-      )
+      let hello = create_hello_message(id, local_addr, 1, peers=peer_addresses)
 
       // Send hello to all configured peer addresses from this listener
       for peer_url in config.peers {
@@ -527,7 +540,6 @@ async fn listen_udp(
     if msg.from == id && msg.target != Some(id) {
       continue
     }
-
     println("\{msg.from}(\{sender}): \{msg.kind}")
     // Handle the connection - always create/update connection for any message
     let peer_info = match msg.kind {
@@ -599,38 +611,12 @@ async fn listen_udp(
     })
 
     // Broadcast hello to all known peers to announce the new connection
-    let our_public_key = match get_public_key() {
-      Some(key) => Some(serialize_public_key(key))
-      None => None
-    }
-    let our_secret_hash = match global_config.val {
-      Some(config) => Some(hash_secret(config.secret))
-      None => None
-    }
-    let our_addresses : Array[NetworkAddress] = match global_config.val {
-      Some(config) => {
-        let addrs : Array[NetworkAddress] = []
-        for listener_url in config.listeners {
-          let addr_str = listener_url.get_host()
-          addrs.push(NetworkAddress::{ address: addr_str })
-        }
-        addrs
-      }
-      None => {
-        let addrs : Array[NetworkAddress] = []
-        addrs.push(NetworkAddress::{ address: local_addr })
-        addrs
-      }
-    }
-    let conn_hello = Message::new(
-      kind="hello",
-      from=id,
-      addr=local_addr,
-      relay=1,
-      version=Some(VERSION),
-      peers=if our_addresses.is_empty() { None } else { Some(our_addresses) },
-      public_key=our_public_key,
-      secret_hash=our_secret_hash,
+    let our_addresses = get_our_addresses(local_addr)
+    let conn_hello = create_hello_message(
+      id,
+      local_addr,
+      1,
+      peers=our_addresses,
     )
     // Broadcast directly to known peers
     let known_peers = get_all_known_peers()
@@ -640,19 +626,17 @@ async fn listen_udp(
       }
     }
     // Also broadcast through relay peer connections
-    let conn_hello_relay = Message::new(
-      kind="hello",
-      from=id,
-      addr=local_addr,
-      relay=2,
-      version=Some(VERSION),
-      peers=if our_addresses.is_empty() { None } else { Some(our_addresses) },
-      public_key=our_public_key,
-      secret_hash=our_secret_hash,
+    let conn_hello_relay = create_hello_message(
+      id,
+      local_addr,
+      2,
+      peers=our_addresses,
     )
     let all_peers = get_global_peer_manager().get_all_peers()
     for peer in all_peers {
-      let active_conns = get_global_peer_manager().get_active_peer_connections(peer.id)
+      let active_conns = get_global_peer_manager().get_active_peer_connections(
+        peer.id,
+      )
       for c in active_conns {
         if c.state == ConnectionState::Connected && c.remote_addr != sender_addr {
           send_message(server, c.remote_addr, conn_hello_relay) |> ignore
@@ -681,13 +665,13 @@ async fn listen_udp(
           addr=msg.addr,
           relay=msg.relay + 1,
           visited=updated_visited,
-          version=msg.version,
-          peers=msg.peers,
-          payload=msg.payload,
-          target=msg.target,
-          data=msg.data,
-          public_key=msg.public_key,
-          secret_hash=msg.secret_hash,
+          version?=msg.version,
+          peers?=msg.peers,
+          payload?=msg.payload,
+          target?=msg.target,
+          data?=msg.data,
+          public_key?=msg.public_key,
+          secret_hash?=msg.secret_hash,
           encrypted=msg.encrypted,
         )
         let relay_success = send_message(server, target_addr, relay_msg)
@@ -822,9 +806,9 @@ async fn listen_udp(
                 kind="welcome",
                 from=id,
                 addr=local_addr,
-                peers=Some(welcome_peer_addresses),
-                public_key=our_public_key,
-                secret_hash=Some(our_secret_hash),
+                peers=welcome_peer_addresses,
+                public_key?=our_public_key,
+                secret_hash=our_secret_hash,
               )
               ignore(send_message(server, sender_addr, reply))
               // let addr_list = if welcome_peer_addresses.is_empty() {
@@ -878,8 +862,8 @@ async fn listen_udp(
               kind="welcome",
               from=id,
               addr=local_addr,
-              peers=Some(welcome_peer_addresses),
-              public_key=our_public_key,
+              peers=welcome_peer_addresses,
+              public_key?=our_public_key,
             )
             ignore(send_message(server, sender_addr, reply))
           }
@@ -971,18 +955,11 @@ async fn listen_udp(
                 if !already_connected {
                   // Send hello to discover this peer via relay through msg.from
                   // The hello response will bring us the actual peer ID
-                  let our_secret_hash = match global_config.val {
-                    Some(config) => Some(hash_secret(config.secret))
-                    None => None
-                  }
-                  let hello_msg = Message::new(
-                    kind="hello",
-                    from=id,
-                    addr=local_addr,
-                    relay=2,
-                    version=Some(VERSION),
-                    public_key=our_public_key,
-                    secret_hash=our_secret_hash,
+                  let hello_msg = create_hello_message(
+                    id,
+                    local_addr,
+                    2,
+                    peers?=None,
                   )
                   // Send to both direct and relay addresses (fire and forget)
                   // Since UDP has no delivery guarantee, sending to both increases chances of reaching the peer
@@ -1065,14 +1042,14 @@ async fn listen_udp(
           from=id,
           addr=local_addr,
           relay=2,
-          target=Some(sender_addr),
+          target=sender_addr,
         )
         let punch_to_sender = Message::new(
           kind="punch",
           from=id,
           addr=local_addr,
           relay=2,
-          target=Some(target),
+          target~,
         )
         ignore(send_message(server, target, punch_to_target))
         ignore(send_message(server, sender_addr, punch_to_sender))
@@ -1097,8 +1074,8 @@ async fn listen_udp(
           from=msg.from,
           addr=msg.addr,
           relay=2,
-          data=Some(data),
-          target=Some(target),
+          data~,
+          target~,
         )
         ignore(send_message(server, target, forward))
       }
@@ -1107,7 +1084,7 @@ async fn listen_udp(
           kind="data",
           from=msg.from,
           addr=msg.addr,
-          data=Some(data),
+          data~,
         )
         ignore(send_message(server, target, direct))
         // Find best relay peer
@@ -1134,15 +1111,15 @@ async fn listen_udp(
               from=id,
               addr=local_addr,
               relay=2,
-              target=Some(target),
+              target~,
             )
             let relay = Message::new(
               kind="relay",
               from=msg.from,
               addr=msg.addr,
               relay=2,
-              target=Some(target),
-              data=Some(data),
+              target~,
+              data~,
             )
             ignore(send_message(server, relay_conn.remote_addr, request))
             ignore(send_message(server, relay_conn.remote_addr, relay))
@@ -1187,7 +1164,7 @@ async fn listen_udp(
                     from=id,
                     addr=local_addr,
                     relay=1,
-                    data=Some(script_outputs.join("\n")),
+                    data=script_outputs.join("\n"),
                   )
                   ignore(send_message(server, msg.from, response_msg))
                 }
@@ -1225,11 +1202,11 @@ async fn listen_udp(
                 addr=msg.addr,
                 relay=msg.relay + 1,
                 visited=msg.visited, // Keep visited list to track path
-                target=Some(target_addr),
-                data=Some(broadcast_data),
-                version=msg.version,
-                public_key=msg.public_key,
-                secret_hash=msg.secret_hash,
+                target=target_addr,
+                data=broadcast_data,
+                version?=msg.version,
+                public_key?=msg.public_key,
+                secret_hash?=msg.secret_hash,
                 encrypted=msg.encrypted,
               )
               ignore(send_message(server, peer_addr, broadcast_msg))
