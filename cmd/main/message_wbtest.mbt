@@ -120,6 +120,6 @@ test "message with short array (pre-optional fields)" {
   assert_eq(decoded.secret_hash, None)
   assert_eq(decoded.payload, None)
   assert_eq(decoded.target, None)
-  assert_eq(decoded.data, None)
+  assert_eq(decoded.data, @msgpack.nil())
   assert_eq(decoded.peers, None)
 }

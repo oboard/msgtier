@@ -139,16 +139,12 @@ fn hex_char_to_int_from_uint16(c : UInt16) -> Int {
 }
 
 ///|
-/// Convert bytes to UTF-8 string
-fn bytes_to_string(data : Bytes) -> String raise {
-  @utf8.decode(data)
-}
-
-///|
 /// Encrypt a string message for a specific peer
-fn encrypt_message_for_peer(peer_id : String, message : String) -> String? {
-  let data = @utf8.encode(message)
-  match encrypt_for_peer(peer_id, data) {
+fn encrypt_message_for_peer(
+  peer_id : String,
+  message : @msgpack.Value,
+) -> String? {
+  match encrypt_for_peer(peer_id, @msgpack.encode(message)) {
     Some(encrypted) => Some(bytes_to_hex(encrypted))
     None => None
   }
@@ -156,13 +152,9 @@ fn encrypt_message_for_peer(peer_id : String, message : String) -> String? {
 
 ///|
 /// Decrypt a hex-encoded message from a peer
-fn decrypt_message_from_peer(
-  peer_id : String,
-  encrypted_hex : String,
-) -> String? raise {
-  let encrypted = hex_to_bytes(encrypted_hex)
+fn decrypt_message_from_peer(peer_id : String, encrypted : Bytes) -> Bytes? {
   match decrypt_from_peer(peer_id, encrypted) {
-    Some(decrypted) => Some(bytes_to_string(decrypted))
+    Some(decrypted) => Some(decrypted)
     None => None
   }
 }

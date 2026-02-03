@@ -194,7 +194,7 @@ pub fn create_encrypted_data_message(
   from : String,
   addr : String,
   target_peer_id : String,
-  data : String,
+  data : @msgpack.Value,
 ) -> Message? {
   match encrypt_message_for_peer(target_peer_id, data) {
     Some(encrypted_data) =>
@@ -203,7 +203,7 @@ pub fn create_encrypted_data_message(
           kind="data",
           from~,
           addr~,
-          data=encrypted_data,
+          data=@msgpack.string(encrypted_data),
           encrypted=true,
         ),
       )
@@ -218,7 +218,7 @@ pub fn add_encrypted_pending_message(
   from : String,
   addr : String,
   target : String,
-  data : String,
+  data : @msgpack.Value,
 ) -> Unit {
   let msg = match create_encrypted_data_message(from, addr, target, data) {
     Some(encrypted_msg) => {

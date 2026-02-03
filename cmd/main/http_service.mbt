@@ -172,7 +172,7 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
         relay=1,
         version=VERSION,
         target~,
-        data=body_str,
+        data=@msgpack.string(body_str),
       )
 
       // Print to stdout for debugging

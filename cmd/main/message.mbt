@@ -10,12 +10,12 @@ struct Message {
   peers : Array[NetworkAddress]?
   payload : String?
   target : String? // If set, relay to this address; if unset, process locally
-  data : String?
+  data : @msgpack.Value
   public_key : String? // X25519 public key for E2E encryption (sent in hello/welcome)
   secret_hash : String? // Hash of network secret for authentication
   encrypted : Bool // Whether the data field is encrypted
   broadcast : Bool // Whether this message should be broadcast to all peers
-} derive(Show, ToJson, FromJson)
+} derive(Show)
 
 ///|
 fn Message::new(
@@ -29,7 +29,7 @@ fn Message::new(
   peers? : Array[NetworkAddress],
   payload? : String,
   target? : String,
-  data? : String,
+  data? : @msgpack.Value = @msgpack.nil(),
   public_key? : String,
   secret_hash? : String,
   encrypted? : Bool = false,
@@ -94,10 +94,7 @@ fn Message::to_msgpack(self : Message) -> Bytes {
       Some(t) => @msgpack.string(t)
       None => @msgpack.nil()
     },
-    match self.data {
-      Some(d) => @msgpack.string(d)
-      None => @msgpack.nil()
-    },
+    self.data,
     match self.peers {
       Some(peers) => {
         let peers_array : Array[@msgpack.Value] = []
@@ -225,13 +222,9 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
       }
       let data_pos = target_pos + 1
       let data = if arr.length() > data_pos {
-        match arr[data_pos] {
-          String(v) => Some(v)
-          Nil => None
-          _ => fail("Invalid data at position \{data_pos}")
-        }
+        arr[data_pos]
       } else {
-        None
+        @msgpack.nil()
       }
       let peers_pos = data_pos + 1
       let peers = if arr.length() > peers_pos {

@@ -499,27 +499,6 @@ async fn listen_udp(
   defer server.close()
   let local_addr = "\{server.addr()}"
 
-  // Get peer addresses from config and send hello messages directly
-  match global_config.val {
-    Some(config) => {
-      let peer_addresses : Array[NetworkAddress] = []
-      for peer_url in config.peers {
-        let peer_host = peer_url.get_host()
-        peer_addresses.push(NetworkAddress::{ address: peer_host })
-        // Add configured peers to known peers list for active connection attempts
-        add_known_peer(peer_host)
-      }
-      let hello = create_hello_message(id, local_addr, 1, peers=peer_addresses)
-
-      // Send hello to all configured peer addresses from this listener
-      for peer_url in config.peers {
-        let peer_host = peer_url.get_host()
-        ignore(send_message(server, peer_host, hello))
-      }
-    }
-    None => ()
-  }
-
   // Start reconnection background task
   root.spawn_bg(fn() { handle_reconnects(server, local_addr, id) })
   // Start heartbeat/health check background task
@@ -648,22 +627,11 @@ async fn listen_udp(
         // Add current node to visited list to track the path and prevent loops
         let updated_visited = msg.visited
         updated_visited.push(id)
-        let relay_msg = Message::new(
-          id=msg.id,
-          kind=msg.kind,
-          from=msg.from,
-          addr=msg.addr,
-          relay=msg.relay + 1,
-          visited=updated_visited,
-          version?=msg.version,
-          peers?=msg.peers,
-          payload?=msg.payload,
-          target?=msg.target,
-          data=msg.data,
-          public_key?=msg.public_key,
-          secret_hash?=msg.secret_hash,
-          encrypted=msg.encrypted,
-        )
+        let relay_msg = Message::{
+          ..msg,
+          relay: msg.relay + 1,
+          visited: updated_visited,
+        }
         let relay_success = send_message(server, target_addr, relay_msg)
         if relay_success {
           let path_str = relay_msg.visited.join(" -> ")
@@ -719,6 +687,7 @@ async fn listen_udp(
       {
         kind: "hello",
         secret_hash: Some(peer_secret_hash),
+        from,
         peers: advertised_peers,
         ..,
       } => {
@@ -744,6 +713,9 @@ async fn listen_udp(
             true
           }
         }
+        if !secret_valid {
+          continue
+        }
 
         // Ensure peer exists in manager before learning address
         match get_global_peer_manager().get_peer(msg.from) {
@@ -755,35 +727,6 @@ async fn listen_udp(
             })
           }
           Some(_) => () // Peer exists
-        }
-
-        // If secret is valid, broadcast this new peer to all existing connected peers
-        if secret_valid {
-          let all_peers = get_global_peer_manager().get_all_peers()
-          for existing_peer in all_peers {
-            // Skip the peer we just received hello from
-            if existing_peer.id != msg.from {
-              let peer_conns = get_global_peer_manager().get_active_peer_connections(
-                existing_peer.id,
-              )
-              // Send update about new peer to all active connections
-              for conn in peer_conns {
-                if conn.state == ConnectionState::Connected {
-                  // Create hello message for the new peer and send to existing peer
-                  let update_msg = create_hello_message(
-                    msg.from,
-                    sender_addr,
-                    1,
-                    peers?=None,
-                  )
-                  ignore(send_message(server, conn.remote_addr, update_msg))
-                  println(
-                    "Broadcasted new peer \{msg.from} to \{existing_peer.id} at \{conn.remote_addr}",
-                  )
-                }
-              }
-            }
-          }
         }
 
         // Discover peers from advertised peer addresses in hello
@@ -808,7 +751,7 @@ async fn listen_udp(
 
                   // Check if we already have ANY connection to this address (active or not)
                   let already_connected = all_conns.any(fn(conn) {
-                    conn.remote_addr == peer_addr
+                    conn.peer_id == from
                   })
                   if !already_connected {
                     // Send hello to discover this peer via relay through msg.from
@@ -975,53 +918,38 @@ async fn listen_udp(
       }
       { kind: "data", data: Binary(raw_data), encrypted, .. } => {
         // Decrypt data if encrypted
-        let data_content = if encrypted {
-          match decrypt_message_from_peer(msg.from, raw_data) {
-            Some(decrypted) => decrypted
-            None => {
-              println(
-                "Failed to decrypt message from \{msg.from}, raw=\{raw_data}",
-              )
-              raw_data // Fall back to raw data if decryption fails
-            }
-          }
+        let data_content = if encrypted &&
+          decrypt_message_from_peer(msg.from, raw_data) is Some(decrypted) {
+          decrypted
         } else {
-          raw_data
+          println("Failed to decrypt message from \{msg.from}, raw=\{raw_data}")
+          raw_data // Fall back to raw data if decryption fails
         }
 
         // Execute scripts with received data and send back output
         root.spawn_bg(fn() {
-          match global_config.val {
-            Some(config) =>
-              match config.scripts {
-                Some(scripts) => {
-                  // Collect script outputs
-                  let script_outputs : Array[String] = []
-                  for script_name, command in scripts {
-                    let output = execute_script_with_output(
-                      script_name,
-                      command,
-                      @utf8.decode(data_content),
-                    )
-                    script_outputs.push("\{script_name}: \{output}")
-                    println("Executed script \{script_name} with received data")
-                  }
-                  // Send response back to sender with script outputs
-                  let response_msg = Message::new(
-                    kind="data_response",
-                    from=id,
-                    addr=local_addr,
-                    relay=1,
-                    data=script_outputs.map(@msgpack.string) |> @msgpack.array,
-                  )
-                  ignore(send_message(server, msg.from, response_msg))
-                }
-                None =>
-                  println(
-                    "No scripts configured, received data: \{data_content}",
-                  )
-              }
-            None => println("Config not available")
+          if global_config.val is Some({ scripts: Some(scripts), .. }) { // Collect script outputs
+            let script_outputs : Array[String] = []
+            for script_name, command in scripts {
+              let output = execute_script_with_output(
+                script_name,
+                command,
+                @utf8.decode(data_content),
+              )
+              script_outputs.push("\{script_name}: \{output}")
+              println("Executed script \{script_name} with received data")
+            }
+            // Send response back to sender with script outputs
+            let response_msg = Message::new(
+              kind="data_response",
+              from=id,
+              addr=local_addr,
+              relay=1,
+              data=script_outputs.map(@msgpack.string) |> @msgpack.array,
+            )
+            ignore(send_message(server, msg.from, response_msg))
+          } else {
+            println("No scripts configured, received data: \{data_content}")
           }
         })
       }

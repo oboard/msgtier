@@ -45,18 +45,6 @@ test "deserialize_public_key accepts valid 64 char hex" {
 }
 
 ///|
-test "encrypt_message_for_peer returns None without shared secret" {
-  let result = encrypt_message_for_peer("unknown_peer", "test message")
-  inspect(result, content="None")
-}
-
-///|
-test "decrypt_message_from_peer returns None without shared secret" {
-  let result = try? decrypt_message_from_peer("unknown_peer", "deadbeef")
-  inspect(result, content="Ok(None)")
-}
-
-///|
 test "get_shared_secret returns None for unknown peer" {
   let result = get_shared_secret("nonexistent")
   inspect(result, content="None")

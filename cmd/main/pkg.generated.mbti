@@ -3,12 +3,13 @@ package "oboard/msgtier/cmd/main"
 
 import {
   "moonbitlang/core/json",
+  "oboard/msgtier/msgpack",
 }
 
 // Values
 pub fn add_connected_peer(String, String, String) -> Unit
 
-pub fn add_encrypted_pending_message(String, String, String, String) -> Unit
+pub fn add_encrypted_pending_message(String, String, String, @msgpack.Value) -> Unit
 
 pub fn add_known_peer(String) -> Unit
 
@@ -16,7 +17,7 @@ pub fn add_pending_message(String, Message) -> Unit
 
 pub fn clear_connected_peers() -> Unit
 
-pub fn create_encrypted_data_message(String, String, String, String) -> Message?
+pub fn create_encrypted_data_message(String, String, String, @msgpack.Value) -> Message?
 
 pub fn get_all_known_peers() -> Array[String]
 
@@ -71,9 +72,6 @@ pub impl ToJson for ConnectionState
 pub impl @json.FromJson for ConnectionState
 
 type Message
-pub impl Show for Message
-pub impl ToJson for Message
-pub impl @json.FromJson for Message
 
 type NetworkAddress
 pub impl Eq for NetworkAddress
