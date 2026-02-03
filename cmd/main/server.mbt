@@ -244,12 +244,14 @@ fn create_connection_update_message(
     let peer_conns = peer.get_all_connections(all_conns)
     for conn in peer_conns {
       if conn.is_active() {
-        // Format: [peer_id, remote_addr, relay]
+        // Format: [peer_id, remote_addr, relay, public_key?]
+        let pk = peer.public_key.unwrap_or("")
         connections_data.push(
           @msgpack.array([
             @msgpack.string(peer.id),
             @msgpack.string(conn.remote_addr),
             @msgpack.int(conn.relay),
+            @msgpack.string(pk),
           ]),
         )
       }
@@ -263,11 +265,18 @@ fn create_connection_update_message(
     // and valid routes
     if route.hops > 1 {
       // Use "routed" as placeholder for remote_addr since we route via next_hop
+      // For routed peers, try to include PK if we know it
+      let peer = get_global_peer_manager().get_peer(peer_id)
+      let pk = match peer {
+        Some(p) => p.public_key.unwrap_or("")
+        None => ""
+      }
       connections_data.push(
         @msgpack.array([
           @msgpack.string(peer_id),
           @msgpack.string("routed"),
           @msgpack.int(route.hops),
+          @msgpack.string(pk),
         ]),
       )
     }
@@ -950,7 +959,9 @@ async fn listen_udp(
           relay=2,
           target~,
         )
-        ignore(send_message(server, target, punch_to_target))
+        add_pending_message(target, punch_to_target)
+        // sender_addr is an IP/port, so we can send directly or use pending
+        // using pending is safer for consistency
         ignore(send_message(server, sender_addr, punch_to_sender))
       }
       { kind: "punch", target: Some(target), .. } => {
@@ -964,7 +975,7 @@ async fn listen_udp(
           from=id,
           addr=local_addr,
         )
-        ignore(send_message(server, target, ack_to_target))
+        add_pending_message(target, ack_to_target)
         ignore(send_message(server, sender_addr, ack_to_sender))
       }
       { kind: "relay", target: Some(target), data, .. } => {
@@ -975,17 +986,44 @@ async fn listen_udp(
           relay=2,
           data~,
           target~,
+          encrypted=true, // Ensure relay messages preserve encryption flag if originally encrypted
         )
-        ignore(send_message(server, target, forward))
+        add_pending_message(target, forward)
       }
       { kind: "send", target: Some(target), data, .. } => {
+        // When sending new data, encrypt it for the target
+        let encrypted_data = if global_config.val is Some(_) {
+          let target_peer = get_global_peer_manager().get_peer(target)
+          match target_peer {
+            Some(peer) =>
+              if peer.public_key is None {
+                 println("Warning: Sending unencrypted data to \{target} (no public key)")
+                 data
+              } else {
+                 match data {
+                   Binary(raw) =>
+                      @msgpack.binary(encrypt_for_peer(target, raw))
+                   _ => data // Should be binary
+                 }
+              }
+            None => {
+               println("Warning: Sending unencrypted data to \{target} (unknown peer)")
+               data
+            }
+          }
+        } else {
+           data
+        }
+
         let direct = Message::new(
           kind="data",
           from=msg.from,
           addr=msg.addr,
-          data~,
+          data=encrypted_data,
+          target~,
+          encrypted=true,
         )
-        ignore(send_message(server, target, direct))
+        add_pending_message(target, direct)
         // Find best relay peer
         let all_peers = get_global_peer_manager().get_all_peers()
         let mut best_relay : Connection? = None
@@ -1071,10 +1109,10 @@ async fn listen_udp(
       }
       { kind: "connection_update", data: Array(conn_entries), .. } =>
         // Handle connection update from peer
-        // Parse connection entry: [peer_id, remote_addr, relay]
+        // Parse connection entry: [peer_id, remote_addr, relay, public_key?]
         for entry in conn_entries {
           match entry {
-            Array([String(peer_id), String(remote_addr), Int(relay_depth)]) =>
+            Array([String(peer_id), String(remote_addr), Int(relay_depth), String(pk)]) => {
               // If the peer is not me
               if peer_id != id {
                 // Update Routing Table
@@ -1092,7 +1130,27 @@ async fn listen_udp(
                 if remote_addr != "routed" &&
                   !remote_addr.has_prefix("0.0.0.0:") {
                   add_known_peer(remote_addr)
-                  // println("Added discovered peer address: \{remote_addr}")
+                }
+
+                // Update public key if provided
+                if pk.length() > 0 {
+                  update_global_peer_manager(fn(manager) {
+                    // Ensure peer exists
+                    let manager = match manager.get_peer(peer_id) {
+                      None =>
+                        manager.add_peer(
+                          PeerNode::new(id=peer_id, version=VERSION),
+                        )
+                      Some(_) => manager
+                    }
+                    manager.update_peer_public_key(peer_id, pk)
+                  })
+                  // Also compute shared secret if we have the PK
+                  match deserialize_public_key(pk) {
+                    Some(peer_pub_key) =>
+                      compute_and_store_shared_secret(peer_id, peer_pub_key)
+                    None => ()
+                  }
                 }
 
                 // Create or update connection if it's a direct neighbor (for compatibility)
@@ -1104,9 +1162,36 @@ async fn listen_udp(
                     remote_addr,
                     relay_depth~,
                   )
-
                 }
               }
+            }
+            // Backward compatibility for old format [peer_id, remote_addr, relay]
+            Array([String(peer_id), String(remote_addr), Int(relay_depth)]) => {
+              // If the peer is not me
+              if peer_id != id {
+                // Update Routing Table
+                let new_hops = relay_depth + 1
+                update_global_peer_manager(fn(manager) {
+                  manager.update_route(peer_id, msg.from, new_hops)
+                })
+
+                // Add discovered address to known peers for potential direct connection
+                if remote_addr != "routed" &&
+                  !remote_addr.has_prefix("0.0.0.0:") {
+                  add_known_peer(remote_addr)
+                }
+
+                // Create or update connection if it's a direct neighbor (for compatibility)
+                if peer_id == msg.from && remote_addr != "routed" {
+                  let (_conn, _is_new) = handle_new_connection(
+                    peer_id,
+                    local_addr,
+                    remote_addr,
+                    relay_depth~,
+                  )
+                }
+              }
+            }
             _ => ()
           }
         }

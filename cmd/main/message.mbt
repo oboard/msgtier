@@ -73,7 +73,7 @@ fn Message::to_msgpack(self : Message) -> Bytes {
     @msgpack.string(self.addr),
     @msgpack.int(self.relay),
     @msgpack.array(visited_array),
-    @msgpack.bool(self.encrypted),
+    @msgpack.bool(self.encrypted), // Always set encrypted field (might be true if message is encrypted)
     match self.version {
       Some(v) => @msgpack.string(v)
       None => @msgpack.nil()
