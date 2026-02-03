@@ -14,6 +14,7 @@ struct Message {
   public_key : String? // X25519 public key for E2E encryption (sent in hello/welcome)
   secret_hash : String? // Hash of network secret for authentication
   encrypted : Bool // Whether the data field is encrypted
+  broadcast : Bool // Whether this message should be broadcast to all peers
 } derive(Show, ToJson, FromJson)
 
 ///|
@@ -32,6 +33,7 @@ fn Message::new(
   public_key? : String,
   secret_hash? : String,
   encrypted? : Bool = false,
+  broadcast? : Bool = false,
 ) -> Message {
   {
     id: id.unwrap_or(
@@ -52,13 +54,14 @@ fn Message::new(
     public_key,
     secret_hash,
     encrypted,
+    broadcast,
   }
 }
 
 ///|
 fn Message::to_msgpack(self : Message) -> Bytes {
   // Use fixed array structure for msgpack:
-  // [id, kind, from, addr, relay, visited, encrypted, version, public_key, secret_hash, payload, target, data, peers]
+  // [id, kind, from, addr, relay, visited, encrypted, version, public_key, secret_hash, payload, target, data, peers, broadcast]
   let visited_array : Array[@msgpack.Value] = []
   for node_id in self.visited {
     visited_array.push(@msgpack.string(node_id))
@@ -105,6 +108,7 @@ fn Message::to_msgpack(self : Message) -> Bytes {
       }
       None => @msgpack.nil()
     },
+    @msgpack.bool(self.broadcast),
   ]
   @msgpack.encode(@msgpack.array(values))
 }
@@ -260,6 +264,16 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
       } else {
         None
       }
+      let broadcast_pos = peers_pos + 1
+      let broadcast = if arr.length() > broadcast_pos {
+        match arr[broadcast_pos] {
+          Bool(v) => v
+          Nil => false
+          _ => fail("Invalid broadcast at position \{broadcast_pos}")
+        }
+      } else {
+        false
+      }
       Message::{
         id,
         kind,
@@ -275,6 +289,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         public_key,
         secret_hash,
         encrypted,
+        broadcast,
       }
     }
     _ => fail("Expected msgpack array, got \{msgpack.to_json().stringify()}")

@@ -572,10 +572,9 @@ async fn listen_udp(
     // Store peer's public key if provided and compute shared secret (only if not already stored)
     if msg.public_key is Some(pk) {
       let peer_manager = get_global_peer_manager()
-      let peer_already_has_key = match peer_manager.get_peer(msg.from) {
-        Some(peer) => peer.public_key is Some(_)
-        None => false
-      }
+      let peer_already_has_key = peer_manager.get_peer(msg.from) is Some(
+        { public_key: Some(_), .. },
+      )
       // Only store if we don't already have a public key for this peer
       if !peer_already_has_key {
         update_global_peer_manager(fn(manager) {
@@ -692,6 +691,38 @@ async fn listen_udp(
         )
       }
       // Continue processing this message locally as well (don't return)
+    }
+    // Handle broadcast forwarding: if broadcast is true, forward to all peers (except sender)
+    if msg.broadcast &&
+      msg.from != id &&
+      !msg.visited.any(fn(node_id) { node_id == id }) {
+      // Add current node to visited list to track the path and prevent loops
+      let updated_visited = msg.visited
+      updated_visited.push(id)
+
+      // Get all known peers and send broadcast to each (except sender)
+      let known_peers = get_all_known_peers()
+      for peer_addr in known_peers {
+        if peer_addr != sender_addr && !peer_addr.has_prefix("0.0.0.0:") {
+          let broadcast_msg = Message::new(
+            id=msg.id,
+            kind=msg.kind,
+            from=msg.from,
+            addr=msg.addr,
+            relay=msg.relay + 1,
+            visited=updated_visited, // Keep visited list to track path
+            target?=msg.target,
+            data?=msg.data,
+            version?=msg.version,
+            public_key?=msg.public_key,
+            secret_hash?=msg.secret_hash,
+            encrypted=msg.encrypted,
+            broadcast=true,
+          )
+          ignore(send_message(server, peer_addr, broadcast_msg))
+          println("Forwarding broadcast from \{msg.from} via \{peer_addr}")
+        }
+      }
     }
     match msg {
       {
@@ -913,10 +944,9 @@ async fn listen_udp(
         // Store the welcome sender's public key if provided (only if not already stored)
         if msg.public_key is Some(pk) {
           let peer_manager = get_global_peer_manager()
-          let peer_already_has_key = match peer_manager.get_peer(msg.from) {
-            Some(peer) => peer.public_key is Some(_)
-            None => false
-          }
+          let peer_already_has_key = peer_manager.get_peer(msg.from) is Some(
+            { public_key: Some(_), .. },
+          )
           if !peer_already_has_key {
             update_global_peer_manager(fn(manager) {
               manager.update_peer_public_key(msg.from, pk)
@@ -1182,40 +1212,6 @@ async fn listen_udp(
         println("Received script response from \{msg.from}:")
         println(response_data)
       }
-      {
-        kind: "broadcast",
-        target: Some(target_addr),
-        data: Some(broadcast_data),
-        ..,
-      } =>
-        // Broadcast message: send data to target without forwarding back to sender
-        // Don't send back to the peer we received it from
-        if msg.from != id {
-          // Get all known peers and send broadcast to each (except sender)
-          let known_peers = get_all_known_peers()
-          for peer_addr in known_peers {
-            if peer_addr != sender_addr && !peer_addr.has_prefix("0.0.0.0:") {
-              let broadcast_msg = Message::new(
-                id=msg.id,
-                kind="broadcast",
-                from=msg.from,
-                addr=msg.addr,
-                relay=msg.relay + 1,
-                visited=msg.visited, // Keep visited list to track path
-                target=target_addr,
-                data=broadcast_data,
-                version?=msg.version,
-                public_key?=msg.public_key,
-                secret_hash?=msg.secret_hash,
-                encrypted=msg.encrypted,
-              )
-              ignore(send_message(server, peer_addr, broadcast_msg))
-              println(
-                "Forwarding broadcast from \{msg.from} to \{target_addr} via \{peer_addr}",
-              )
-            }
-          }
-        }
       _ => ()
     }
     root.spawn_bg(fn() {  })
