@@ -28,13 +28,9 @@ pub fn get_global_peer_manager() -> PeerManager
 
 pub fn get_global_reconnect_manager() -> ReconnectManager
 
-pub fn get_learned_addresses(String) -> Array[String]
-
 pub fn get_pending_messages() -> Array[PendingMessage]
 
 pub fn get_relay_path(String) -> (String, String)?
-
-pub fn learn_peer_address(String, String) -> Unit
 
 pub fn network_address(String) -> NetworkAddress
 

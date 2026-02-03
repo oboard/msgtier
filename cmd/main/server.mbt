@@ -230,6 +230,55 @@ fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
 }
 
 ///|
+fn create_connection_update_message(
+  node_id : String,
+  local_addr : String,
+) -> Message {
+  // Create a message that includes all current connections of this node
+  let all_peers = get_global_peer_manager().get_all_peers()
+  let all_conns = get_global_peer_manager().get_all_connections()
+  let connections_data : Array[String] = []
+  for peer in all_peers {
+    let peer_conns = peer.get_all_connections(all_conns)
+    for conn in peer_conns {
+      // Format: "peer_id:remote_addr:relay"
+      let conn_str = "\{peer.id}:\{conn.remote_addr}:\{conn.relay}"
+      connections_data.push(conn_str)
+    }
+  }
+  Message::new(
+    kind="connection_update",
+    from=node_id,
+    addr=local_addr,
+    relay=1,
+    data=connections_data.join("|"),
+  )
+}
+
+///|
+async fn broadcast_connection_update(
+  server : @socket.UdpServer,
+  node_id : String,
+  local_addr : String,
+) -> Unit {
+  let update_msg = create_connection_update_message(node_id, local_addr)
+  let all_peers = get_global_peer_manager().get_all_peers()
+  for peer in all_peers {
+    let peer_conns = get_global_peer_manager().get_active_peer_connections(
+      peer.id,
+    )
+    for conn in peer_conns {
+      if conn.state == ConnectionState::Connected {
+        ignore(send_message(server, conn.remote_addr, update_msg))
+        println(
+          "Broadcasted connection update from \{node_id} to \{peer.id} at \{conn.remote_addr}",
+        )
+      }
+    }
+  }
+}
+
+///|
 fn create_hello_message(
   node_id : String,
   local_addr : String,
@@ -321,16 +370,12 @@ async fn handle_pending_messages(
           Some(script_name) => {
             root.spawn_bg(fn() {
               match global_config.val {
-                Some(config) =>
-                  match config.scripts {
-                    Some(scripts) =>
-                      match scripts.get(script_name) {
-                        Some(command) => execute_script(script_name, command)
-                        None => println("Script not found: \{script_name}")
-                      }
-                    None => println("No scripts configured")
+                Some({ scripts: Some(scripts), .. }) =>
+                  match scripts.get(script_name) {
+                    Some(command) => execute_script(script_name, command)
+                    None => println("Script not found: \{script_name}")
                   }
-                None => println("Config not available")
+                _ => println("Config not available")
               }
             })
             println("Processed self-message for \{target}: \{script_name}")
@@ -374,7 +419,7 @@ async fn handle_pending_messages(
                   kind=msg.kind,
                   from=msg.from,
                   addr=msg.addr,
-                  relay=2, // Relayed through 1 intermediary
+                  relay=msg.relay + 1, // Relayed through 1 intermediary
                   target~, // Route to target peer ID
                   data?=msg.data,
                   version?=msg.version,
@@ -591,6 +636,9 @@ async fn listen_udp(
       manager.update_connection_last_seen(conn.id, timestamp)
     })
 
+    // Broadcast connection update to all peers so they know about this new connection
+    root.spawn_bg(fn() { broadcast_connection_update(server, id, local_addr) })
+
     // Handle message relaying: if target is set and we're not the target, forward it
     if msg.target is Some(target_addr) {
       // Check if this node has already processed this message (prevent loops using DFS path tracking)
@@ -674,21 +722,6 @@ async fn listen_udp(
         peers: advertised_peers,
         ..,
       } => {
-        // Ensure peer exists in manager before learning address
-        match get_global_peer_manager().get_peer(msg.from) {
-          None => {
-            // Peer doesn't exist yet, create it
-            let peer_node = PeerNode::new(id=msg.from, version=VERSION)
-            update_global_peer_manager(fn(manager) {
-              manager.add_peer(peer_node)
-            })
-          }
-          Some(_) => () // Peer exists
-        }
-
-        // Learn that this peer can be reached at sender_addr (the address they contacted us from)
-        learn_peer_address(msg.from, sender_addr)
-
         // Validate secret
         let secret_valid = match global_config.val {
           Some(config) => {
@@ -710,6 +743,18 @@ async fn listen_udp(
             println("Accepted peer \{msg.from} at \{sender_addr} (no config)")
             true
           }
+        }
+
+        // Ensure peer exists in manager before learning address
+        match get_global_peer_manager().get_peer(msg.from) {
+          None => {
+            // Peer doesn't exist yet, create it
+            let peer_node = PeerNode::new(id=msg.from, version=VERSION)
+            update_global_peer_manager(fn(manager) {
+              manager.add_peer(peer_node)
+            })
+          }
+          Some(_) => () // Peer exists
         }
 
         // If secret is valid, broadcast this new peer to all existing connected peers
@@ -983,6 +1028,38 @@ async fn listen_udp(
         println("Received script response from \{msg.from}:")
         println(response_data)
       }
+      { kind: "connection_update", data: Some(connections_data), .. } =>
+        // Handle connection update from peer
+        // Parse connection string: "peer_id:remote_addr:relay|..."
+        if !connections_data.is_empty() {
+          let conn_entries = connections_data.split("|").collect()
+          for entry in conn_entries {
+            if !entry.is_empty() {
+              let parts = entry.split(":").collect()
+              if parts.length() >= 3 {
+                let peer_id = parts[0].to_string()
+                let remote_addr = parts[1].to_string()
+                let relay_depth = 1 // Assume relay=1 for learned connections
+
+                // Create or update the connection in our peer manager
+                if peer_id == msg.from {
+                  // This is a connection from the peer who sent the update
+                  ignore(
+                    handle_new_connection(
+                      peer_id,
+                      local_addr,
+                      remote_addr,
+                      relay_depth~,
+                    ),
+                  )
+                  println(
+                    "Learned new connection: \{peer_id} -> \{remote_addr}",
+                  )
+                }
+              }
+            }
+          }
+        }
       _ => ()
     }
     root.spawn_bg(fn() {  })

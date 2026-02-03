@@ -142,41 +142,6 @@ pub fn get_relay_path(address : String) -> (String, String)? {
 }
 
 ///|
-/// Learn a new address for a peer (called when we receive a message from peer X at address Y)
-pub fn learn_peer_address(peer_id : String, address : String) -> Unit {
-  let learned = global_learned_addresses.val
-  match learned.get(peer_id) {
-    Some(addrs) =>
-      if !addrs.contains(address) {
-        addrs.push(address)
-        println("DEBUG: Learned new address for peer \{peer_id}: \{address}")
-        // Also update the peer's addresses field in peer manager
-        update_global_peer_manager(fn(manager) {
-          manager.add_peer_address(peer_id, address)
-        })
-      }
-    None => {
-      learned[peer_id] = [address]
-      println("DEBUG: Learned first address for peer \{peer_id}: \{address}")
-      // Also update the peer's addresses field in peer manager
-      update_global_peer_manager(fn(manager) {
-        manager.add_peer_address(peer_id, address)
-      })
-    }
-  }
-}
-
-///|
-/// Get all learned addresses for a specific peer
-pub fn get_learned_addresses(peer_id : String) -> Array[String] {
-  let learned = global_learned_addresses.val
-  match learned.get(peer_id) {
-    Some(addrs) => addrs
-    None => []
-  }
-}
-
-///|
 /// Get all learned addresses across all peers (for gossip broadcast)
 /// Returns Array[NetworkAddress] containing all addresses we've discovered
 pub fn get_all_learned_addresses() -> Array[NetworkAddress] {
