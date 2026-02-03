@@ -42,7 +42,7 @@ pub fn v8_from_int128(high : Int64, low : Int64) -> Uuid {
 ///|
 /// Generate a custom UUID with application-specific structure
 /// Example: counter-based UUID with specific formatting
-pub fn v8_counter(counter : Int64, node_id : Int, application_id : Int) -> Uuid {
+pub fn v8_counter(counter : Int64, peer_id : Int, application_id : Int) -> Uuid {
   let bytes : FixedArray[Byte] = FixedArray::make(16, b'\x00')
 
   // First 8 bytes: counter
@@ -50,9 +50,9 @@ pub fn v8_counter(counter : Int64, node_id : Int, application_id : Int) -> Uuid 
     bytes[i] = (counter >> ((7 - i) * 8)).land(0xFFL).to_int().to_byte()
   }
 
-  // Next 4 bytes: node_id
+  // Next 4 bytes: peer_id
   for i = 0; i < 4; i = i + 1 {
-    bytes[8 + i] = (node_id >> ((3 - i) * 8)).land(0xFF).to_byte()
+    bytes[8 + i] = (peer_id >> ((3 - i) * 8)).land(0xFF).to_byte()
   }
 
   // Last 4 bytes: application_id  

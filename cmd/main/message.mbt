@@ -63,8 +63,8 @@ fn Message::to_msgpack(self : Message) -> Bytes {
   // Use fixed array structure for msgpack:
   // [id, kind, from, addr, relay, visited, encrypted, version, public_key, secret_hash, payload, target, data, peers, broadcast]
   let visited_array : Array[@msgpack.Value] = []
-  for node_id in self.visited {
-    visited_array.push(@msgpack.string(node_id))
+  for peer_id in self.visited {
+    visited_array.push(@msgpack.string(peer_id))
   }
   let values : Array[@msgpack.Value] = [
     @msgpack.string(self.id),
@@ -152,7 +152,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
           let visited_list : Array[String] = []
           for visited_value in visited_arr_val {
             match visited_value {
-              String(node_id) => visited_list.push(node_id)
+              String(peer_id) => visited_list.push(peer_id)
               _ => fail("Invalid visited node ID in visited array")
             }
           }

@@ -115,7 +115,7 @@ struct StatusInfo {
   peers : Array[PeerNode]
   connections : Array[PeerConnectionInfo]
   peers_count : Int
-  node_id : String
+  peer_id : String
   listeners : Array[String]
   known_peers : Array[String]
 } derive(ToJson)
@@ -281,7 +281,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
     peers: all_peers,
     connections,
     peers_count: all_peers.length(),
-    node_id: match global_config.val {
+    peer_id: match global_config.val {
       Some(config) => config.id
       None => "unknown"
     },

@@ -96,7 +96,7 @@ pub fn v7_sequence(count : Int) -> Array[Uuid]
 
 // Version 8 (Custom)
 pub fn v8(custom_data : FixedArray[Byte]) -> Uuid
-pub fn v8_counter(counter : Int64, node_id : Int, application_id : Int) -> Uuid
+pub fn v8_counter(counter : Int64, peer_id : Int, application_id : Int) -> Uuid
 pub fn v8_mixed(timestamp_ms : Int64, custom_suffix : Int) -> Uuid
 ```
 

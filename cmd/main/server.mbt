@@ -231,7 +231,7 @@ fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
 
 ///|
 fn create_connection_update_message(
-  node_id : String,
+  peer_id : String,
   local_addr : String,
 ) -> Message {
   // Create a message that includes all current connections of this node
@@ -274,7 +274,7 @@ fn create_connection_update_message(
   }
   Message::new(
     kind="connection_update",
-    from=node_id,
+    from=peer_id,
     addr=local_addr,
     relay=1,
     data=@msgpack.array(connections_data),
@@ -284,10 +284,10 @@ fn create_connection_update_message(
 ///|
 async fn broadcast_connection_update(
   server : @socket.UdpServer,
-  node_id : String,
+  peer_id : String,
   local_addr : String,
 ) -> Unit {
-  let update_msg = create_connection_update_message(node_id, local_addr)
+  let update_msg = create_connection_update_message(peer_id, local_addr)
   let all_peers = get_global_peer_manager().get_all_peers()
   for peer in all_peers {
     let peer_conns = get_global_connection_manager().get_active_connections(
@@ -303,7 +303,7 @@ async fn broadcast_connection_update(
 
 ///|
 fn create_hello_message(
-  node_id : String,
+  peer_id : String,
   local_addr : String,
   relay : Int,
   peers? : Array[NetworkAddress],
@@ -315,7 +315,7 @@ fn create_hello_message(
   }
   Message::new(
     kind="hello",
-    from=node_id,
+    from=peer_id,
     addr=local_addr,
     relay~,
     version=VERSION,
@@ -329,11 +329,11 @@ fn create_hello_message(
 async fn handle_reconnects(
   server : @socket.UdpServer,
   local_addr : String,
-  node_id : String,
+  peer_id : String,
 ) -> Unit {
   let our_addresses = get_our_addresses(local_addr)
   let hello_msg = create_hello_message(
-    node_id,
+    peer_id,
     local_addr,
     1,
     peers=our_addresses,
@@ -367,7 +367,7 @@ async fn handle_reconnects(
 ///|
 async fn handle_pending_messages(
   server : @socket.UdpServer,
-  node_id : String,
+  peer_id : String,
   root : @async.TaskGroup[Unit],
 ) -> Unit {
   for {
@@ -381,7 +381,7 @@ async fn handle_pending_messages(
       let msg = pending_msg.msg
 
       // Check if message is for self
-      if target == node_id {
+      if target == peer_id {
         // Handle message to self directly
         match msg.data {
           String(script_name) => {
@@ -484,7 +484,7 @@ async fn handle_pending_messages(
 async fn handle_heartbeat(
   server : @socket.UdpServer,
   local_addr : String,
-  node_id : String,
+  from : String,
 ) -> Unit {
   let heartbeat_interval = 3000 // 3 seconds
   for {
@@ -501,7 +501,7 @@ async fn handle_heartbeat(
       for conn in peer_conns {
         let ping_msg = Message::new(
           kind="ping",
-          from=node_id,
+          from~,
           addr=local_addr,
           version=VERSION,
         )
@@ -525,10 +525,23 @@ async fn handle_heartbeat(
             )
           })
           // Broadcast update because a connection became inactive
-          ignore(broadcast_connection_update(server, node_id, local_addr))
+          ignore(broadcast_connection_update(server, from, local_addr))
         }
       }
     }
+  }
+}
+
+///|
+async fn handle_periodic_updates(
+  server : @socket.UdpServer,
+  peer_id : String,
+  local_addr : String,
+) -> Unit {
+  let update_interval = 5000 // 5 seconds
+  for {
+    @async.sleep(update_interval)
+    broadcast_connection_update(server, peer_id, local_addr) |> ignore
   }
 }
 
@@ -552,6 +565,8 @@ async fn listen_udp(
   root.spawn_bg(fn() { handle_heartbeat(server, local_addr, id) })
   // Start pending message sender background task
   root.spawn_bg(fn() { handle_pending_messages(server, id, root) })
+  // Start periodic connection update task
+  root.spawn_bg(fn() { handle_periodic_updates(server, id, local_addr) })
   for {
     let buf = FixedArray::make(8192, b'0')
     let (n, sender) = server.recvfrom(buf)
@@ -672,7 +687,7 @@ async fn listen_udp(
       } else {
         // Message is for someone else, forward it
         // Check if this node has already processed this message (prevent loops using DFS path tracking)
-        let already_visited = msg.visited.any(fn(node_id) { node_id == id })
+        let already_visited = msg.visited.any(fn(peer_id) { peer_id == id })
         if !already_visited {
           let updated_visited = msg.visited
           updated_visited.push(id)
@@ -747,7 +762,7 @@ async fn listen_udp(
     // Handle broadcast forwarding: if broadcast is true, forward to all peers (except sender)
     if msg.broadcast &&
       msg.from != id &&
-      !msg.visited.any(fn(node_id) { node_id == id }) {
+      !msg.visited.any(fn(peer_id) { peer_id == id }) {
       // Add current node to visited list to track the path and prevent loops
       let updated_visited = msg.visited
       updated_visited.push(id)
