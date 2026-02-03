@@ -149,42 +149,31 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         _ => fail("Invalid relay at position 4")
       }
 
-      // Detect format by checking position 5:
-      // - If it's an Array, it's the new format (visited field)
-      // - If it's a Bool, it's the old format (encrypted field)
-      let (visited, encrypted_pos) = match arr[5] {
-        Array(_) => {
-          // New format with visited field
-          let visited_arr = match arr[5] {
-            Array(visited_arr_val) => {
-              let visited_list : Array[String] = []
-              for visited_value in visited_arr_val {
-                match visited_value {
-                  String(node_id) => visited_list.push(node_id)
-                  _ => fail("Invalid visited node ID in visited array")
-                }
-              }
-              visited_list
+      // Extract visited (position 5)
+      let visited = match arr[5] {
+        Array(visited_arr_val) => {
+          let visited_list : Array[String] = []
+          for visited_value in visited_arr_val {
+            match visited_value {
+              String(node_id) => visited_list.push(node_id)
+              _ => fail("Invalid visited node ID in visited array")
             }
-            _ => []
           }
-          (visited_arr, 6)
+          visited_list
         }
-        Bool(_) | Nil =>
-          // Old format without visited field - use empty array
-          ([], 5)
-        _ => fail("Invalid format at position 5: expected Array or Bool")
+        Nil => []
+        _ => fail("Invalid visited at position 5")
       }
 
-      // Extract encrypted at the detected position
-      let encrypted = match arr[encrypted_pos] {
+      // Extract encrypted (position 6)
+      let encrypted = match arr[6] {
         Bool(v) => v
         Nil => false
-        _ => fail("Invalid encrypted at position \{encrypted_pos}")
+        _ => fail("Invalid encrypted at position 6")
       }
 
-      // Extract optional fields, adjusting positions based on format
-      let version_pos = encrypted_pos + 1
+      // Extract optional fields
+      let version_pos = 7
       let version = if arr.length() > version_pos {
         match arr[version_pos] {
           String(v) => Some(v)
