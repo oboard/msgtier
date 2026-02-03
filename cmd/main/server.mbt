@@ -276,33 +276,22 @@ async fn handle_reconnects(
       reconnect_interval = (reconnect_interval * 2).min(max_reconnect_interval)
     }
 
-    // Broadcast hello to all known peers (both configured and discovered)
+    // Broadcast hello only to peers we don't have active connections with
     // Send directly to each known peer address with relay=1
     let known_peers = get_all_known_peers()
     for peer_addr in known_peers {
       // Skip 0.0.0.0 addresses (bind-all, not connectable)
       if !peer_addr.has_prefix("0.0.0.0:") {
-        send_message(server, peer_addr, hello_msg) |> ignore
-      }
-    }
+        // Check if we already have an active connection to this peer address
+        let all_conns = get_global_peer_manager().get_all_connections()
+        let has_active_conn = all_conns.any(fn(conn) {
+          conn.remote_addr == peer_addr &&
+          conn.state == ConnectionState::Connected
+        })
 
-    // Also broadcast hello through all active relay peer connections
-    // This ensures hello reaches peers through relay paths with relay=2
-    let hello_msg_relay = create_hello_message(
-      node_id,
-      local_addr,
-      2,
-      peers=our_addresses,
-    )
-    let all_peers = get_global_peer_manager().get_all_peers()
-    for peer in all_peers {
-      let active_conns = get_global_peer_manager().get_active_peer_connections(
-        peer.id,
-      )
-      for conn in active_conns {
-        if conn.state == ConnectionState::Connected {
-          // Send hello through relay peer with relay=2
-          send_message(server, conn.remote_addr, hello_msg_relay) |> ignore
+        // Only send hello if we don't have an active connection
+        if !has_active_conn {
+          send_message(server, peer_addr, hello_msg) |> ignore
         }
       }
     }
@@ -466,12 +455,6 @@ async fn listen_udp(
   if global_keypair.val is None {
     init_keypair()
   }
-
-  // Get our public key for key exchange
-  let our_public_key = match get_public_key() {
-    Some(key) => Some(serialize_public_key(key))
-    None => None
-  }
   let server = @socket.UdpServer::new(addr)
   defer server.close()
   let local_addr = "\{server.addr()}"
@@ -572,9 +555,8 @@ async fn listen_udp(
     // Store peer's public key if provided and compute shared secret (only if not already stored)
     if msg.public_key is Some(pk) {
       let peer_manager = get_global_peer_manager()
-      let peer_already_has_key = peer_manager.get_peer(msg.from) is Some(
-        { public_key: Some(_), .. },
-      )
+      let peer_already_has_key = peer_manager.get_peer(msg.from)
+        is Some({ public_key: Some(_), .. })
       // Only store if we don't already have a public key for this peer
       if !peer_already_has_key {
         update_global_peer_manager(fn(manager) {
@@ -608,45 +590,6 @@ async fn listen_udp(
       let timestamp = @env.now() // Far future to prevent timeout
       manager.update_connection_last_seen(conn.id, timestamp)
     })
-
-    // Broadcast hello to all known peers to announce the new connection
-    let our_addresses = get_our_addresses(local_addr)
-    let conn_hello = create_hello_message(
-      id,
-      local_addr,
-      1,
-      peers=our_addresses,
-    )
-    // Broadcast directly to known peers
-    let known_peers = get_all_known_peers()
-    for peer_addr in known_peers {
-      if peer_addr != sender_addr && !peer_addr.has_prefix("0.0.0.0:") {
-        send_message(server, peer_addr, conn_hello) |> ignore
-      }
-    }
-    // Also broadcast through relay peer connections
-    let conn_hello_relay = create_hello_message(
-      id,
-      local_addr,
-      2,
-      peers=our_addresses,
-    )
-    let all_peers = get_global_peer_manager().get_all_peers()
-    for peer in all_peers {
-      let active_conns = get_global_peer_manager().get_active_peer_connections(
-        peer.id,
-      )
-      for c in active_conns {
-        if c.state == ConnectionState::Connected && c.remote_addr != sender_addr {
-          send_message(server, c.remote_addr, conn_hello_relay) |> ignore
-        }
-      }
-    }
-    // println("Broadcast hello on new connection from \{msg.from}")
-
-    // Don't create peers from peer list - wait for welcome message
-
-    // Don't create peer from sender address - wait for welcome message
 
     // Handle message relaying: if target is set and we're not the target, forward it
     if msg.target is Some(target_addr) {
@@ -746,16 +689,7 @@ async fn listen_udp(
         // Learn that this peer can be reached at sender_addr (the address they contacted us from)
         learn_peer_address(msg.from, sender_addr)
 
-        // Add all advertised peer addresses to our discovery list
-        if advertised_peers is Some(peer_addrs) {
-          for peer_addr in peer_addrs {
-            // Skip 0.0.0.0 addresses (bind-all, not connectable)
-            if !peer_addr.address.has_prefix("0.0.0.0:") {
-              add_known_peer(peer_addr.address)
-            }
-          }
-        }
-        // Validate secret before responding
+        // Validate secret
         match global_config.val {
           Some(config) => {
             let our_secret_hash = hash_secret(config.secret)
@@ -764,139 +698,59 @@ async fn listen_udp(
               println(
                 "Rejecting peer \{msg.from} at \{sender_addr}: secret mismatch",
               )
-              () // Don't send welcome
             } else {
-              // Secret matches - send welcome with known peers and learned addresses (gossip)
-              let welcome_peer_addresses : Array[NetworkAddress] = []
-              let all_peers = get_global_peer_manager().get_all_peers()
-              let all_conns = get_global_peer_manager().get_all_connections()
-
-              // Include all learned addresses for each peer (gossip protocol) - deduplicated
-              for peer in all_peers {
-                let learned_addrs = get_learned_addresses(peer.id)
-                for learned_addr in learned_addrs {
-                  // Don't include the sender in our peer list to avoid loops
-                  if learned_addr != sender_addr {
-                    // Only add if not already in the list (deduplicate)
-                    let not_already_included = !welcome_peer_addresses.any(fn(
-                      np,
-                    ) {
-                      np.address == learned_addr
-                    })
-                    if not_already_included {
-                      welcome_peer_addresses.push(NetworkAddress::{
-                        address: learned_addr,
-                      })
-                    }
-                  }
-                }
-              }
-
-              // Also include connection addresses from peers we're connected to
-              for peer in all_peers {
-                // Get connection addresses for this peer
-                let peer_conns = peer.get_all_connections(all_conns)
-                for conn in peer_conns {
-                  // Don't include the sender in our peer list to avoid loops
-                  if conn.remote_addr != sender_addr {
-                    // Check if not already in learned addresses
-                    let not_already_included = !welcome_peer_addresses.any(fn(
-                      np,
-                    ) {
-                      np.address == conn.remote_addr
-                    })
-                    if not_already_included {
-                      welcome_peer_addresses.push(NetworkAddress::{
-                        address: conn.remote_addr,
-                      })
-                      println(
-                        "Adding connection address for peer \{peer.id}: \{conn.remote_addr}",
-                      )
-                    }
-                  }
-                }
-              }
-
-              // Also include configured peers to help with initial discovery
-              for peer_url in config.peers {
-                let peer_addr = peer_url.get_host()
-                // Avoid duplicates and self
-                let not_already_included = !welcome_peer_addresses.any(fn(np) {
-                  np.address == peer_addr
-                })
-                if not_already_included &&
-                  peer_addr != sender_addr &&
-                  peer_addr != local_addr {
-                  welcome_peer_addresses.push(NetworkAddress::{
-                    address: peer_addr,
-                  })
-                  println("Adding configured peer: \{peer_addr}")
-                }
-              }
-              let reply = Message::new(
-                kind="welcome",
-                from=id,
-                addr=local_addr,
-                peers=welcome_peer_addresses,
-                public_key?=our_public_key,
-                secret_hash=our_secret_hash,
-              )
-              ignore(send_message(server, sender_addr, reply))
-              // let addr_list = if welcome_peer_addresses.is_empty() {
-              //   "none"
-              // } else {
-              //   welcome_peer_addresses.map(fn(na) { na.address }).join(", ")
-              // }
-              // println(
-              //   "Accepted peer \{msg.from} at \{sender_addr} - sent welcome with \{welcome_peer_addresses.length()} addresses: [\{addr_list}]",
-              // )
+              // Secret matches - accept connection (no welcome response needed)
+              println("Accepted peer \{msg.from} at \{sender_addr}")
             }
           }
-          None => {
-            // No config - accept hello but send minimal welcome
-            let welcome_peer_addresses : Array[NetworkAddress] = []
-            let all_peers = get_global_peer_manager().get_all_peers()
-            let all_conns = get_global_peer_manager().get_all_connections()
+          None =>
+            // No config - accept hello
+            println("Accepted peer \{msg.from} at \{sender_addr} (no config)")
+        }
 
-            // Include learned addresses
-            for peer in all_peers {
-              let learned_addrs = get_learned_addresses(peer.id)
-              for learned_addr in learned_addrs {
-                if learned_addr != sender_addr {
-                  welcome_peer_addresses.push(NetworkAddress::{
-                    address: learned_addr,
-                  })
-                }
-              }
-            }
+        // Discover peers from advertised peer addresses in hello
+        // Instead of waiting for welcome, process advertised peers directly
+        if advertised_peers is Some(peer_addrs) {
+          let all_conns = get_global_peer_manager().get_all_connections()
+          for peer_addr_obj in peer_addrs {
+            let peer_addr = peer_addr_obj.address
+            // Skip 0.0.0.0 addresses (bind-all, not connectable) and our own address
+            if !peer_addr.has_prefix("0.0.0.0:") && peer_addr != local_addr {
+              // Track this peer address for active connection attempts
+              add_known_peer(peer_addr)
 
-            // Include connection addresses
-            for peer in all_peers {
-              let peer_conns = peer.get_all_connections(all_conns)
-              for conn in peer_conns {
-                if conn.remote_addr != sender_addr {
-                  // Check if not already in learned addresses
-                  let not_already_included = !welcome_peer_addresses.any(fn(
-                    np,
-                  ) {
-                    np.address == conn.remote_addr
+              // Check if we already have a relay path for this address
+              match get_relay_path(peer_addr) {
+                Some(_) =>
+                  // Already greeted this address, skip to avoid duplicate hellos
+                  ()
+                None => {
+                  // First time seeing this address - set relay path and send hello
+                  set_relay_path(peer_addr, "unknown", msg.from)
+
+                  // Check if we already have ANY connection to this address (active or not)
+                  let already_connected = all_conns.any(fn(conn) {
+                    conn.remote_addr == peer_addr
                   })
-                  if not_already_included {
-                    welcome_peer_addresses.push(NetworkAddress::{
-                      address: conn.remote_addr,
-                    })
+                  if !already_connected {
+                    // Send hello to discover this peer via relay through msg.from
+                    let hello_msg = create_hello_message(
+                      id,
+                      local_addr,
+                      2,
+                      peers?=None,
+                    )
+                    // Send to both direct and relay addresses (fire and forget)
+                    send_message_with_fallback(
+                      server, peer_addr, sender_addr, hello_msg,
+                    )
+                    println(
+                      "Sent hello to discovered peer at \{peer_addr} (fallback: \{sender_addr})",
+                    )
                   }
                 }
               }
             }
-            let reply = Message::new(
-              kind="welcome",
-              from=id,
-              addr=local_addr,
-              peers=welcome_peer_addresses,
-              public_key?=our_public_key,
-            )
-            ignore(send_message(server, sender_addr, reply))
           }
         }
 
@@ -912,10 +766,6 @@ async fn listen_udp(
             // Also skip 0.0.0.0 addresses (bind-all, not connectable)
             if peer_addr != sender_addr && !peer_addr.has_prefix("0.0.0.0:") {
               ignore(send_message(server, peer_addr, msg))
-              // silently re-broadcast hello to all other known peers
-              // println(
-              //   "Re-broadcasting hello from \{msg.from} to known peer at \{peer_addr}",
-              // )
             }
           }
         }
@@ -924,118 +774,6 @@ async fn listen_udp(
         // Hello without secret_hash - reject it (backwards compatibility)
         println("Rejecting hello from \{msg.from}: no secret_hash provided")
         ()
-      }
-      { kind: "welcome", peers: Some(peers), .. } => {
-        // Ensure peer exists in manager before learning address
-        match get_global_peer_manager().get_peer(msg.from) {
-          None => {
-            // Peer doesn't exist yet, create it
-            let peer_node = PeerNode::new(id=msg.from, version=VERSION)
-            update_global_peer_manager(fn(manager) {
-              manager.add_peer(peer_node)
-            })
-          }
-          Some(_) => () // Peer exists
-        }
-
-        // Learn that this peer can be reached at sender_addr
-        learn_peer_address(msg.from, sender_addr)
-
-        // Store the welcome sender's public key if provided (only if not already stored)
-        if msg.public_key is Some(pk) {
-          let peer_manager = get_global_peer_manager()
-          let peer_already_has_key = peer_manager.get_peer(msg.from) is Some(
-            { public_key: Some(_), .. },
-          )
-          if !peer_already_has_key {
-            update_global_peer_manager(fn(manager) {
-              manager.update_peer_public_key(msg.from, pk)
-            })
-            println(
-              "Stored public key for peer \{msg.from} from welcome message",
-            )
-          }
-        }
-
-        // Welcome message - discover new peers from the list
-        // These peers are discovered through a relay (the sender of this welcome message)
-        // Send hello to each peer address, let their response bring us the actual peer ID
-        let all_conns = get_global_peer_manager().get_all_connections()
-        for peer_addr_obj in peers {
-          let peer_addr = peer_addr_obj.address
-          // Skip 0.0.0.0 addresses (bind-all, not connectable) and our own address
-          if !peer_addr.has_prefix("0.0.0.0:") && peer_addr != local_addr {
-            // Track this peer address for active connection attempts
-            add_known_peer(peer_addr)
-
-            // Check if we already have a relay path for this address
-            // If so, we've already sent a hello to it before
-            match get_relay_path(peer_addr) {
-              Some(_) =>
-                // Already greeted this address, skip to avoid duplicate hellos
-                ()
-              None => {
-                // First time seeing this address - set relay path and send hello
-                set_relay_path(peer_addr, "unknown", msg.from)
-
-                // Check if we already have ANY connection to this address (active or not)
-                let already_connected = all_conns.any(fn(conn) {
-                  conn.remote_addr == peer_addr
-                })
-                if !already_connected {
-                  // Send hello to discover this peer via relay through msg.from
-                  // The hello response will bring us the actual peer ID
-                  let hello_msg = create_hello_message(
-                    id,
-                    local_addr,
-                    2,
-                    peers?=None,
-                  )
-                  // Send to both direct and relay addresses (fire and forget)
-                  // Since UDP has no delivery guarantee, sending to both increases chances of reaching the peer
-                  send_message_with_fallback(
-                    server, peer_addr, sender_addr, hello_msg,
-                  )
-                  println(
-                    "Sent hello to discovered peer at \{peer_addr} (fallback: \{sender_addr})",
-                  )
-                }
-              }
-            }
-          }
-        }
-      }
-      { kind: "welcome", .. } => {
-        // Welcome message without peer list - but may still have public_key
-        // Ensure peer exists in manager before learning address
-        match get_global_peer_manager().get_peer(msg.from) {
-          None => {
-            // Peer doesn't exist yet, create it
-            let peer_node = PeerNode::new(id=msg.from, version=VERSION)
-            update_global_peer_manager(fn(manager) {
-              manager.add_peer(peer_node)
-            })
-          }
-          Some(_) => () // Peer exists
-        }
-
-        // Learn that this peer can be reached at sender_addr
-        learn_peer_address(msg.from, sender_addr)
-        if msg.public_key is Some(pk) {
-          let peer_manager = get_global_peer_manager()
-          let peer_already_has_key = match peer_manager.get_peer(msg.from) {
-            Some(peer) => peer.public_key is Some(_)
-            None => false
-          }
-          if !peer_already_has_key {
-            update_global_peer_manager(fn(manager) {
-              manager.update_peer_public_key(msg.from, pk)
-            })
-            println(
-              "Stored public key for peer \{msg.from} from welcome message",
-            )
-          }
-        }
       }
       { kind: "ping", .. } => {
         let reply = Message::new(kind="pong", from=id, addr=local_addr)
