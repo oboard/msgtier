@@ -88,12 +88,12 @@ let global_hello_times : Ref[Map[String, UInt64]] = Ref::new({})
 
 ///|
 /// Check if we should re-broadcast hello for this peer (debounce check)
-/// Only re-broadcast once per 30 second period
+/// Only re-broadcast once per 5 second period
 pub fn should_rebroadcast_hello(peer_id : String) -> Bool {
   let times = global_hello_times.val
   let now = @env.now()
   match times.get(peer_id) {
-    Some(last_time) => now - last_time > 30000UL // 30 seconds
+    Some(last_time) => now - last_time > 5000UL // 5 seconds
     None => true // Never seen this peer before, always process
   }
 }

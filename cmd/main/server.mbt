@@ -1,5 +1,5 @@
 ///|
-const HELLO_DEBOUNCE_MS : UInt64 = 5000
+const HELLO_DEBOUNCE_MS : UInt64 = 15000
 
 ///|
 fn handle_new_connection(
@@ -240,9 +240,15 @@ async fn handle_reconnects(
     public_key=our_public_key,
     secret_hash=our_secret_hash,
   )
+  let mut reconnect_interval = 500 // Start fast: 500ms
+  let max_reconnect_interval = 5000 // Max: 5s
   for {
-    // Sleep for 5 seconds between retry checks
-    @async.sleep(5000)
+    // Sleep with dynamic interval
+    @async.sleep(reconnect_interval)
+    // Increase interval for next time (exponential backoff)
+    if reconnect_interval < max_reconnect_interval {
+      reconnect_interval = (reconnect_interval * 2).min(max_reconnect_interval)
+    }
 
     // Broadcast hello to all known peers (both configured and discovered)
     // Send directly to each known peer address with relay=1
@@ -390,7 +396,7 @@ async fn handle_heartbeat(
   local_addr : String,
   node_id : String,
 ) -> Unit {
-  let heartbeat_interval = 10000 // 10 seconds
+  let heartbeat_interval = 3000 // 3 seconds
   for {
     @async.sleep(heartbeat_interval)
     let current_time = @env.now()
@@ -595,6 +601,69 @@ async fn listen_udp(
       let timestamp = @env.now() // Far future to prevent timeout
       manager.update_connection_last_seen(conn.id, timestamp)
     })
+
+    // Broadcast hello to all known peers to announce the new connection
+    let our_public_key = match get_public_key() {
+      Some(key) => Some(serialize_public_key(key))
+      None => None
+    }
+    let our_secret_hash = match global_config.val {
+      Some(config) => Some(hash_secret(config.secret))
+      None => None
+    }
+    let our_addresses : Array[NetworkAddress] = match global_config.val {
+      Some(config) => {
+        let addrs : Array[NetworkAddress] = []
+        for listener_url in config.listeners {
+          let addr_str = listener_url.get_host()
+          addrs.push(NetworkAddress::{ address: addr_str })
+        }
+        addrs
+      }
+      None => {
+        let addrs : Array[NetworkAddress] = []
+        addrs.push(NetworkAddress::{ address: local_addr })
+        addrs
+      }
+    }
+    let conn_hello = Message::new(
+      kind="hello",
+      from=id,
+      addr=local_addr,
+      relay=1,
+      version=Some(VERSION),
+      peers=if our_addresses.is_empty() { None } else { Some(our_addresses) },
+      public_key=our_public_key,
+      secret_hash=our_secret_hash,
+    )
+    // Broadcast directly to known peers
+    let known_peers = get_all_known_peers()
+    for peer_addr in known_peers {
+      if peer_addr != sender_addr && !peer_addr.has_prefix("0.0.0.0:") {
+        send_message(server, peer_addr, conn_hello) |> ignore
+      }
+    }
+    // Also broadcast through relay peer connections
+    let conn_hello_relay = Message::new(
+      kind="hello",
+      from=id,
+      addr=local_addr,
+      relay=2,
+      version=Some(VERSION),
+      peers=if our_addresses.is_empty() { None } else { Some(our_addresses) },
+      public_key=our_public_key,
+      secret_hash=our_secret_hash,
+    )
+    let all_peers = get_global_peer_manager().get_all_peers()
+    for peer in all_peers {
+      let active_conns = get_global_peer_manager().get_active_peer_connections(peer.id)
+      for c in active_conns {
+        if c.state == ConnectionState::Connected && c.remote_addr != sender_addr {
+          send_message(server, c.remote_addr, conn_hello_relay) |> ignore
+        }
+      }
+    }
+    println("Broadcast hello on new connection from \{msg.from}")
 
     // Don't create peers from peer list - wait for welcome message
 
