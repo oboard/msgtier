@@ -8,7 +8,7 @@ fn handle_new_connection(
   remote_addr : String,
   peer_info? : NetworkDiscoveryInfo,
   relay_depth? : Int = 1,
-) -> Connection {
+) -> (Connection, Bool) {
   // Get the actual peer ID (from peer_info if available, otherwise from peer_id parameter)
   let actual_peer_id = if peer_info is Some(info) { info.id } else { peer_id }
 
@@ -45,8 +45,8 @@ fn handle_new_connection(
   for existing_conn in existing_conns {
     if existing_conn.local_addr == local_addr &&
       existing_conn.remote_addr == remote_addr {
-      // Connection already exists, return it
-      return existing_conn
+      // Connection already exists, return it with is_new=false
+      return (existing_conn, false)
     }
   }
 
@@ -69,11 +69,9 @@ fn handle_new_connection(
   let filtered = conns.filter(fn(c) {
     c.local_addr == local_addr && c.remote_addr == remote_addr
   })
-  if filtered.is_empty() {
-    conns[0]
-  } else {
-    filtered[0]
-  }
+  let conn = if filtered.is_empty() { conns[0] } else { filtered[0] }
+  // Return the new connection with is_new=true
+  (conn, true)
 }
 
 ///|
@@ -251,7 +249,7 @@ fn create_connection_update_message(
     from=node_id,
     addr=local_addr,
     relay=1,
-    data=connections_data.join("|"),
+    data=@msgpack.array(connections_data.map(@msgpack.string)),
   )
 }
 
@@ -270,9 +268,6 @@ async fn broadcast_connection_update(
     for conn in peer_conns {
       if conn.state == ConnectionState::Connected {
         ignore(send_message(server, conn.remote_addr, update_msg))
-        println(
-          "Broadcasted connection update from \{node_id} to \{peer.id} at \{conn.remote_addr}",
-        )
       }
     }
   }
@@ -367,7 +362,7 @@ async fn handle_pending_messages(
       if target == node_id {
         // Handle message to self directly
         match msg.data {
-          Some(script_name) => {
+          String(script_name) => {
             root.spawn_bg(fn() {
               match global_config.val {
                 Some({ scripts: Some(scripts), .. }) =>
@@ -380,7 +375,7 @@ async fn handle_pending_messages(
             })
             println("Processed self-message for \{target}: \{script_name}")
           }
-          None => println("Self-message has no data")
+          _ => println("Self-message has no data")
         }
       } else {
         // Try to find and send to remote peer
@@ -421,7 +416,7 @@ async fn handle_pending_messages(
                   addr=msg.addr,
                   relay=msg.relay + 1, // Relayed through 1 intermediary
                   target~, // Route to target peer ID
-                  data?=msg.data,
+                  data=msg.data,
                   version?=msg.version,
                   public_key?=msg.public_key,
                   secret_hash?=msg.secret_hash,
@@ -589,7 +584,7 @@ async fn listen_udp(
     // Use the message's relay count as the hop depth for this connection
     // msg.relay already indicates how many hops the message took to reach us
     let relay_depth_to_use = msg.relay
-    let conn = handle_new_connection(
+    let (conn, is_new_connection) = handle_new_connection(
       msg.from,
       local_addr,
       sender_addr,
@@ -636,11 +631,16 @@ async fn listen_udp(
       manager.update_connection_last_seen(conn.id, timestamp)
     })
 
-    // Broadcast connection update to all peers so they know about this new connection
-    root.spawn_bg(fn() { broadcast_connection_update(server, id, local_addr) })
+    // Only broadcast connection update if this is a NEW connection
+    if is_new_connection {
+      root.spawn_bg(fn() { broadcast_connection_update(server, id, local_addr) })
+    }
 
     // Handle message relaying: if target is set and we're not the target, forward it
     if msg.target is Some(target_addr) {
+      if global_config.val is Some({ id, .. }) && id == target_addr {
+        continue
+      }
       // Check if this node has already processed this message (prevent loops using DFS path tracking)
       let already_visited = msg.visited.any(fn(node_id) { node_id == id })
       if !already_visited {
@@ -659,7 +659,7 @@ async fn listen_udp(
           peers?=msg.peers,
           payload?=msg.payload,
           target?=msg.target,
-          data?=msg.data,
+          data=msg.data,
           public_key?=msg.public_key,
           secret_hash?=msg.secret_hash,
           encrypted=msg.encrypted,
@@ -703,7 +703,7 @@ async fn listen_udp(
             relay=msg.relay + 1,
             visited=updated_visited, // Keep visited list to track path
             target?=msg.target,
-            data?=msg.data,
+            data=msg.data,
             version?=msg.version,
             public_key?=msg.public_key,
             secret_hash?=msg.secret_hash,
@@ -914,7 +914,7 @@ async fn listen_udp(
         ignore(send_message(server, target, ack_to_target))
         ignore(send_message(server, sender_addr, ack_to_sender))
       }
-      { kind: "relay", target: Some(target), data: Some(data), .. } => {
+      { kind: "relay", target: Some(target), data, .. } => {
         let forward = Message::new(
           kind="data",
           from=msg.from,
@@ -925,7 +925,7 @@ async fn listen_udp(
         )
         ignore(send_message(server, target, forward))
       }
-      { kind: "send", target: Some(target), data: Some(data), .. } => {
+      { kind: "send", target: Some(target), data, .. } => {
         let direct = Message::new(
           kind="data",
           from=msg.from,
@@ -973,7 +973,7 @@ async fn listen_udp(
           None => ()
         }
       }
-      { kind: "data", data: Some(raw_data), encrypted, .. } => {
+      { kind: "data", data: Binary(raw_data), encrypted, .. } => {
         // Decrypt data if encrypted
         let data_content = if encrypted {
           match decrypt_message_from_peer(msg.from, raw_data) {
@@ -999,7 +999,9 @@ async fn listen_udp(
                   let script_outputs : Array[String] = []
                   for script_name, command in scripts {
                     let output = execute_script_with_output(
-                      script_name, command, data_content,
+                      script_name,
+                      command,
+                      @utf8.decode(data_content),
                     )
                     script_outputs.push("\{script_name}: \{output}")
                     println("Executed script \{script_name} with received data")
@@ -1010,7 +1012,7 @@ async fn listen_udp(
                     from=id,
                     addr=local_addr,
                     relay=1,
-                    data=script_outputs.join("\n"),
+                    data=script_outputs.map(@msgpack.string) |> @msgpack.array,
                   )
                   ignore(send_message(server, msg.from, response_msg))
                 }
@@ -1023,40 +1025,34 @@ async fn listen_udp(
           }
         })
       }
-      { kind: "data_response", data: Some(response_data), .. } => {
+      { kind: "data_response", data: response_data, .. } => {
         // Handle response from script execution
         println("Received script response from \{msg.from}:")
         println(response_data)
       }
-      { kind: "connection_update", data: Some(connections_data), .. } =>
+      { kind: "connection_update", data: Array(conn_entries), .. } =>
         // Handle connection update from peer
         // Parse connection string: "peer_id:remote_addr:relay|..."
-        if !connections_data.is_empty() {
-          let conn_entries = connections_data.split("|").collect()
-          for entry in conn_entries {
-            if !entry.is_empty() {
-              let parts = entry.split(":").collect()
-              if parts.length() >= 3 {
-                let peer_id = parts[0].to_string()
-                let remote_addr = parts[1].to_string()
-                let relay_depth = 1 // Assume relay=1 for learned connections
-
-                // Create or update the connection in our peer manager
-                if peer_id == msg.from {
-                  // This is a connection from the peer who sent the update
-                  ignore(
-                    handle_new_connection(
-                      peer_id,
-                      local_addr,
-                      remote_addr,
-                      relay_depth~,
-                    ),
-                  )
-                  println(
-                    "Learned new connection: \{peer_id} -> \{remote_addr}",
-                  )
-                }
+        for entry in conn_entries {
+          if entry
+            is Map(
+              {
+                "peer_id": String(peer_id),
+                "remote_addr": String(remote_addr),
+                "relay_depth": Int(relay_depth),
+                ..
               }
+            ) {
+            // Create or update the connection in our peer manager
+            if peer_id == msg.from {
+              // This is a connection from the peer who sent the update
+              let (_conn, _is_new) = handle_new_connection(
+                peer_id,
+                local_addr,
+                remote_addr,
+                relay_depth~,
+              )
+              println("Learned new connection: \{peer_id} -> \{remote_addr}")
             }
           }
         }
