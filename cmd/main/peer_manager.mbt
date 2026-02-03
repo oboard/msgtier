@@ -114,3 +114,8 @@ fn PeerManager::get_route(
 ) -> Route? {
   self.routes.get(target_peer_id)
 }
+
+///|
+fn PeerManager::get_all_routes(self : PeerManager) -> Map[String, Route] {
+  self.routes
+}

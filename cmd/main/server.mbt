@@ -244,7 +244,7 @@ fn create_connection_update_message(
     let peer_conns = peer.get_all_connections(all_conns)
     for conn in peer_conns {
       if conn.is_active() {
-        // Format: "peer_id:remote_addr:relay"
+        // Format: [peer_id, remote_addr, relay]
         connections_data.push(
           @msgpack.array([
             @msgpack.string(peer.id),
@@ -255,6 +255,24 @@ fn create_connection_update_message(
       }
     }
   }
+
+  // Include known routes (hops > 1)
+  let all_routes = get_global_peer_manager().get_all_routes()
+  for peer_id, route in all_routes {
+    // Only advertise routes that are NOT direct connections (to avoid duplication)
+    // and valid routes
+    if route.hops > 1 {
+      // Use "routed" as placeholder for remote_addr since we route via next_hop
+      connections_data.push(
+        @msgpack.array([
+          @msgpack.string(peer_id),
+          @msgpack.string("routed"),
+          @msgpack.int(route.hops),
+        ]),
+      )
+    }
+  }
+
   Message::new(
     kind="connection_update",
     from=node_id,
@@ -1034,39 +1052,40 @@ async fn listen_udp(
       }
       { kind: "connection_update", data: Array(conn_entries), .. } =>
         // Handle connection update from peer
-        // Parse connection string: "peer_id:remote_addr:relay"
+        // Parse connection entry: [peer_id, remote_addr, relay]
         for entry in conn_entries {
-          if entry
-            is Array([String(peer_id), String(remote_addr), Int(relay_depth)]) &&
-            peer_id != id {
-            // Update Routing Table
-            // We learned that 'peer_id' is reachable via 'msg.from' with hops = relay_depth + 1
-            // (Since relay_depth is the distance from msg.from to peer_id)
-            let new_hops = relay_depth + 1
-            update_global_peer_manager(fn(manager) {
-              manager.update_route(peer_id, msg.from, new_hops)
-            })
-            println(
-              "Learned route to \{peer_id} via \{msg.from} (hops=\{new_hops})",
-            )
+          match entry {
+            Array([String(peer_id), String(remote_addr), Int(relay_depth)]) => {
+                 // If the peer is not me
+                 if peer_id != id {
+                    // Update Routing Table
+                    // We learned that 'peer_id' is reachable via 'msg.from' with hops = relay_depth + 1
+                    // (Since relay_depth is the distance from msg.from to peer_id)
+                    let new_hops = relay_depth + 1
+                    update_global_peer_manager(fn(manager) {
+                      manager.update_route(peer_id, msg.from, new_hops)
+                    })
+                    println("Learned route to \{peer_id} via \{msg.from} (hops=\{new_hops})")
+                    
+                    // Add discovered address to known peers for potential direct connection
+                    if remote_addr != "routed" && !remote_addr.has_prefix("0.0.0.0:") {
+                      add_known_peer(remote_addr)
+                      // println("Added discovered peer address: \{remote_addr}")
+                    }
 
-            // Add discovered address to known peers for potential direct connection
-            if remote_addr != "routed" && !remote_addr.has_prefix("0.0.0.0:") {
-              add_known_peer(remote_addr)
-              // println("Added discovered peer address: \{remote_addr}")
+                    // Create or update connection if it's a direct neighbor (for compatibility)
+                    // Only if remote_addr is not "routed" placeholder
+                    if peer_id == msg.from && remote_addr != "routed" {
+                       let (_conn, _is_new) = handle_new_connection(
+                         peer_id,
+                         local_addr,
+                         remote_addr,
+                         relay_depth~,
+                       )
+                    }
+                 }
             }
-
-            // Create or update connection if it's a direct neighbor (for compatibility)
-            // Only if remote_addr is not "routed" placeholder
-            if peer_id == msg.from && remote_addr != "routed" {
-              let (_conn, _is_new) = handle_new_connection(
-                peer_id,
-                local_addr,
-                remote_addr,
-                relay_depth~,
-              )
-
-            }
+            _ => ()
           }
         }
       _ => ()
