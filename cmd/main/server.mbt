@@ -690,7 +690,7 @@ async fn listen_udp(
         learn_peer_address(msg.from, sender_addr)
 
         // Validate secret
-        match global_config.val {
+        let secret_valid = match global_config.val {
           Some(config) => {
             let our_secret_hash = hash_secret(config.secret)
             if peer_secret_hash != our_secret_hash {
@@ -698,14 +698,47 @@ async fn listen_udp(
               println(
                 "Rejecting peer \{msg.from} at \{sender_addr}: secret mismatch",
               )
+              false
             } else {
-              // Secret matches - accept connection (no welcome response needed)
+              // Secret matches - accept connection
               println("Accepted peer \{msg.from} at \{sender_addr}")
+              true
             }
           }
-          None =>
+          None => {
             // No config - accept hello
             println("Accepted peer \{msg.from} at \{sender_addr} (no config)")
+            true
+          }
+        }
+
+        // If secret is valid, broadcast this new peer to all existing connected peers
+        if secret_valid {
+          let all_peers = get_global_peer_manager().get_all_peers()
+          for existing_peer in all_peers {
+            // Skip the peer we just received hello from
+            if existing_peer.id != msg.from {
+              let peer_conns = get_global_peer_manager().get_active_peer_connections(
+                existing_peer.id,
+              )
+              // Send update about new peer to all active connections
+              for conn in peer_conns {
+                if conn.state == ConnectionState::Connected {
+                  // Create hello message for the new peer and send to existing peer
+                  let update_msg = create_hello_message(
+                    msg.from,
+                    sender_addr,
+                    1,
+                    peers?=None,
+                  )
+                  ignore(send_message(server, conn.remote_addr, update_msg))
+                  println(
+                    "Broadcasted new peer \{msg.from} to \{existing_peer.id} at \{conn.remote_addr}",
+                  )
+                }
+              }
+            }
+          }
         }
 
         // Discover peers from advertised peer addresses in hello
