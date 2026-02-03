@@ -245,19 +245,28 @@ async fn handle_reconnects(
     @async.sleep(5000)
 
     // Broadcast hello to all known peers (both configured and discovered)
-    // This floods the network so that all peers learn about us through multiple paths
+    // Send directly to each known peer address with relay=1
     let known_peers = get_all_known_peers()
     for peer_addr in known_peers {
       // Skip 0.0.0.0 addresses (bind-all, not connectable)
       if !peer_addr.has_prefix("0.0.0.0:") {
-        // Send hello to each peer - broadcast with visited path tracking
-        // The visited array prevents loops as peers forward this hello
         send_message(server, peer_addr, hello_msg) |> ignore
         println("Broadcasting hello to known peer at \{peer_addr}")
       }
     }
 
-    // Also broadcast through all active direct connections (relay to reach peers through them)
+    // Also broadcast hello through all active relay peer connections
+    // This ensures hello reaches peers through relay paths with relay=2
+    let hello_msg_relay = Message::new(
+      kind="hello",
+      from=node_id,
+      addr=local_addr,
+      relay=2, // Relay hop
+      version=Some(VERSION),
+      peers=if our_addresses.is_empty() { None } else { Some(our_addresses) },
+      public_key=our_public_key,
+      secret_hash=our_secret_hash,
+    )
     let all_peers = get_global_peer_manager().get_all_peers()
     for peer in all_peers {
       let active_conns = get_global_peer_manager().get_active_peer_connections(
@@ -265,10 +274,10 @@ async fn handle_reconnects(
       )
       for conn in active_conns {
         if conn.state == ConnectionState::Connected {
-          // Send hello through this connection so they can relay it further
-          send_message(server, conn.remote_addr, hello_msg) |> ignore
+          // Send hello through relay peer with relay=2
+          send_message(server, conn.remote_addr, hello_msg_relay) |> ignore
           println(
-            "Relaying hello through connected peer \{peer.id} at \{conn.remote_addr}",
+            "Relaying hello through peer \{peer.id} at \{conn.remote_addr}",
           )
         }
       }
@@ -1131,6 +1140,40 @@ async fn listen_udp(
         println("Received script response from \{msg.from}:")
         println(response_data)
       }
+      {
+        kind: "broadcast",
+        target: Some(target_addr),
+        data: Some(broadcast_data),
+        ..,
+      } =>
+        // Broadcast message: send data to target without forwarding back to sender
+        // Don't send back to the peer we received it from
+        if msg.from != id {
+          // Get all known peers and send broadcast to each (except sender)
+          let known_peers = get_all_known_peers()
+          for peer_addr in known_peers {
+            if peer_addr != sender_addr && !peer_addr.has_prefix("0.0.0.0:") {
+              let broadcast_msg = Message::new(
+                id=msg.id,
+                kind="broadcast",
+                from=msg.from,
+                addr=msg.addr,
+                relay=msg.relay + 1,
+                visited=msg.visited, // Keep visited list to track path
+                target=Some(target_addr),
+                data=Some(broadcast_data),
+                version=msg.version,
+                public_key=msg.public_key,
+                secret_hash=msg.secret_hash,
+                encrypted=msg.encrypted,
+              )
+              ignore(send_message(server, peer_addr, broadcast_msg))
+              println(
+                "Forwarding broadcast from \{msg.from} to \{target_addr} via \{peer_addr}",
+              )
+            }
+          }
+        }
       _ => ()
     }
     root.spawn_bg(fn() {  })
