@@ -5,7 +5,6 @@
     "moonbitlang/core/encoding/utf8",
     "moonbitlang/core/env",
     "moonbitlang/core/bigint",
-    "moonbitlang/core/strconv",
     "moonbitlang/async",
     "moonbitlang/async/socket",
     "moonbitlang/async/fs",

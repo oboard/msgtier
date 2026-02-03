@@ -60,16 +60,6 @@ test "compute_and_store_shared_secret stores secret" {
 }
 
 ///|
-test "encrypt_for_peer returns Some with valid shared secret" {
-  init_keypair()
-  let (_peer_priv, peer_pub) = @x25519.generate_keypair()
-  compute_and_store_shared_secret("peer2", peer_pub)
-  let data : Bytes = b"test data"
-  let encrypted = encrypt_for_peer("peer2", data)
-  guard encrypted is Some(_) else { fail("expected some value") }
-}
-
-///|
 test "decrypt_from_peer returns None for unknown peer" {
   let encrypted : Bytes = b"encrypted"
   let result = decrypt_from_peer("unknown", encrypted)

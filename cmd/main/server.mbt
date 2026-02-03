@@ -272,7 +272,6 @@ fn create_connection_update_message(
       )
     }
   }
-
   Message::new(
     kind="connection_update",
     from=node_id,
@@ -525,6 +524,8 @@ async fn handle_heartbeat(
               ConnectionState::Disconnected,
             )
           })
+          // Broadcast update because a connection became inactive
+          ignore(broadcast_connection_update(server, node_id, local_addr))
         }
       }
     }
@@ -617,6 +618,9 @@ async fn listen_udp(
       relay_depth=relay_depth_to_use,
     )
 
+    // Check if state is changing from non-Connected to Connected
+    let was_disconnected = conn.state != ConnectionState::Connected
+
     // Store peer's public key if provided and compute shared secret (only if not already stored)
     if msg.public_key is Some(pk) {
       let peer_manager = get_global_peer_manager()
@@ -656,8 +660,8 @@ async fn listen_udp(
       manager.update_connection_last_seen(conn.id, timestamp)
     })
 
-    // Only broadcast connection update if this is a NEW connection
-    if is_new_connection {
+    // Only broadcast connection update if this is a NEW connection or state changed to Active
+    if is_new_connection || was_disconnected {
       root.spawn_bg(fn() { broadcast_connection_update(server, id, local_addr) })
     }
 
@@ -1010,7 +1014,7 @@ async fn listen_udp(
       { kind: "data", data: Binary(raw_data), encrypted, .. } => {
         // Decrypt data if encrypted
         let data_content = if encrypted &&
-          decrypt_message_from_peer(msg.from, raw_data) is Some(decrypted) {
+          decrypt_from_peer(msg.from, raw_data) is Some(decrypted) {
           decrypted
         } else {
           println("Failed to decrypt message from \{msg.from}, raw=\{raw_data}")
@@ -1055,36 +1059,39 @@ async fn listen_udp(
         // Parse connection entry: [peer_id, remote_addr, relay]
         for entry in conn_entries {
           match entry {
-            Array([String(peer_id), String(remote_addr), Int(relay_depth)]) => {
-                 // If the peer is not me
-                 if peer_id != id {
-                    // Update Routing Table
-                    // We learned that 'peer_id' is reachable via 'msg.from' with hops = relay_depth + 1
-                    // (Since relay_depth is the distance from msg.from to peer_id)
-                    let new_hops = relay_depth + 1
-                    update_global_peer_manager(fn(manager) {
-                      manager.update_route(peer_id, msg.from, new_hops)
-                    })
-                    println("Learned route to \{peer_id} via \{msg.from} (hops=\{new_hops})")
-                    
-                    // Add discovered address to known peers for potential direct connection
-                    if remote_addr != "routed" && !remote_addr.has_prefix("0.0.0.0:") {
-                      add_known_peer(remote_addr)
-                      // println("Added discovered peer address: \{remote_addr}")
-                    }
+            Array([String(peer_id), String(remote_addr), Int(relay_depth)]) =>
+              // If the peer is not me
+              if peer_id != id {
+                // Update Routing Table
+                // We learned that 'peer_id' is reachable via 'msg.from' with hops = relay_depth + 1
+                // (Since relay_depth is the distance from msg.from to peer_id)
+                let new_hops = relay_depth + 1
+                update_global_peer_manager(fn(manager) {
+                  manager.update_route(peer_id, msg.from, new_hops)
+                })
+                println(
+                  "Learned route to \{peer_id} via \{msg.from} (hops=\{new_hops})",
+                )
 
-                    // Create or update connection if it's a direct neighbor (for compatibility)
-                    // Only if remote_addr is not "routed" placeholder
-                    if peer_id == msg.from && remote_addr != "routed" {
-                       let (_conn, _is_new) = handle_new_connection(
-                         peer_id,
-                         local_addr,
-                         remote_addr,
-                         relay_depth~,
-                       )
-                    }
-                 }
-            }
+                // Add discovered address to known peers for potential direct connection
+                if remote_addr != "routed" &&
+                  !remote_addr.has_prefix("0.0.0.0:") {
+                  add_known_peer(remote_addr)
+                  // println("Added discovered peer address: \{remote_addr}")
+                }
+
+                // Create or update connection if it's a direct neighbor (for compatibility)
+                // Only if remote_addr is not "routed" placeholder
+                if peer_id == msg.from && remote_addr != "routed" {
+                  let (_conn, _is_new) = handle_new_connection(
+                    peer_id,
+                    local_addr,
+                    remote_addr,
+                    relay_depth~,
+                  )
+
+                }
+              }
             _ => ()
           }
         }

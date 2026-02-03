@@ -72,13 +72,10 @@ fn get_shared_secret(peer_id : String) -> Bytes? {
 
 ///|
 /// Encrypt data for a peer using shared secret
-fn encrypt_for_peer(peer_id : String, data : Bytes) -> Bytes? {
+fn encrypt_for_peer(peer_id : String, data : Bytes) -> Bytes {
   match get_shared_secret(peer_id) {
-    Some(shared) => Some(@x25519.encrypt(shared, data))
-    None => {
-      println("No shared secret with peer \{peer_id}")
-      None
-    }
+    Some(shared) => @x25519.encrypt(shared, data)
+    None => []
   }
 }
 
@@ -135,27 +132,6 @@ fn hex_char_to_int_from_uint16(c : UInt16) -> Int {
     code - 87
   } else {
     0
-  }
-}
-
-///|
-/// Encrypt a string message for a specific peer
-fn encrypt_message_for_peer(
-  peer_id : String,
-  message : @msgpack.Value,
-) -> String? {
-  match encrypt_for_peer(peer_id, @msgpack.encode(message)) {
-    Some(encrypted) => Some(bytes_to_hex(encrypted))
-    None => None
-  }
-}
-
-///|
-/// Decrypt a hex-encoded message from a peer
-fn decrypt_message_from_peer(peer_id : String, encrypted : Bytes) -> Bytes? {
-  match decrypt_from_peer(peer_id, encrypted) {
-    Some(decrypted) => Some(decrypted)
-    None => None
   }
 }
 

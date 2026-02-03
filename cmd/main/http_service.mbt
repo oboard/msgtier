@@ -148,7 +148,7 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
       let body_str = body.read_all().text()
 
       // Get current node ID and local address
-      let node_id = match global_config.val {
+      let peer_id = match global_config.val {
         Some(config) => config.id
         None => "unknown"
       }
@@ -167,17 +167,19 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
       // Create data message to send with body as data
       let msg = Message::new(
         kind="data",
-        from=node_id,
+        from=peer_id,
         addr=local_addr,
         relay=1,
         version=VERSION,
         target~,
-        data=@msgpack.string(body_str),
+        data=@msgpack.binary(
+          encrypt_for_peer(peer_id, @msgpack.encode(@msgpack.string(body_str))),
+        ),
       )
 
       // Print to stdout for debugging
       println("HTTP /send: Queuing message to \{target}")
-      println("  From: \{node_id}")
+      println("  From: \{peer_id}")
       println("  Local: \{local_addr}")
       println("  Data: \{body_str}")
 
@@ -186,7 +188,7 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
 
       // Check if target peer exists or is self
       let target_peer = get_global_peer_manager().get_peer(target)
-      let is_self = target == node_id
+      let is_self = target == peer_id
       match (target_peer, is_self) {
         (Some(_), _) | (None, true) =>
           conn
