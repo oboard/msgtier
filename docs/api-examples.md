@@ -63,18 +63,24 @@ curl http://localhost:9000/status
   "status": "ok",
   "connections": [
     {
-      "peer_id": "2",
-      "version": "0.1.0",
-      "active": true,
+      "id": "conn_1",
       "local_addr": "0.0.0.0:6666",
-      "remote_addr": "127.0.0.1:6668"
-    },
-    {
+      "remote_addr": "127.0.0.1:6668",
       "peer_id": "2",
-      "version": "0.1.0",
-      "active": true,
-      "local_addr": "0.0.0.0:6667",
-      "remote_addr": "127.0.0.1:6668"
+      "state": "Active",
+      "last_seen": 1625000000,
+      "quality": 100,
+      "relay": 0,
+      "metadata": {},
+      "latency_ms": 15,
+      "latency_history": [10, 15, 20],
+      "packets_sent": 150,
+      "packets_lost": 0,
+      "bytes_sent": 10240,
+      "bytes_received": 8192,
+      "last_ping_time": 1625000000,
+      "bandwidth_mbps": 100.0,
+      "packet_loss_rate": 0
     }
   ],
   "peers_count": 2,
@@ -104,11 +110,16 @@ curl http://localhost:9000/status
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `id` | String | Unique connection identifier |
 | `peer_id` | String | ID of the connected peer |
-| `version` | String | Peer's software version |
-| `active` | Boolean | Whether connection is currently active |
+| `state` | String | Connection state (Active, Disconnected, etc.) |
 | `local_addr` | String | Local address used for this connection |
 | `remote_addr` | String | Remote peer's address |
+| `latency_ms` | Number | Current latency in milliseconds |
+| `packet_loss_rate` | Number | Packet loss rate (0-100) |
+| `bandwidth_mbps` | Number | Estimated bandwidth in Mbps |
+| `last_seen` | Number | Timestamp of last activity |
+| `quality` | Number | Connection quality score |
 
 ---
 

@@ -15,10 +15,16 @@ hero:
       link: /download
 
 features:
-  - title: Secure
-    details: End-to-end X25519 ECDH encryption with automatic key exchange during peer handshake.
-  - title: Decentralized
-    details: No distinction between the server and the client.
+  - title: Auto-Discovery
+    details: Nodes automatically discover peers through the network gossip protocol.
+  - title: End-to-End Encryption
+    details: X25519 ECDH key exchange with symmetric encryption for secure communication.
+  - title: Message Relay
+    details: Messages are automatically relayed through intermediate peers to reach distant nodes.
+  - title: Health Checks
+    details: Continuous heartbeat monitoring with automatic failure detection and reconnection.
+  - title: Script Execution
+    details: Execute custom scripts on message receipt using platform-specific shells.
   - title: Cross-Platform
-    details: Supports Win / MacOS / Linux ...
+    details: Runs on Windows, macOS, and Linux with zero external dependencies.
 ---
