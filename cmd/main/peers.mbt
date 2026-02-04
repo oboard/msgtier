@@ -5,9 +5,20 @@ struct PeerNode {
   id : String
   version : String
   metadata : Map[String, String]?
-  public_key : Bytes // Serialized RSA public key for E2E encryption
+  public_key : Bytes // RSA public key for E2E encryption
   addresses : Array[String] // All known addresses for this peer (from gossip discovery)
-} derive(Show, ToJson, FromJson)
+} derive(Show)
+
+///|
+impl ToJson for PeerNode with to_json(self) {
+  {
+    "id": self.id,
+    "version": self.version,
+    "metadata": self.metadata,
+    "public_key": bytes_to_hex(self.public_key),
+    "adresses": self.addresses,
+  }
+}
 
 ///|
 /// PeerNodeStatus represents the aggregate status of a peer based on its connections
@@ -16,15 +27,6 @@ enum PeerNodeStatus {
   Disconnected // No active connections
   Connected // Has at least one active connection
 } derive(Show, ToJson, FromJson, Eq)
-
-///|
-/// PeerNodeWithStatus combines peer information with its current status
-struct PeerNodeWithStatus {
-  peer : PeerNode
-  status : PeerNodeStatus
-  active_connections : Int
-  total_connections : Int
-} derive(Show, ToJson, FromJson)
 
 ///|
 fn PeerNode::new(

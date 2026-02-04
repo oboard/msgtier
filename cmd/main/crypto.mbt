@@ -91,7 +91,7 @@ fn bytes_to_hex(data : Bytes) -> String {
   result
 }
 
-// ///|
+///|
 // /// Convert hex string to bytes
 // fn hex_to_bytes(hex : String) -> Bytes {
 //   let len = hex.length() / 2
