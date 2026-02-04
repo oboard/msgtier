@@ -233,7 +233,7 @@ fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
 }
 
 ///|
-fn create_connection_update_message(
+fn create_sync_message(
   peer_id : String,
   local_addr : String,
 ) -> Message {
@@ -280,7 +280,7 @@ fn create_connection_update_message(
     }
   }
   Message::new(
-    kind="connection_update",
+    kind="sync",
     from=peer_id,
     addr=local_addr,
     relay=1,
@@ -289,12 +289,12 @@ fn create_connection_update_message(
 }
 
 ///|
-async fn broadcast_connection_update(
+async fn broadcast_sync(
   server : @socket.UdpServer,
   peer_id : String,
   local_addr : String,
 ) -> Unit {
-  let update_msg = create_connection_update_message(peer_id, local_addr)
+  let update_msg = create_sync_message(peer_id, local_addr)
   let all_peers = get_global_peer_manager().get_all_peers()
   for peer in all_peers {
     let peer_conns = get_global_connection_manager().get_active_connections(
@@ -532,7 +532,7 @@ async fn handle_heartbeat(
             )
           })
           // Broadcast update because a connection became inactive
-          ignore(broadcast_connection_update(server, from, local_addr))
+          ignore(broadcast_sync(server, from, local_addr))
         }
       }
     }
@@ -548,7 +548,7 @@ async fn handle_periodic_updates(
   let update_interval = 5000 // 5 seconds
   for {
     @async.sleep(update_interval)
-    broadcast_connection_update(server, peer_id, local_addr) |> ignore
+    broadcast_sync(server, peer_id, local_addr) |> ignore
   }
 }
 
@@ -666,7 +666,7 @@ async fn listen_udp(
 
     // Only broadcast connection update if this is a NEW connection or state changed to Active
     if is_new_connection || was_disconnected {
-      root.spawn_bg(fn() { broadcast_connection_update(server, id, local_addr) })
+      root.spawn_bg(fn() { broadcast_sync(server, id, local_addr) })
     }
 
     // Handle message relaying: if target is set and we're not the target, forward it
@@ -1074,7 +1074,7 @@ async fn listen_udp(
         println("Received script response from \{msg.from}:")
         println(response_data)
       }
-      { kind: "connection_update", data: Array(conn_entries), .. } =>
+      { kind: "sync", data: Array(conn_entries), .. } =>
         // Handle connection update from peer
         // Parse connection entry: [peer_id, remote_addr, relay, public_key?]
         for entry in conn_entries {
