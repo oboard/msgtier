@@ -19,6 +19,7 @@ fn handle_new_connection(
       version=info.version,
       public_key=info.public_key,
       addresses=[remote_addr],
+      metadata={},
     )
     update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
 
@@ -38,6 +39,7 @@ fn handle_new_connection(
           version=VERSION,
           public_key=[],
           addresses=[remote_addr],
+          metadata={},
         )
         update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
       }
@@ -244,16 +246,33 @@ fn create_sync_message(peer_id : String, local_addr : String) -> Message {
     let peer_conns = peer.get_all_connections(all_conns)
     for conn in peer_conns {
       if conn.is_active() {
-        // Format: [peer_id, remote_addr, relay, public_key?]
         let pk = peer.public_key
-        connections_data.push(
-          @msgpack.array([
-            @msgpack.string(peer.id),
-            @msgpack.string(conn.remote_addr),
-            @msgpack.int(conn.relay),
-            @msgpack.binary(pk),
-          ]),
-        )
+        let elapsed_ms = @env.now() - conn.last_seen
+        let bandwidth_mbps = conn.calculate_bandwidth_mbps(elapsed_ms)
+        let packet_loss_rate = conn.calculate_packet_loss()
+        let sync_conn = SyncConnection::{
+          peer_id: peer.id,
+          remote_addr: conn.remote_addr,
+          relay: conn.relay,
+          public_key: pk,
+          latency_ms: conn.latency_ms,
+          bandwidth_mbps,
+          packet_loss_rate,
+          id: conn.id,
+          local_addr: conn.local_addr,
+          state: conn.state.to_string(),
+          last_seen: conn.last_seen,
+          quality: conn.quality,
+          metadata: conn.metadata,
+          latency_history: conn.latency_history,
+          packets_sent: conn.packets_sent,
+          packets_lost: conn.packets_lost,
+          bytes_sent: conn.bytes_sent,
+          bytes_received: conn.bytes_received,
+          last_ping_time: conn.last_ping_time,
+          version: peer.version,
+        }
+        connections_data.push(sync_conn.to_msgpack())
       }
     }
   }
@@ -263,17 +282,36 @@ fn create_sync_message(peer_id : String, local_addr : String) -> Message {
   for peer_id, route in all_routes {
     // Only advertise routes that are NOT direct connections (to avoid duplication)
     // and valid routes
-    if route.hops > 1 &&
-      get_global_peer_manager().get_peer(peer_id) is Some(peer) {
-      let pk = peer.public_key
-      connections_data.push(
-        @msgpack.array([
-          @msgpack.string(peer_id),
-          @msgpack.string("routed"),
-          @msgpack.int(route.hops),
-          @msgpack.binary(pk),
-        ]),
-      )
+    if route.hops > 1 {
+      match get_global_peer_manager().get_peer(peer_id) {
+        Some(peer) => {
+          let pk = peer.public_key
+          let sync_conn = SyncConnection::{
+            peer_id,
+            remote_addr: "routed",
+            relay: route.hops,
+            public_key: pk,
+            latency_ms: None,
+            bandwidth_mbps: 0.0,
+            packet_loss_rate: 0,
+            id: "",
+            local_addr: "",
+            state: "Routed",
+            last_seen: route.timestamp,
+            quality: 0,
+            metadata: None,
+            latency_history: [],
+            packets_sent: 0,
+            packets_lost: 0,
+            bytes_sent: 0,
+            bytes_received: 0,
+            last_ping_time: None,
+            version: peer.version,
+          }
+          connections_data.push(sync_conn.to_msgpack())
+        }
+        None => ()
+      }
     }
   }
   Message::new(
@@ -817,6 +855,7 @@ async fn listen_udp(
               version=VERSION,
               public_key~,
               addresses=[msg.addr],
+              metadata={},
             )
             update_global_peer_manager(fn(manager) {
               manager.add_peer(peer_node)
@@ -1067,19 +1106,50 @@ async fn listen_udp(
         println("Received script response from \{msg.from}:")
         println(response_data)
       }
-      { kind: "sync", data: Array(conn_entries), .. } =>
+      { kind: "sync", data: Array(conn_entries), .. } => {
         // Handle connection update from peer
-        // Parse connection entry: [peer_id, remote_addr, relay, public_key?]
+        // Collect direct neighbors of the sender to update their connections list
+        let sender_connections : Array[PeerConnectionInfo] = []
+
+        // Parse connection entry: [peer_id, remote_addr, relay, public_key, latency, bandwidth, packet_loss]
         for entry in conn_entries {
-          match entry {
-            Array(
-              [
-                String(peer_id),
-                String(remote_addr),
-                Int(relay_depth),
-                Binary(pk),
-              ]
-            ) =>
+          match SyncConnection::from_msgpack(entry) {
+            Some(sync_conn) => {
+              let peer_id = sync_conn.peer_id
+              let remote_addr = sync_conn.remote_addr
+              let relay_depth = sync_conn.relay
+              let pk = sync_conn.public_key
+
+              // If relay_depth is 1, it's a direct neighbor of the sender
+              if relay_depth == 1 && peer_id != msg.from {
+                sender_connections.push(PeerConnectionInfo::{
+                  peer_id,
+                  latency_ms: sync_conn.latency_ms,
+                  bandwidth_mbps: sync_conn.bandwidth_mbps,
+                  packet_loss_rate: sync_conn.packet_loss_rate,
+                  id: sync_conn.id,
+                  local_addr: sync_conn.local_addr,
+                  remote_addr: sync_conn.remote_addr,
+                  state: match sync_conn.state {
+                    "Connected" => Connected
+                    "Connecting" => Connecting
+                    "Init" => Init
+                    "Failed" => Failed
+                    _ => Disconnected
+                  },
+                  last_seen: sync_conn.last_seen,
+                  quality: sync_conn.quality,
+                  relay: sync_conn.relay,
+                  metadata: sync_conn.metadata,
+                  latency_history: sync_conn.latency_history,
+                  packets_sent: sync_conn.packets_sent,
+                  packets_lost: sync_conn.packets_lost,
+                  bytes_sent: sync_conn.bytes_sent,
+                  bytes_received: sync_conn.bytes_received,
+                  last_ping_time: sync_conn.last_ping_time,
+                })
+              }
+
               // If the peer is not me
               if peer_id != id {
                 // Update Routing Table
@@ -1100,7 +1170,6 @@ async fn listen_udp(
                 }
 
                 // Also compute shared secret if we have the PK
-
                 compute_and_store_shared_secret(peer_id, pk)
 
                 // Ensure peer exists in manager (even if only known via route)
@@ -1114,9 +1183,10 @@ async fn listen_udp(
                     }
                     let peer_node = PeerNode::new(
                       id=peer_id,
-                      version="unknown",
+                      version=sync_conn.version,
                       public_key=pk,
                       addresses~,
+                      metadata={},
                     )
                     update_global_peer_manager(fn(manager) {
                       manager.add_peer(peer_node)
@@ -1144,36 +1214,18 @@ async fn listen_udp(
 
                 }
               }
-            // Backward compatibility for old format [peer_id, remote_addr, relay]
-            Array([String(peer_id), String(remote_addr), Int(relay_depth)]) =>
-              // If the peer is not me
-              if peer_id != id {
-                // Update Routing Table
-                let new_hops = relay_depth + 1
-                update_global_peer_manager(fn(manager) {
-                  manager.update_route(peer_id, msg.from, new_hops)
-                })
-
-                // Add discovered address to known peers for potential direct connection
-                if remote_addr != "routed" &&
-                  !remote_addr.has_prefix("0.0.0.0:") {
-                  add_known_peer(remote_addr)
-                }
-
-                // Create or update connection if it's a direct neighbor (for compatibility)
-                if peer_id == msg.from && remote_addr != "routed" {
-                  let (_conn, _is_new) = handle_new_connection(
-                    peer_id,
-                    local_addr,
-                    remote_addr,
-                    relay_depth~,
-                  )
-
-                }
-              }
-            _ => ()
+            }
+            None => ()
           }
         }
+
+        // Update sender's connections in PeerManager
+        if !sender_connections.is_empty() {
+          update_global_peer_manager(fn(manager) {
+            manager.update_peer_connections(msg.from, sender_connections)
+          })
+        }
+      }
       _ => ()
     }
   }

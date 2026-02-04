@@ -6,6 +6,7 @@ struct Config {
   listeners : Array[@url.Url]
   scripts : Map[String, String]?
   web_api : String?
+  metadata : Map[String, String]?
 } derive(Show, ToJson, FromJson)
 
 ///|

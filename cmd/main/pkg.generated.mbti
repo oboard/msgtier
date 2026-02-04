@@ -79,6 +79,7 @@ pub impl ToJson for NetworkDiscoveryInfo
 pub impl @json.FromJson for NetworkDiscoveryInfo
 
 type PeerConnectionInfo
+pub impl Show for PeerConnectionInfo
 pub impl ToJson for PeerConnectionInfo
 
 type PeerManager
@@ -105,6 +106,10 @@ pub impl ToJson for RouteInfo
 
 type StatusInfo
 pub impl ToJson for StatusInfo
+
+type SyncConnection
+pub impl Show for SyncConnection
+pub impl ToJson for SyncConnection
 
 // Type aliases
 

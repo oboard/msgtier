@@ -2,37 +2,6 @@
 const PAGE_404 : Bytes = b"<html><head></head><body>Page Not Found</body></html>"
 
 ///|
-fn format_latency(latency_ms : Int?) -> String {
-  match latency_ms {
-    Some(ms) => "\{ms} ms"
-    None => "N/A"
-  }
-}
-
-///|
-fn format_bandwidth(mbps : Double) -> String {
-  if mbps == 0.0 {
-    "0 Mbps"
-  } else if mbps < 0.0001 {
-    "0.0001 Mbps"
-  } else {
-    // Round to 4 decimal places
-    let multiplier = 10000.0
-    let rounded = (mbps * multiplier).to_int().to_double() / multiplier
-    "\{rounded} Mbps"
-  }
-}
-
-///|
-fn format_packet_loss(rate : Int) -> String {
-  if rate == 0 {
-    "0%"
-  } else {
-    "\{rate}%"
-  }
-}
-
-///|
 pub fn get_connected_peers() -> Array[PeerNode] {
   get_global_peer_manager().get_all_peers()
 }
@@ -74,40 +43,6 @@ pub fn clear_connected_peers() -> Unit {
 }
 
 ///|
-struct PeerConnectionInfo {
-  peer_id : String
-  version : String
-  active : Bool
-  relay : Int
-  local_addr : String
-  remote_addr : String
-  latency_ms : Int?
-  latency_display : String
-  bandwidth_mbps : Double
-  bandwidth_display : String
-  packet_loss_rate : Int
-  packet_loss_display : String
-} derive(ToJson)
-
-///|
-struct StatusInfo {
-  status : String
-  peers : Array[PeerNode]
-  connections : Array[PeerConnectionInfo]
-  peers_count : Int
-  peer_id : String
-  listeners : Array[String]
-  known_peers : Array[String]
-  routes : Array[RouteInfo]
-} derive(ToJson)
-
-///|
-struct RouteInfo {
-  target_peer_id : String
-  next_hop : String
-  hops : Int
-  timestamp : UInt64
-} derive(ToJson)
 
 ///|
 async fn start_http_service(addr : String, config : Config) -> Unit {
@@ -135,23 +70,11 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
 
       // Read request body (convert from Bytes to String)
       let body_str = body.read_all().text()
-
+      let config = get_config()
       // Get current node ID and local address
-      let peer_id = match global_config.val {
-        Some(config) => config.id
-        None => "unknown"
-      }
-      let local_addr = match global_config.val {
-        Some(config) => {
-          let addrs = config.listeners.map(fn(url) { url.get_host() })
-          if addrs.is_empty() {
-            "127.0.0.1:0"
-          } else {
-            addrs[0]
-          }
-        }
-        None => "127.0.0.1:0"
-      }
+      let peer_id = config.id
+      let addrs = config.listeners.map(fn(url) { url.get_host() })
+      let local_addr = if addrs.is_empty() { "127.0.0.1:0" } else { addrs[0] }
 
       // Create data message to send with body as data
       let msg = Message::new(
@@ -229,39 +152,62 @@ async fn get_config_handler(conn : @http.ServerConnection) -> Unit {
 }
 
 ///|
+fn get_config() -> Config {
+  match global_config.val {
+    Some(config) => config
+    None => abort("Missing config")
+  }
+}
+
+///|
 async fn status_handler(conn : @http.ServerConnection) -> Unit {
   let all_peers = get_global_peer_manager().get_all_peers()
-  let all_conns = get_global_connection_manager().get_all_connections()
 
-  // Build connection info for each peer
-  let connections : Array[PeerConnectionInfo] = []
-  for peer in all_peers {
-    let peer_conns = peer.get_all_connections(all_conns)
-    for peer_conn in peer_conns {
-      // Calculate metrics
-      let latency_ms = peer_conn.latency_ms
-      let latency_display = format_latency(latency_ms)
-      let elapsed_ms = @env.now() - peer_conn.last_seen
-      let bandwidth_mbps = peer_conn.calculate_bandwidth_mbps(elapsed_ms)
-      let bandwidth_display = format_bandwidth(bandwidth_mbps)
-      let packet_loss_rate = peer_conn.calculate_packet_loss()
-      let packet_loss_display = format_packet_loss(packet_loss_rate)
-      connections.push(PeerConnectionInfo::{
-        peer_id: peer.id,
-        version: peer.version,
-        active: peer_conn.is_active(),
-        relay: peer_conn.relay,
-        local_addr: peer_conn.local_addr,
-        remote_addr: peer_conn.remote_addr,
-        latency_ms,
-        latency_display,
+  // Add myself to the peers list to show my connections
+  let my_config = get_config()
+  let my_id = my_config.id
+  let my_pk = get_public_key()
+  let my_addrs = my_config.listeners.map(fn(url) { url.get_host() })
+
+  // Get my active direct connections
+  let all_conns = get_global_connection_manager().get_all_connections()
+  let my_connections : Array[PeerConnectionInfo] = []
+  for conn in all_conns {
+    if conn.state == ConnectionState::Connected && conn.relay == 1 {
+      let elapsed_ms = @env.now() - conn.last_seen
+      let bandwidth_mbps = conn.calculate_bandwidth_mbps(elapsed_ms)
+      let packet_loss_rate = conn.calculate_packet_loss()
+      my_connections.push(PeerConnectionInfo::{
+        peer_id: conn.peer_id,
+        latency_ms: conn.latency_ms,
         bandwidth_mbps,
-        bandwidth_display,
         packet_loss_rate,
-        packet_loss_display,
+        id: conn.id,
+        local_addr: conn.local_addr,
+        remote_addr: conn.remote_addr,
+        state: conn.state,
+        last_seen: conn.last_seen,
+        quality: conn.quality,
+        relay: conn.relay,
+        metadata: conn.metadata,
+        latency_history: conn.latency_history,
+        packets_sent: conn.packets_sent,
+        packets_lost: conn.packets_lost,
+        bytes_sent: conn.bytes_sent,
+        bytes_received: conn.bytes_received,
+        last_ping_time: conn.last_ping_time,
       })
     }
   }
+  let me = PeerNode::new(
+    id=my_id,
+    version=VERSION,
+    public_key=my_pk,
+    addresses=my_addrs,
+    metadata=my_config.metadata.unwrap_or({}),
+  )
+  let me_with_conns = { ..me, connections: my_connections }
+  all_peers.push(me_with_conns)
 
   // Include routing table info
   let all_routes = get_global_peer_manager().get_all_routes()
@@ -277,19 +223,13 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
 
   // Build known peers list (from active discovery)
   let known_peers = get_all_known_peers()
+  let config = get_config()
   let status_info = StatusInfo::{
     status: "ok",
     peers: all_peers,
-    connections,
     peers_count: all_peers.length(),
-    peer_id: match global_config.val {
-      Some(config) => config.id
-      None => "unknown"
-    },
-    listeners: match global_config.val {
-      Some(config) => config.listeners.map(fn(url) { url.get_host() })
-      None => []
-    },
+    peer_id: config.id,
+    listeners: config.listeners.map(url => url.get_host()),
     known_peers,
     routes: routes_info,
   }

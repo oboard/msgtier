@@ -1,11 +1,4 @@
 ///|
-struct Route {
-  next_hop : String // Peer ID of the next hop
-  hops : Int // Distance (number of hops)
-  timestamp : UInt64 // When this route was learned
-} derive(Show, ToJson, FromJson)
-
-///|
 /// PeerManager manages the relationship between peers and their connections
 /// Each peer is a logical entity that can have multiple network connections
 struct PeerManager {
@@ -44,6 +37,23 @@ fn PeerManager::add_peer_address(
       } else {
         self
       }
+    None => self
+  }
+}
+
+///|
+fn PeerManager::update_peer_connections(
+  self : PeerManager,
+  peer_id : String,
+  connections : Array[PeerConnectionInfo],
+) -> PeerManager {
+  match self.peers.get(peer_id) {
+    Some(peer) => {
+      let updated_peer = { ..peer, connections, }
+      let peers = self.peers
+      peers[peer_id] = updated_peer
+      { ..self, peers, }
+    }
     None => self
   }
 }
