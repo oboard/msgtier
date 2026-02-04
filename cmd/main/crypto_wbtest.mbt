@@ -13,14 +13,8 @@ test "init_keypair initializes both keys" {
   init_keypair()
   let pub_key = get_public_key()
   let priv_key = get_private_key()
-  guard pub_key is Some(_) && priv_key is Some(_) else {
-    fail("expected some values")
-  }
-  guard pub_key is Some(pk) && priv_key is Some(sk) else {
-    fail("expected some values")
-  }
-  inspect(pk.length() == 32, content="true")
-  inspect(sk.length() == 32, content="true")
+  inspect(pub_key.length() == 32, content="true")
+  inspect(priv_key.length() == 32, content="true")
 }
 
 ///|

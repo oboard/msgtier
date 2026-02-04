@@ -86,19 +86,12 @@ pub impl Show for PeerManager
 
 type PeerNode
 pub impl Show for PeerNode
-pub impl ToJson for PeerNode
-pub impl @json.FromJson for PeerNode
 
 type PeerNodeStatus
 pub impl Eq for PeerNodeStatus
 pub impl Show for PeerNodeStatus
 pub impl ToJson for PeerNodeStatus
 pub impl @json.FromJson for PeerNodeStatus
-
-type PeerNodeWithStatus
-pub impl Show for PeerNodeWithStatus
-pub impl ToJson for PeerNodeWithStatus
-pub impl @json.FromJson for PeerNodeWithStatus
 
 type PendingMessage
 

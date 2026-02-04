@@ -16,19 +16,19 @@ fn init_keypair() -> Unit {
 
 ///|
 /// Get the public key for this node
-fn get_public_key() -> Bytes? {
+fn get_public_key() -> Bytes {
   match global_keypair.val {
-    Some((_, pub_key)) => Some(pub_key)
-    None => None
+    Some((_, pub_key)) => pub_key
+    None => abort("Keygen failed")
   }
 }
 
 ///|
 /// Get the private key for this node
-fn get_private_key() -> Bytes? {
+fn get_private_key() -> Bytes {
   match global_keypair.val {
-    Some((priv_key, _)) => Some(priv_key)
-    None => None
+    Some((priv_key, _)) => priv_key
+    None => abort("Keygen failed")
   }
 }
 
@@ -38,14 +38,10 @@ fn compute_and_store_shared_secret(
   peer_id : String,
   peer_public_key : Bytes,
 ) -> Unit {
-  match get_private_key() {
-    Some(priv_key) => {
-      let shared = @x25519.compute_shared_secret(priv_key, peer_public_key)
-      global_shared_secrets.val[peer_id] = shared
-      println("Computed shared secret with peer \{peer_id}")
-    }
-    None => println("No private key available")
-  }
+  let priv_key = get_private_key()
+  let shared = @x25519.compute_shared_secret(priv_key, peer_public_key)
+  global_shared_secrets.val[peer_id] = shared
+  println("Computed shared secret with peer \{peer_id}")
 }
 
 ///|

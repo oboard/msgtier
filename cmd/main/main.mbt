@@ -6,6 +6,8 @@ let global_config : Ref[Config?] = Ref::new(None)
 
 ///|
 async fn main {
+  // Initialize X25519 key pair
+  init_keypair()
   @async.with_task_group(fn(root) {
     let args = @env.args()[1:]
     match args {

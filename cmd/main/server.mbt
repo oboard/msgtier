@@ -204,11 +204,11 @@ async fn send_message_with_fallback(
 }
 
 ///|
-fn get_identity_info() -> (Bytes?, String?) {
+fn get_identity_info() -> (Bytes, String) {
   let our_public_key = get_public_key()
   let our_secret_hash = match global_config.val {
-    Some(config) => Some(hash_secret(config.secret))
-    None => None
+    Some(config) => hash_secret(config.secret)
+    None => abort("No config found")
   }
   (our_public_key, our_secret_hash)
 }
@@ -233,10 +233,7 @@ fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
 }
 
 ///|
-fn create_sync_message(
-  peer_id : String,
-  local_addr : String,
-) -> Message {
+fn create_sync_message(peer_id : String, local_addr : String) -> Message {
   // Create a message that includes all current connections of this node
   let all_peers = get_global_peer_manager().get_all_peers()
   let all_conns = get_global_connection_manager().get_all_connections()
@@ -327,8 +324,8 @@ fn create_hello_message(
     relay~,
     version=VERSION,
     peers?=peers_opt,
-    public_key?,
-    secret_hash?,
+    public_key~,
+    secret_hash~,
   )
 }
 
@@ -558,10 +555,6 @@ async fn listen_udp(
   addr : @socket.Addr,
   id : String,
 ) -> Unit {
-  // Initialize X25519 key pair if not already done
-  if global_keypair.val is None {
-    init_keypair()
-  }
   let server = @socket.UdpServer::new(addr)
   defer server.close()
   let local_addr = "\{server.addr()}"
@@ -1109,6 +1102,35 @@ async fn listen_udp(
                 // Also compute shared secret if we have the PK
 
                 compute_and_store_shared_secret(peer_id, pk)
+
+                // Ensure peer exists in manager (even if only known via route)
+                match get_global_peer_manager().get_peer(peer_id) {
+                  None => {
+                    let addresses = if remote_addr != "routed" &&
+                      !remote_addr.has_prefix("0.0.0.0:") {
+                      [remote_addr]
+                    } else {
+                      []
+                    }
+                    let peer_node = PeerNode::new(
+                      id=peer_id,
+                      version="unknown",
+                      public_key=pk,
+                      addresses~,
+                    )
+                    update_global_peer_manager(fn(manager) {
+                      manager.add_peer(peer_node)
+                    })
+                  }
+                  Some(_) =>
+                    // If we have a valid address, add it
+                    if remote_addr != "routed" &&
+                      !remote_addr.has_prefix("0.0.0.0:") {
+                      update_global_peer_manager(fn(manager) {
+                        manager.add_peer_address(peer_id, remote_addr)
+                      })
+                    }
+                }
 
                 // Create or update connection if it's a direct neighbor (for compatibility)
                 // Only if remote_addr is not "routed" placeholder
