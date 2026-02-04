@@ -17,7 +17,8 @@ fn handle_new_connection(
     let peer_node = PeerNode::new(
       id=info.id,
       version=info.version,
-      public_key?=info.public_key,
+      public_key=info.public_key,
+      addresses=[remote_addr],
     )
     update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
 
@@ -32,7 +33,12 @@ fn handle_new_connection(
     match get_global_peer_manager().get_peer(actual_peer_id) {
       Some(_) => () // Peer exists, don't override
       None => {
-        let peer_node = PeerNode::new(id=actual_peer_id, version=VERSION)
+        let peer_node = PeerNode::new(
+          id=actual_peer_id,
+          version=VERSION,
+          public_key=[],
+          addresses=[remote_addr],
+        )
         update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
       }
     }
@@ -198,11 +204,8 @@ async fn send_message_with_fallback(
 }
 
 ///|
-fn get_identity_info() -> (String?, String?) {
-  let our_public_key = match get_public_key() {
-    Some(key) => Some(serialize_public_key(key))
-    None => None
-  }
+fn get_identity_info() -> (Bytes?, String?) {
+  let our_public_key = get_public_key()
   let our_secret_hash = match global_config.val {
     Some(config) => Some(hash_secret(config.secret))
     None => None
@@ -245,13 +248,13 @@ fn create_connection_update_message(
     for conn in peer_conns {
       if conn.is_active() {
         // Format: [peer_id, remote_addr, relay, public_key?]
-        let pk = peer.public_key.unwrap_or("")
+        let pk = peer.public_key
         connections_data.push(
           @msgpack.array([
             @msgpack.string(peer.id),
             @msgpack.string(conn.remote_addr),
             @msgpack.int(conn.relay),
-            @msgpack.string(pk),
+            @msgpack.binary(pk),
           ]),
         )
       }
@@ -263,20 +266,15 @@ fn create_connection_update_message(
   for peer_id, route in all_routes {
     // Only advertise routes that are NOT direct connections (to avoid duplication)
     // and valid routes
-    if route.hops > 1 {
-      // Use "routed" as placeholder for remote_addr since we route via next_hop
-      // For routed peers, try to include PK if we know it
-      let peer = get_global_peer_manager().get_peer(peer_id)
-      let pk = match peer {
-        Some(p) => p.public_key.unwrap_or("")
-        None => ""
-      }
+    if route.hops > 1 &&
+      get_global_peer_manager().get_peer(peer_id) is Some(peer) {
+      let pk = peer.public_key
       connections_data.push(
         @msgpack.array([
           @msgpack.string(peer_id),
           @msgpack.string("routed"),
           @msgpack.int(route.hops),
-          @msgpack.string(pk),
+          @msgpack.binary(pk),
         ]),
       )
     }
@@ -615,8 +613,8 @@ async fn listen_udp(
     }
     println("\{msg.from}(\{sender}): \{msg.kind}")
     // Handle the connection - always create/update connection for any message
-    let peer_info = match msg.kind {
-      "hello" =>
+    let peer_info = match msg {
+      { kind: "hello", public_key: Some(public_key), .. } =>
         Some(NetworkDiscoveryInfo::{
           id: msg.from,
           version: match msg.version {
@@ -625,7 +623,7 @@ async fn listen_udp(
           },
           addresses: [NetworkAddress::{ address: sender_addr }], // Use actual sender address
           peers: msg.peers,
-          public_key: msg.public_key,
+          public_key,
         })
       _ => None
     }
@@ -647,25 +645,7 @@ async fn listen_udp(
 
     // Store peer's public key if provided and compute shared secret (only if not already stored)
     if msg.public_key is Some(pk) {
-      let peer_manager = get_global_peer_manager()
-      let peer_already_has_key = peer_manager.get_peer(msg.from)
-        is Some({ public_key: Some(_), .. })
-      // Only store if we don't already have a public key for this peer
-      if !peer_already_has_key {
-        update_global_peer_manager(fn(manager) {
-          manager.update_peer_public_key(msg.from, pk)
-        })
-        // Compute and store shared secret for E2E encryption
-        match deserialize_public_key(pk) {
-          Some(peer_pub_key) =>
-            compute_and_store_shared_secret(msg.from, peer_pub_key)
-          None =>
-            println(
-              "Failed to deserialize public key from peer \{msg.from}, raw=\{pk}",
-            )
-        }
-        println("Stored public key for peer \{msg.from}")
-      }
+      compute_and_store_shared_secret(msg.from, pk)
     }
 
     // Track bytes received
@@ -806,6 +786,7 @@ async fn listen_udp(
         secret_hash: Some(peer_secret_hash),
         from,
         peers: advertised_peers,
+        public_key: Some(public_key),
         ..,
       } => {
         // Validate secret
@@ -838,7 +819,12 @@ async fn listen_udp(
         match get_global_peer_manager().get_peer(msg.from) {
           None => {
             // Peer doesn't exist yet, create it
-            let peer_node = PeerNode::new(id=msg.from, version=VERSION)
+            let peer_node = PeerNode::new(
+              id=msg.from,
+              version=VERSION,
+              public_key~,
+              addresses=[msg.addr],
+            )
             update_global_peer_manager(fn(manager) {
               manager.add_peer(peer_node)
             })
@@ -992,29 +978,10 @@ async fn listen_udp(
       }
       { kind: "send", target: Some(target), data, .. } => {
         // When sending new data, encrypt it for the target
-        let encrypted_data = if global_config.val is Some(_) {
-          let target_peer = get_global_peer_manager().get_peer(target)
-          match target_peer {
-            Some(peer) =>
-              if peer.public_key is None {
-                 println("Warning: Sending unencrypted data to \{target} (no public key)")
-                 data
-              } else {
-                 match data {
-                   Binary(raw) =>
-                      @msgpack.binary(encrypt_for_peer(target, raw))
-                   _ => data // Should be binary
-                 }
-              }
-            None => {
-               println("Warning: Sending unencrypted data to \{target} (unknown peer)")
-               data
-            }
-          }
-        } else {
-           data
+        let encrypted_data = match data {
+          Binary(raw) => @msgpack.binary(encrypt_for_peer(target, raw))
+          _ => data // Should be binary
         }
-
         let direct = Message::new(
           kind="data",
           from=msg.from,
@@ -1112,7 +1079,14 @@ async fn listen_udp(
         // Parse connection entry: [peer_id, remote_addr, relay, public_key?]
         for entry in conn_entries {
           match entry {
-            Array([String(peer_id), String(remote_addr), Int(relay_depth), String(pk)]) => {
+            Array(
+              [
+                String(peer_id),
+                String(remote_addr),
+                Int(relay_depth),
+                Binary(pk),
+              ]
+            ) =>
               // If the peer is not me
               if peer_id != id {
                 // Update Routing Table
@@ -1132,26 +1106,9 @@ async fn listen_udp(
                   add_known_peer(remote_addr)
                 }
 
-                // Update public key if provided
-                if pk.length() > 0 {
-                  update_global_peer_manager(fn(manager) {
-                    // Ensure peer exists
-                    let manager = match manager.get_peer(peer_id) {
-                      None =>
-                        manager.add_peer(
-                          PeerNode::new(id=peer_id, version=VERSION),
-                        )
-                      Some(_) => manager
-                    }
-                    manager.update_peer_public_key(peer_id, pk)
-                  })
-                  // Also compute shared secret if we have the PK
-                  match deserialize_public_key(pk) {
-                    Some(peer_pub_key) =>
-                      compute_and_store_shared_secret(peer_id, peer_pub_key)
-                    None => ()
-                  }
-                }
+                // Also compute shared secret if we have the PK
+
+                compute_and_store_shared_secret(peer_id, pk)
 
                 // Create or update connection if it's a direct neighbor (for compatibility)
                 // Only if remote_addr is not "routed" placeholder
@@ -1162,11 +1119,11 @@ async fn listen_udp(
                     remote_addr,
                     relay_depth~,
                   )
+
                 }
               }
-            }
             // Backward compatibility for old format [peer_id, remote_addr, relay]
-            Array([String(peer_id), String(remote_addr), Int(relay_depth)]) => {
+            Array([String(peer_id), String(remote_addr), Int(relay_depth)]) =>
               // If the peer is not me
               if peer_id != id {
                 // Update Routing Table
@@ -1189,9 +1146,9 @@ async fn listen_udp(
                     remote_addr,
                     relay_depth~,
                   )
+
                 }
               }
-            }
             _ => ()
           }
         }

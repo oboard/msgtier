@@ -33,22 +33,6 @@ fn get_private_key() -> Bytes? {
 }
 
 ///|
-/// Serialize a public key to hex string
-fn serialize_public_key(key : Bytes) -> String {
-  bytes_to_hex(key)
-}
-
-///|
-/// Deserialize a public key from hex string
-fn deserialize_public_key(s : String) -> Bytes? {
-  if s.length() != 64 {
-    // 32 bytes = 64 hex chars
-    return None
-  }
-  Some(hex_to_bytes(s))
-}
-
-///|
 /// Compute and store shared secret with a peer
 fn compute_and_store_shared_secret(
   peer_id : String,
@@ -107,33 +91,33 @@ fn bytes_to_hex(data : Bytes) -> String {
   result
 }
 
-///|
-/// Convert hex string to bytes
-fn hex_to_bytes(hex : String) -> Bytes {
-  let len = hex.length() / 2
-  let arr = FixedArray::make(len, b'\x00')
-  for i = 0; i < len; i = i + 1 {
-    let high = hex_char_to_int_from_uint16(hex[i * 2])
-    let low = hex_char_to_int_from_uint16(hex[i * 2 + 1])
-    arr[i] = ((high << 4) | low).to_byte()
-  }
-  Bytes::from_array(arr)
-}
+// ///|
+// /// Convert hex string to bytes
+// fn hex_to_bytes(hex : String) -> Bytes {
+//   let len = hex.length() / 2
+//   let arr = FixedArray::make(len, b'\x00')
+//   for i = 0; i < len; i = i + 1 {
+//     let high = hex_char_to_int_from_uint16(hex[i * 2])
+//     let low = hex_char_to_int_from_uint16(hex[i * 2 + 1])
+//     arr[i] = ((high << 4) | low).to_byte()
+//   }
+//   Bytes::from_array(arr)
+// }
 
-///|
-/// Convert a hex character (as UInt16) to its integer value
-fn hex_char_to_int_from_uint16(c : UInt16) -> Int {
-  let code = c.to_int()
-  if code >= 48 && code <= 57 {
-    code - 48
-  } else if code >= 65 && code <= 70 {
-    code - 55
-  } else if code >= 97 && code <= 102 {
-    code - 87
-  } else {
-    0
-  }
-}
+// ///|
+// /// Convert a hex character (as UInt16) to its integer value
+// fn hex_char_to_int_from_uint16(c : UInt16) -> Int {
+//   let code = c.to_int()
+//   if code >= 48 && code <= 57 {
+//     code - 48
+//   } else if code >= 65 && code <= 70 {
+//     code - 55
+//   } else if code >= 97 && code <= 102 {
+//     code - 87
+//   } else {
+//     0
+//   }
+// }
 
 ///|
 /// Hash a network secret for authentication in hello messages

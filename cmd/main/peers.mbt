@@ -5,7 +5,7 @@ struct PeerNode {
   id : String
   version : String
   metadata : Map[String, String]?
-  public_key : String? // Serialized RSA public key for E2E encryption
+  public_key : Bytes // Serialized RSA public key for E2E encryption
   addresses : Array[String] // All known addresses for this peer (from gossip discovery)
 } derive(Show, ToJson, FromJson)
 
@@ -30,8 +30,8 @@ struct PeerNodeWithStatus {
 fn PeerNode::new(
   id~ : String,
   version~ : String,
-  public_key? : String,
-  addresses? : Array[String] = [],
+  public_key~ : Bytes,
+  addresses~ : Array[String],
 ) -> PeerNode {
   { id, version, metadata: None, public_key, addresses }
 }
@@ -80,7 +80,7 @@ struct NetworkDiscoveryInfo {
   version : String
   addresses : Array[NetworkAddress] // Multiple network addresses for this peer
   peers : Array[NetworkAddress]? // Known peer addresses
-  public_key : String? // RSA public key for E2E encryption
+  public_key : Bytes // RSA public key for E2E encryption
 } derive(Show, ToJson, FromJson)
 
 ///|
@@ -96,7 +96,7 @@ pub fn network_discovery_info(
   version : String,
   addresses : Array[NetworkAddress],
   peers? : Array[NetworkAddress],
-  public_key? : String,
+  public_key : Bytes,
 ) -> NetworkDiscoveryInfo {
   NetworkDiscoveryInfo::{ id, version, addresses, peers, public_key }
 }

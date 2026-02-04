@@ -26,23 +26,6 @@ fn PeerManager::add_peer(self : PeerManager, peer : PeerNode) -> PeerManager {
 }
 
 ///|
-fn PeerManager::update_peer_public_key(
-  self : PeerManager,
-  peer_id : String,
-  public_key : String,
-) -> PeerManager {
-  match self.peers.get(peer_id) {
-    Some(peer) => {
-      let updated_peer = { ..peer, public_key: Some(public_key) }
-      let peers = self.peers
-      peers[peer_id] = updated_peer
-      { ..self, peers, }
-    }
-    None => self
-  }
-}
-
-///|
 fn PeerManager::add_peer_address(
   self : PeerManager,
   peer_id : String,

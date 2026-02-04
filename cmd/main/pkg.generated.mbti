@@ -6,8 +6,6 @@ import {
 }
 
 // Values
-pub fn add_connected_peer(String, String, String) -> Unit
-
 pub fn add_known_peer(String) -> Unit
 
 pub fn add_pending_message(String, Message) -> Unit
@@ -30,7 +28,7 @@ pub fn get_relay_path(String) -> (String, String)?
 
 pub fn network_address(String) -> NetworkAddress
 
-pub fn network_discovery_info(String, String, Array[NetworkAddress], peers? : Array[NetworkAddress], public_key? : String) -> NetworkDiscoveryInfo
+pub fn network_discovery_info(String, String, Array[NetworkAddress], peers? : Array[NetworkAddress], Bytes) -> NetworkDiscoveryInfo
 
 pub fn record_hello_time(String) -> Unit
 

@@ -11,7 +11,7 @@ struct Message {
   payload : String?
   target : String? // If set, relay to this address; if unset, process locally
   data : @msgpack.Value
-  public_key : String? // X25519 public key for E2E encryption (sent in hello/welcome)
+  public_key : Bytes? // X25519 public key for E2E encryption (sent in hello/welcome)
   secret_hash : String? // Hash of network secret for authentication
   encrypted : Bool // Whether the data field is encrypted
   broadcast : Bool // Whether this message should be broadcast to all peers
@@ -30,7 +30,7 @@ fn Message::new(
   payload? : String,
   target? : String,
   data? : @msgpack.Value = @msgpack.nil(),
-  public_key? : String,
+  public_key? : Bytes,
   secret_hash? : String,
   encrypted? : Bool = false,
   broadcast? : Bool = false,
@@ -79,7 +79,7 @@ fn Message::to_msgpack(self : Message) -> Bytes {
       None => @msgpack.nil()
     },
     match self.public_key {
-      Some(pk) => @msgpack.string(pk)
+      Some(pk) => @msgpack.binary(pk)
       None => @msgpack.nil()
     },
     match self.secret_hash {
@@ -183,7 +183,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
       let public_key_pos = version_pos + 1
       let public_key = if arr.length() > public_key_pos {
         match arr[public_key_pos] {
-          String(v) => Some(v)
+          Binary(v) => Some(v)
           Nil => None
           _ => fail("Invalid public_key at position \{public_key_pos}")
         }

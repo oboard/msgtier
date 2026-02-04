@@ -33,26 +33,6 @@ fn format_packet_loss(rate : Int) -> String {
 }
 
 ///|
-pub fn add_connected_peer(
-  id : String,
-  address : String,
-  version : String,
-) -> Unit {
-  if id.is_empty() || address.is_empty() {
-    return
-  }
-
-  // Check if peer already exists
-  let existing_peer = get_global_peer_manager().get_peer(id)
-  match existing_peer {
-    Some(_) => return // Peer already exists
-    None => ()
-  }
-  let peer_node = PeerNode::new(id~, version~)
-  update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
-}
-
-///|
 pub fn get_connected_peers() -> Array[PeerNode] {
   get_global_peer_manager().get_all_peers()
 }

@@ -24,27 +24,6 @@ test "init_keypair initializes both keys" {
 }
 
 ///|
-test "serialize_public_key produces hex string" {
-  let key : Bytes = b"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xdd\xee\xff\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xdd\xee\xff"
-  let serialized = serialize_public_key(key)
-  inspect(serialized.length(), content="64")
-}
-
-///|
-test "deserialize_public_key rejects invalid lengths" {
-  inspect(deserialize_public_key(""), content="None")
-  inspect(deserialize_public_key("0011"), content="None")
-}
-
-///|
-test "deserialize_public_key accepts valid 64 char hex" {
-  let hex_valid = "0011223344556677889900aabbccddee0011223344556677889900aabbccddee"
-  inspect(hex_valid.length(), content="64")
-  let result = deserialize_public_key(hex_valid)
-  guard result is Some(_) else { fail("expected some value") }
-}
-
-///|
 test "get_shared_secret returns None for unknown peer" {
   let result = get_shared_secret("nonexistent")
   inspect(result, content="None")
