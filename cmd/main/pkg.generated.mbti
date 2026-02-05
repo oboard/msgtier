@@ -45,6 +45,8 @@ pub fn update_global_peer_manager((PeerManager) -> PeerManager) -> Unit
 // Errors
 
 // Types and methods
+type BufferedReader
+
 type Config
 pub impl Show for Config
 pub impl ToJson for Config
@@ -111,7 +113,19 @@ type SyncConnection
 pub impl Show for SyncConnection
 pub impl ToJson for SyncConnection
 
+type TcpTransport
+pub fn TcpTransport::new(String) -> Self raise
+
+type UdpTransport
+pub fn UdpTransport::new(String) -> Self raise
+
 // Type aliases
 
 // Traits
+pub trait Transport {
+  async send(Self, String, Bytes) -> Bool
+  async listen(Self, (Bytes, String) -> Unit) -> Unit
+  local_addr(Self) -> String
+  protocol(Self) -> String
+}
 

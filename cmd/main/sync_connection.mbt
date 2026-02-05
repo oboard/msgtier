@@ -11,6 +11,7 @@ struct SyncConnection {
   // New fields to match Connection struct
   id : String
   local_addr : String
+  protocol : String
   state : String // serialized ConnectionState
   last_seen : UInt64
   quality : Int
@@ -41,6 +42,7 @@ fn SyncConnection::to_msgpack(self : SyncConnection) -> @msgpack.Value {
     // New fields
     @msgpack.string(self.id),
     @msgpack.string(self.local_addr),
+    @msgpack.string(self.protocol),
     @msgpack.string(self.state),
     @msgpack.uint64(self.last_seen),
     @msgpack.int(self.quality),
@@ -70,6 +72,83 @@ fn SyncConnection::to_msgpack(self : SyncConnection) -> @msgpack.Value {
 ///|
 fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
   match msgpack {
+    Array(
+      [
+        String(peer_id),
+        String(remote_addr),
+        Int(relay),
+        Binary(public_key),
+        latency_val,
+        Float(bandwidth_mbps),
+        Int(packet_loss_rate),
+        String(id),
+        String(local_addr),
+        String(protocol),
+        String(state),
+        UInt64(last_seen),
+        Int(quality),
+        metadata_val,
+        Array(latency_history_val),
+        Int(packets_sent),
+        Int(packets_lost),
+        UInt64(bytes_sent),
+        UInt64(bytes_received),
+        last_ping_time_val,
+        String(version),
+      ]
+    ) => {
+      let latency_ms = match latency_val {
+        Int(l) => Some(l)
+        _ => None
+      }
+      let metadata = match metadata_val {
+        Map(m) => {
+          let map = {}
+          for k, v in m {
+            match v {
+              String(vs) => map[k] = vs
+              _ => ()
+            }
+          }
+          Some(map)
+        }
+        _ => None
+      }
+      let latency_history = latency_history_val.map(fn(v) {
+        match v {
+          Int(i) => i
+          _ => 0
+        }
+      })
+      let last_ping_time = match last_ping_time_val {
+        UInt64(t) => Some(t)
+        _ => None
+      }
+      Some(SyncConnection::{
+        peer_id,
+        remote_addr,
+        relay,
+        public_key,
+        latency_ms,
+        bandwidth_mbps,
+        packet_loss_rate,
+        id,
+        local_addr,
+        protocol,
+        state,
+        last_seen,
+        quality,
+        metadata,
+        latency_history,
+        packets_sent,
+        packets_lost,
+        bytes_sent,
+        bytes_received,
+        last_ping_time,
+        version,
+      })
+    }
+    // Backward compatibility for format without protocol
     Array(
       [
         String(peer_id),
@@ -131,6 +210,7 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         packet_loss_rate,
         id,
         local_addr,
+        protocol: "unknown",
         state,
         last_seen,
         quality,
@@ -205,6 +285,7 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         packet_loss_rate,
         id,
         local_addr,
+        protocol: "unknown",
         state,
         last_seen,
         quality,
@@ -244,6 +325,7 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         packet_loss_rate,
         id: "",
         local_addr: "",
+        protocol: "unknown",
         state: "Connected",
         last_seen: 0UL,
         quality: 0,
@@ -271,6 +353,7 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         packet_loss_rate: 0,
         id: "",
         local_addr: "",
+        protocol: "unknown",
         state: "Connected",
         last_seen: 0UL,
         quality: 0,
@@ -295,6 +378,7 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         packet_loss_rate: 0,
         id: "",
         local_addr: "",
+        protocol: "unknown",
         state: "Connected",
         last_seen: 0UL,
         quality: 0,

@@ -5,6 +5,7 @@ struct Connection {
   id : String
   local_addr : String
   remote_addr : String
+  protocol : String // "tcp", "udp", etc.
   peer_id : String
   state : ConnectionState
   last_seen : UInt64 // timestamp
@@ -34,11 +35,13 @@ fn Connection::new(
   peer_id : String,
   local_addr : String,
   remote_addr : String,
+  protocol : String,
 ) -> Connection {
   {
     id: "\{peer_id}:\{local_addr}:\{remote_addr}",
     local_addr,
     remote_addr,
+    protocol,
     peer_id,
     state: Init,
     last_seen: @env.now(),

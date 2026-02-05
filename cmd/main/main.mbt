@@ -25,12 +25,19 @@ async fn main {
         }
 
         // Don't pre-create peers - they will be created when hello messages arrive
-        for addr in config.listeners {
-          let addr = addr.get_host()
-          println("Listening on \{addr}")
-          ignore(
-            root.spawn(fn() { listen_udp(root, @socket.Addr::parse(addr), id) }),
-          )
+        for listener in config.listeners {
+          let host = listener.get_host()
+          let scheme = listener.scheme
+          println("Listening on \{scheme}://\{host}")
+          match scheme {
+             "tcp" => ignore(
+              root.spawn(fn() { listen_tcp(root, @socket.Addr::parse(host), id) }),
+            )
+            "udp" => ignore(
+              root.spawn(fn() { listen_udp(root, @socket.Addr::parse(host), id) }),
+            )
+            _ => println("Unknown protocol: \{scheme}")
+          }
         }
         if config.web_api is Some(addr) {
           println("HTTP API listening on http://\{addr}")
