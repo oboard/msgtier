@@ -1,4 +1,9 @@
 ///|
+suberror TransportError {
+  TransportError(String)
+} derive(Show)
+
+///|
 struct TcpTransport {
   server : @socket.TcpServer
   connections : Map[String, @socket.Tcp]
@@ -132,7 +137,7 @@ async fn BufferedReader::read_exact(
   self : BufferedReader,
   buf : FixedArray[Byte],
   count : Int,
-) -> Unit {
+) -> Unit raise {
   let mut buf_offset = 0
   while buf_offset < count {
     // If current buffer is exhausted, read more
@@ -145,7 +150,7 @@ async fn BufferedReader::read_exact(
           self.buffer = chunk
           self.offset = 0
         }
-        None => abort("Connection closed")
+        None => raise TransportError::TransportError("Connection closed")
       }
     }
 

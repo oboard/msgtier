@@ -9,9 +9,10 @@ fn handle_new_connection(
   protocol : String,
   peer_info? : NetworkDiscoveryInfo,
   relay_depth? : Int = 1,
-) -> (Connection, Bool) {
+) -> (Connection, Bool, Bool) {
   // Get the actual peer ID (from peer_info if available, otherwise from peer_id parameter)
   let actual_peer_id = if peer_info is Some(info) { info.id } else { peer_id }
+  let mut is_new_peer = false
 
   // Add or update peer with provided info
   if peer_info is Some(info) {
@@ -43,6 +44,7 @@ fn handle_new_connection(
           metadata={},
         )
         update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
+        is_new_peer = true
       }
     }
   }
@@ -55,7 +57,7 @@ fn handle_new_connection(
     if existing_conn.local_addr == local_addr &&
       existing_conn.remote_addr == remote_addr {
       // Connection already exists, return it with is_new=false
-      return (existing_conn, false)
+      return (existing_conn, false, is_new_peer)
     }
   }
 
@@ -84,7 +86,7 @@ fn handle_new_connection(
   })
   let conn = if filtered.is_empty() { conns[0] } else { filtered[0] }
   // Return the new connection with is_new=true
-  (conn, true)
+  (conn, true, is_new_peer)
 }
 
 ///|
@@ -318,6 +320,7 @@ fn create_sync_message(peer_id : String, local_addr : String) -> Message {
     from=peer_id,
     addr=local_addr,
     relay=1,
+    broadcast=true,
     data=@msgpack.array(connections_data),
   )
 }
@@ -648,7 +651,7 @@ async fn handle_incoming_message(
   // Use the message's relay count as the hop depth for this connection
   // msg.relay already indicates how many hops the message took to reach us
   let relay_depth_to_use = msg.relay
-  let (conn, is_new_connection) = handle_new_connection(
+  let (conn, is_new_connection, is_new_peer) = handle_new_connection(
     msg.from,
     local_addr,
     sender_addr,
@@ -656,6 +659,19 @@ async fn handle_incoming_message(
     peer_info?,
     relay_depth=relay_depth_to_use,
   )
+  if is_new_peer {
+    // Send hello to new peer
+    let our_addresses = get_our_addresses(local_addr)
+    let hello_msg = create_hello_message(id, local_addr, 1, peers=our_addresses)
+    ignore(send_message(transport, sender_addr, hello_msg))
+    println("Sent hello to new peer \{msg.from} at \{sender_addr}")
+
+    // Broadcast sync
+    try broadcast_sync(transport, id, local_addr) |> ignore catch {
+      _ => println("Failed to broadcast sync for new peer")
+    }
+    println("Broadcasted sync for new peer \{msg.from}")
+  }
 
   // Check if state is changing from non-Connected to Connected
   let was_disconnected = conn.state != ConnectionState::Connected
@@ -1184,7 +1200,7 @@ async fn handle_incoming_message(
               // Create or update connection if it's a direct neighbor (for compatibility)
               // Only if remote_addr is not "routed" placeholder
               if peer_id == msg.from && remote_addr != "routed" {
-                let (_conn, _is_new) = handle_new_connection(
+                let (_conn, _is_new, _is_new_peer) = handle_new_connection(
                   peer_id,
                   local_addr,
                   remote_addr,
