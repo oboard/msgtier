@@ -73,7 +73,7 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
       let config = get_config()
       // Get current node ID and local address
       let peer_id = config.id
-      let addrs = config.listeners.map(fn(url) { url.get_host() })
+      let addrs = config.listeners.map(fn(url) { url.to_string() })
       let local_addr = if addrs.is_empty() { "127.0.0.1:0" } else { addrs[0] }
 
       // Create data message to send with body as data
@@ -167,7 +167,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
   let my_config = get_config()
   let my_id = my_config.id
   let my_pk = get_public_key()
-  let my_addrs = my_config.listeners.map(fn(url) { url.get_host() })
+  let my_addrs = my_config.listeners.map(url => url.to_string())
 
   // Get my active direct connections
   let all_conns = get_global_connection_manager().get_all_connections()
@@ -229,7 +229,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
     peers: all_peers,
     peers_count: all_peers.length(),
     peer_id: config.id,
-    listeners: config.listeners.map(url => url.get_host()),
+    listeners: config.listeners.map(url => url.to_string()),
     known_peers,
     routes: routes_info,
   }

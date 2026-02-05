@@ -1,7 +1,6 @@
 ///|
 const CONNECTION_TIMEOUT_MS : UInt64 = 30000 // 30 seconds timeout
 
-
 ///|
 fn handle_new_connection(
   peer_id : String,
@@ -220,7 +219,7 @@ fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
     Some(config) => {
       let addrs : Array[NetworkAddress] = []
       for listener_url in config.listeners {
-        let addr_str = listener_url.get_host()
+        let addr_str = listener_url.to_string()
         addrs.push(NetworkAddress::{ address: addr_str })
       }
       addrs
@@ -391,38 +390,16 @@ async fn handle_reconnects(
     let known_peers = get_all_known_peers()
     for peer_addr in known_peers {
       // Parse URL to check protocol
-      let target_addr = match @url.Url::parse(peer_addr) {
-        Some(url) =>
-          // Only reconnect if protocol matches current transport
-          if url.scheme == transport.protocol() {
-            let host = url.hostname()
-            let port = url.get_port()
-            if port == "" {
-              host
-            } else {
-              "\{host}:\{port}"
-            }
-          } else {
-            ""
-          }
-        None =>
-          // Fallback for legacy/raw addresses (assume matching transport)
-          peer_addr
-      }
 
-      if target_addr != "" && !target_addr.has_prefix("0.0.0.0:") {
-        // Check if we already have an active connection to this peer address
-        let all_conns = get_global_connection_manager().get_all_connections()
-        let has_active_conn = all_conns.any(fn(conn) {
-          conn.remote_addr == target_addr &&
-          conn.state == ConnectionState::Connected
-        })
+      // Check if we already have an active connection to this peer address
+      let all_conns = get_global_connection_manager().get_all_connections()
+      let has_active_conn = all_conns.any(conn => conn.remote_addr == peer_addr &&
+        conn.state == ConnectionState::Connected)
 
-        // Only send hello if we don't have an active connection
-        if !has_active_conn {
-          // println("Attempting reconnection to \{target_addr}...")
-          send_message(transport, target_addr, hello_msg) |> ignore
-        }
+      // Only send hello if we don't have an active connection
+      if !has_active_conn {
+        // println("Attempting reconnection to \{target_addr}...")
+        send_message(transport, peer_addr, hello_msg) |> ignore
       }
     }
   }
@@ -580,7 +557,8 @@ async fn handle_heartbeat(
         ignore(send_message(transport, conn.remote_addr, ping_msg))
 
         // Check if connection has timed out (no response for CONNECTION_TIMEOUT_MS)
-        if current_time - conn.last_seen > CONNECTION_TIMEOUT_MS && conn.is_active() {
+        if current_time - conn.last_seen > CONNECTION_TIMEOUT_MS &&
+          conn.is_active() {
           println("Connection to \{peer_id} at \{conn.remote_addr} timed out")
           update_global_connection_manager(fn(manager) {
             manager.update_connection_state(
@@ -666,20 +644,21 @@ async fn handle_incoming_message(
               idx = i
             }
           }
-
           let sender_ip = if idx == -1 {
             sender
           } else {
-            try {
-              sender[:idx].to_string()
-            } catch {
+            sender[:idx].to_string() catch {
               _ => sender
             }
           }
 
           // Update host in URL
           let port = url.get_port()
-          let new_host_str = if port == "" { sender_ip } else { "\{sender_ip}:\{port}" }
+          let new_host_str = if port == "" {
+            sender_ip
+          } else {
+            "\{sender_ip}:\{port}"
+          }
           url.set_host(new_host_str)
           url.to_string()
         } else {
@@ -696,7 +675,6 @@ async fn handle_incoming_message(
   if !connectable_addr.is_empty() {
     add_known_peer(connectable_addr)
   }
-
   let peer_info = match msg {
     { kind: "hello", public_key: Some(public_key), .. } => {
       // Include both the actual sender address and the advertised (connectable) address
@@ -730,7 +708,8 @@ async fn handle_incoming_message(
     peer_info?,
     relay_depth=relay_depth_to_use,
   )
-  if is_new_peer || (msg.kind == "hello" && conn.state != ConnectionState::Connected) {
+  if is_new_peer ||
+    (msg.kind == "hello" && conn.state != ConnectionState::Connected) {
     // Send hello to new peer
     let our_addresses = get_our_addresses(local_addr)
     let hello_msg = create_hello_message(id, local_addr, 1, peers=our_addresses)

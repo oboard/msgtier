@@ -12,9 +12,15 @@ let global_known_peers : Ref[Map[String, UInt64]] = Ref::new({})
 ///|
 /// Add a peer address to the known peers list
 pub fn add_known_peer(peer_addr : String) -> Unit {
-  let peers = global_known_peers.val
-  if !peers.contains(peer_addr) {
-    peers[peer_addr] = @env.now() // Track when we first learned about this peer
+  if @url.Url::parse(peer_addr) is Some(url) {
+    if url.hostname() == "0.0.0.0" {
+      url.set_hostname("127.0.0.1")
+    }
+    let peer_addr = url.to_string()
+    let peers = global_known_peers.val
+    if !peers.contains(peer_addr) {
+      peers[peer_addr] = @env.now() // Track when we first learned about this peer
+    }
   }
 }
 

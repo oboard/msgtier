@@ -21,21 +21,27 @@ async fn main {
 
         // Initialize known peers from config
         for peer_url in config.peers {
-          add_known_peer(peer_url.get_host())
+          add_known_peer(peer_url.to_string())
         }
 
         // Don't pre-create peers - they will be created when hello messages arrive
         for listener in config.listeners {
           let host = listener.get_host()
           let scheme = listener.scheme
-          println("Listening on \{scheme}://\{host}")
+          println("Listening on \{listener}")
           match scheme {
-             "tcp" => ignore(
-              root.spawn(fn() { listen_tcp(root, @socket.Addr::parse(host), id) }),
-            )
-            "udp" => ignore(
-              root.spawn(fn() { listen_udp(root, @socket.Addr::parse(host), id) }),
-            )
+            "tcp" =>
+              ignore(
+                root.spawn(fn() {
+                  listen_tcp(root, @socket.Addr::parse(host), id)
+                }),
+              )
+            "udp" =>
+              ignore(
+                root.spawn(fn() {
+                  listen_udp(root, @socket.Addr::parse(host), id)
+                }),
+              )
             _ => println("Unknown protocol: \{scheme}")
           }
         }
