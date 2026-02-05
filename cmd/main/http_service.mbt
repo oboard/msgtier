@@ -53,6 +53,7 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
     (request.meth, request.path) {
     (Get, "/config") => get_config_handler(conn)
     (Get, "/status") => status_handler(conn)
+    (Get, "/download") => download_handler(conn)
     (Post, "/send") => {
       // Extract target from headers
       let target = match request.headers.get("target") {
@@ -247,4 +248,27 @@ async fn notfound_handler(conn : @http.ServerConnection) -> Unit {
   ..send_response(404, "NotFound", extra_headers={ "Content-Type": "text/html" })
   ..write(PAGE_404)
   ..end_response()
+}
+
+///|
+async fn download_handler(conn : @http.ServerConnection) -> Unit {
+  let args = @env.args()
+  let exe_path = if args.length() > 0 { args[0] } else { "./msgtier" }
+
+  try {
+    let content = @fs.read_file(exe_path)
+    conn
+    ..send_response(200, "OK", extra_headers={
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": "attachment; filename=\"msgtier\"",
+    })
+    ..write(content)
+    ..end_response()
+  } catch {
+    e =>
+      conn
+      ..send_response(500, "Internal Server Error", extra_headers={})
+      ..write(@utf8.encode(e.to_string()))
+      ..end_response()
+  }
 }
