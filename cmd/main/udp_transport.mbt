@@ -12,13 +12,14 @@ pub fn UdpTransport::new(addr_str : String) -> UdpTransport raise {
 }
 
 ///|
-async fn UdpTransport::send(
-  self : UdpTransport,
-  target : String,
-  data : Bytes,
-) -> Bool {
+impl Transport for UdpTransport with send(self, target, data) {
   try {
-    let target_addr = @socket.Addr::parse(target)
+    let target_clean = if target.has_prefix("udp://") {
+      target[6:].to_string()
+    } else {
+      target
+    }
+    let target_addr = @socket.Addr::parse(target_clean)
     self.server.sendto(data, target_addr)
     true
   } catch {
@@ -27,10 +28,7 @@ async fn UdpTransport::send(
 }
 
 ///|
-async fn UdpTransport::listen(
-  self : UdpTransport,
-  handler : (Bytes, String) -> Unit,
-) -> Unit {
+impl Transport for UdpTransport with listen(self, _root, handler, _on_disconnect) {
   let buf = FixedArray::make(65536, b'0')
   for {
     try {
@@ -44,18 +42,8 @@ async fn UdpTransport::listen(
 }
 
 ///|
-impl Transport for UdpTransport with send(self, target, data) {
-  self.send(target, data)
-}
-
-///|
-impl Transport for UdpTransport with listen(self, handler) {
-  self.listen(handler)
-}
-
-///|
 impl Transport for UdpTransport with local_addr(self) {
-  self.server.addr().to_string()
+  "udp://" + self.server.addr().to_string()
 }
 
 ///|

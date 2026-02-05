@@ -1,5 +1,6 @@
 ///|
-const HELLO_DEBOUNCE_MS : UInt64 = 5000
+const CONNECTION_TIMEOUT_MS : UInt64 = 30000 // 30 seconds timeout
+
 
 ///|
 fn handle_new_connection(
@@ -85,7 +86,6 @@ fn handle_new_connection(
     c.local_addr == local_addr && c.remote_addr == remote_addr
   })
   let conn = if filtered.is_empty() { conns[0] } else { filtered[0] }
-  // Return the new connection with is_new=true
   (conn, true, is_new_peer)
 }
 
@@ -390,18 +390,38 @@ async fn handle_reconnects(
     // Send directly to each known peer address with relay=1
     let known_peers = get_all_known_peers()
     for peer_addr in known_peers {
-      // Skip 0.0.0.0 addresses (bind-all, not connectable)
-      if !peer_addr.has_prefix("0.0.0.0:") {
+      // Parse URL to check protocol
+      let target_addr = match @url.Url::parse(peer_addr) {
+        Some(url) =>
+          // Only reconnect if protocol matches current transport
+          if url.scheme == transport.protocol() {
+            let host = url.hostname()
+            let port = url.get_port()
+            if port == "" {
+              host
+            } else {
+              "\{host}:\{port}"
+            }
+          } else {
+            ""
+          }
+        None =>
+          // Fallback for legacy/raw addresses (assume matching transport)
+          peer_addr
+      }
+
+      if target_addr != "" && !target_addr.has_prefix("0.0.0.0:") {
         // Check if we already have an active connection to this peer address
         let all_conns = get_global_connection_manager().get_all_connections()
         let has_active_conn = all_conns.any(fn(conn) {
-          conn.remote_addr == peer_addr &&
+          conn.remote_addr == target_addr &&
           conn.state == ConnectionState::Connected
         })
 
         // Only send hello if we don't have an active connection
         if !has_active_conn {
-          send_message(transport, peer_addr, hello_msg) |> ignore
+          // println("Attempting reconnection to \{target_addr}...")
+          send_message(transport, target_addr, hello_msg) |> ignore
         }
       }
     }
@@ -559,8 +579,8 @@ async fn handle_heartbeat(
         })
         ignore(send_message(transport, conn.remote_addr, ping_msg))
 
-        // Check if connection has timed out (no response for HELLO_DEBOUNCE_MS)
-        if current_time - conn.last_seen > HELLO_DEBOUNCE_MS && conn.is_active() {
+        // Check if connection has timed out (no response for CONNECTION_TIMEOUT_MS)
+        if current_time - conn.last_seen > CONNECTION_TIMEOUT_MS && conn.is_active() {
           println("Connection to \{peer_id} at \{conn.remote_addr} timed out")
           update_global_connection_manager(fn(manager) {
             manager.update_connection_state(
@@ -632,18 +652,69 @@ async fn handle_incoming_message(
   }
   println("\{msg.from}(\{sender}): \{msg.kind}")
   // Handle the connection - always create/update connection for any message
+  // Determine connectable address from hello message
+  let connectable_addr = if msg.kind == "hello" && !msg.addr.is_empty() {
+    match @url.Url::parse(msg.addr) {
+      Some(url) => {
+        let host = url.hostname()
+        if host == "0.0.0.0" || host == "" {
+          // Extract IP from sender (IP:Port)
+          // Find last index of ':' manually
+          let mut idx = -1
+          for i = 0; i < sender.length(); i = i + 1 {
+            if sender[i] == ':' {
+              idx = i
+            }
+          }
+
+          let sender_ip = if idx == -1 {
+            sender
+          } else {
+            try {
+              sender[:idx].to_string()
+            } catch {
+              _ => sender
+            }
+          }
+
+          // Update host in URL
+          let port = url.get_port()
+          let new_host_str = if port == "" { sender_ip } else { "\{sender_ip}:\{port}" }
+          url.set_host(new_host_str)
+          url.to_string()
+        } else {
+          msg.addr
+        }
+      }
+      None => msg.addr
+    }
+  } else {
+    ""
+  }
+
+  // If we found a connectable address, add it to known peers
+  if !connectable_addr.is_empty() {
+    add_known_peer(connectable_addr)
+  }
+
   let peer_info = match msg {
-    { kind: "hello", public_key: Some(public_key), .. } =>
+    { kind: "hello", public_key: Some(public_key), .. } => {
+      // Include both the actual sender address and the advertised (connectable) address
+      let addrs = [NetworkAddress::{ address: sender_addr }]
+      if !connectable_addr.is_empty() && connectable_addr != sender_addr {
+        addrs.push(NetworkAddress::{ address: connectable_addr })
+      }
       Some(NetworkDiscoveryInfo::{
         id: msg.from,
         version: match msg.version {
           Some(v) => v
           None => VERSION
         },
-        addresses: [NetworkAddress::{ address: sender_addr }], // Use actual sender address
+        addresses: addrs,
         peers: msg.peers,
         public_key,
       })
+    }
     _ => None
   }
 
@@ -659,7 +730,7 @@ async fn handle_incoming_message(
     peer_info?,
     relay_depth=relay_depth_to_use,
   )
-  if is_new_peer {
+  if is_new_peer || (msg.kind == "hello" && conn.state != ConnectionState::Connected) {
     // Send hello to new peer
     let our_addresses = get_our_addresses(local_addr)
     let hello_msg = create_hello_message(id, local_addr, 1, peers=our_addresses)
@@ -1244,11 +1315,29 @@ async fn start_listener_service(
   root.spawn_bg(fn() { handle_periodic_updates(transport, id, local_addr) })
 
   // Listen loop
-  transport.listen(fn(bytes, sender) {
-    root.spawn_bg(fn() {
-      handle_incoming_message(bytes, sender, id, local_addr, root, transport)
-    })
-  })
+  transport.listen(
+    root,
+    fn(bytes, sender) {
+      root.spawn_bg(fn() {
+        handle_incoming_message(bytes, sender, id, local_addr, root, transport)
+      })
+    },
+    fn(remote_addr) {
+      println("Disconnect signal for \{remote_addr}")
+      let all_conns = get_global_connection_manager().get_all_connections()
+      for conn in all_conns {
+        if conn.remote_addr == remote_addr {
+          update_global_connection_manager(fn(manager) {
+            manager.update_connection_state(
+              conn.id,
+              ConnectionState::Disconnected,
+            )
+          })
+          println("Marked connection \{conn.id} as Disconnected")
+        }
+      }
+    },
+  )
 }
 
 ///|
