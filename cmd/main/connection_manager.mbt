@@ -186,9 +186,9 @@ fn ConnectionManager::update_connection_latency(
     Some(conn) => {
       let mut history = conn.latency_history.copy()
       history.push(rtt_ms)
-      // Keep last 20 samples (approx. 1 minute at 3s interval)
-      if history.length() > 20 {
-        let start_idx = history.length() - 20
+      // Keep last 5 samples (approx. 15s at 3s interval)
+      if history.length() > 5 {
+        let start_idx = history.length() - 5
         let new_history = []
         for i in start_idx..<history.length() {
           new_history.push(history[i])

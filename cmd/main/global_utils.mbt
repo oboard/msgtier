@@ -55,13 +55,6 @@ pub fn record_hello_time(peer_id : String) -> Unit {
 }
 
 ///|
-/// Global mapping of peer_id -> set of learned addresses for that peer
-/// This implements the gossip protocol for address discovery:
-/// - When a peer connects from address X claiming to be peer_id Y, we learn "Y can be reached at X"
-/// - When we send welcome to a new peer, we gossip all learned addresses for all other peers
-let global_learned_addresses : Ref[Map[String, Array[String]]] = Ref::new({})
-
-///|
 /// Global mapping of discovered_address -> (peer_id, relay_via_peer_id)
 /// Tracks the relay path for discovered peers:
 /// - discovered_address: the address we learned about (e.g., "192.168.1.5:6668")
@@ -77,6 +70,10 @@ pub fn set_relay_path(
   relay_via_peer_id : String,
 ) -> Unit {
   let paths = global_relay_paths.val
+  // Prevent unbounded growth - simple cache eviction
+  if paths.length() > 1000 {
+    paths.clear()
+  }
   paths[discovered_address] = (peer_id, relay_via_peer_id)
   // println(
   //   "DEBUG: Set relay path - reach \{peer_id} at \{discovered_address} via relay through \{relay_via_peer_id}",
@@ -88,20 +85,6 @@ pub fn set_relay_path(
 pub fn get_relay_path(address : String) -> (String, String)? {
   let paths = global_relay_paths.val
   paths.get(address)
-}
-
-///|
-/// Get all learned addresses across all peers (for gossip broadcast)
-/// Returns Array[NetworkAddress] containing all addresses we've discovered
-pub fn get_all_learned_addresses() -> Array[NetworkAddress] {
-  let learned = global_learned_addresses.val
-  let all_addresses : Array[NetworkAddress] = []
-  for _peer_id, addrs in learned {
-    for addr in addrs {
-      all_addresses.push(NetworkAddress::{ address: addr })
-    }
-  }
-  all_addresses
 }
 
 ///|

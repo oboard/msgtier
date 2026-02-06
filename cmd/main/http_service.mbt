@@ -45,12 +45,12 @@ pub fn clear_connected_peers() -> Unit {
 ///|
 
 ///|
-async fn start_http_service(addr : String, config : Config) -> Unit {
-  // Store the config globally for handlers to access
-  global_config.val = Some(config)
-  let server = @http.Server::new(@socket.Addr::parse(addr))
-  server.run_forever((request, body, conn) => match
-    (request.meth, request.path) {
+async fn handle_http_request(
+  request : @http.Request,
+  body : &@io.Reader,
+  conn : @http.ServerConnection,
+) -> Unit {
+  match (request.meth, request.path) {
     (Get, "/api/config") => get_config_handler(conn)
     (Get, "/api/status") => status_handler(conn)
     (Get, "/api/download") => download_handler(conn)
@@ -77,6 +77,20 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
       let addrs = config.listeners.map(fn(url) { url.to_string() })
       let local_addr = if addrs.is_empty() { "127.0.0.1:0" } else { addrs[0] }
 
+      // Prepare data payload (plain string for self, encrypted binary for others)
+      let is_self = target == peer_id
+      let (data_val, is_encrypted) = if is_self {
+        (@msgpack.string(body_str), false)
+      } else {
+        // Encrypt for target peer
+        (
+          @msgpack.binary(
+            encrypt_for_peer(target, @msgpack.encode(@msgpack.string(body_str))),
+          ),
+          true,
+        )
+      }
+
       // Create data message to send with body as data
       let msg = Message::new(
         kind="data",
@@ -85,35 +99,53 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
         relay=1,
         version=VERSION,
         target~,
-        data=@msgpack.binary(
-          encrypt_for_peer(peer_id, @msgpack.encode(@msgpack.string(body_str))),
-        ),
+        data=data_val,
+        encrypted=is_encrypted,
       )
 
       // Print to stdout for debugging
-      println("HTTP /send: Queuing message to \{target}")
+      println("HTTP /send: Queuing message id=\{msg.id} to \{target}")
       println("  From: \{peer_id}")
       println("  Local: \{local_addr}")
       println("  Data: \{body_str}")
+      println("  Encrypted: \{is_encrypted}")
+      println("  Self: \{is_self}")
 
       // Add to pending message queue
       add_pending_message(target, msg)
+      println("HTTP /send: Added pending message id=\{msg.id} target=\{target}")
 
       // Check if target peer exists or is self
       let target_peer = get_global_peer_manager().get_peer(target)
       let is_self = target == peer_id
       match (target_peer, is_self) {
-        (Some(_), _) | (None, true) =>
-          conn
-          ..send_response(200, "OK", extra_headers={
-            "Content-Type": "application/json",
-          })
-          ..write(
-            { "status": "queued", "target": target, "data": body_str }
-            .to_json()
-            .stringify(),
-          )
-          ..end_response()
+        (Some(_), _) | (None, true) => {
+          // Register request to track response
+          add_pending_request(msg.id)
+          println("HTTP /send: Registered request id=\{msg.id}")
+
+          // Wait for response with timeout (10 seconds)
+          match wait_for_response(msg.id, 10000) {
+            Some(response) =>
+              conn
+              ..send_response(200, "OK", extra_headers={
+                "Content-Type": "application/json",
+              })
+              ..write(response)
+              ..end_response()
+            None =>
+              conn
+              ..send_response(504, "Gateway Timeout", extra_headers={
+                "Content-Type": "application/json",
+              })
+              ..write(
+                { "error": "Request timed out", "target": target }
+                .to_json()
+                .stringify(),
+              )
+              ..end_response()
+          }
+        }
         (None, false) =>
           conn
           ..send_response(404, "Not Found", extra_headers={
@@ -129,7 +161,25 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
     }
     (Get, path) => serve_static_handler(conn, path)
     _ => notfound_handler(conn)
-  })
+  }
+}
+
+///|
+async fn start_http_service(addr : String, config : Config) -> Unit {
+  // Store the config globally for handlers to access
+  global_config.val = Some(config)
+  for {
+    try {
+      let server = @http.Server::new(@socket.Addr::parse(addr))
+      defer server.close()
+      server.run_forever(handle_http_request)
+    } catch {
+      e => {
+        println("HTTP server failed to start: \{e}. Retrying in 5 seconds...")
+        @async.sleep(5000)
+      }
+    }
+  }
 }
 
 ///|

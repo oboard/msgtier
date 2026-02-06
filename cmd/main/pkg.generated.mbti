@@ -12,11 +12,11 @@ pub fn add_known_peer(String) -> Unit
 
 pub fn add_pending_message(String, Message) -> Unit
 
+pub fn add_pending_request(String) -> Unit
+
 pub fn clear_connected_peers() -> Unit
 
 pub fn get_all_known_peers() -> Array[String]
-
-pub fn get_all_learned_addresses() -> Array[NetworkAddress]
 
 pub fn get_connected_peers() -> Array[PeerNode]
 
@@ -28,6 +28,8 @@ pub fn get_pending_messages() -> Array[PendingMessage]
 
 pub fn get_relay_path(String) -> (String, String)?
 
+pub let global_request_tracker : RequestTracker
+
 pub fn network_address(String) -> NetworkAddress
 
 pub fn network_discovery_info(String, String, Array[NetworkAddress], peers? : Array[NetworkAddress], Bytes) -> NetworkDiscoveryInfo
@@ -36,6 +38,8 @@ pub fn record_hello_time(String) -> Unit
 
 pub fn remove_connected_peer(String) -> Unit
 
+pub fn resolve_request(String, String) -> Unit
+
 pub fn set_relay_path(String, String, String) -> Unit
 
 pub fn should_rebroadcast_hello(String) -> Bool
@@ -43,6 +47,8 @@ pub fn should_rebroadcast_hello(String) -> Bool
 pub fn update_global_connection_manager((ConnectionManager) -> ConnectionManager) -> Unit
 
 pub fn update_global_peer_manager((PeerManager) -> PeerManager) -> Unit
+
+pub async fn wait_for_response(String, Int) -> String?
 
 // Errors
 type TransportError
@@ -102,10 +108,16 @@ pub impl @json.FromJson for PeerNodeStatus
 
 type PendingMessage
 
+type PendingRequest
+
 pub struct QuicTransport {
   endpoint : @quic.Endpoint
 }
 pub fn QuicTransport::new(String) -> Self raise
+
+pub struct RequestTracker {
+  pending : Map[String, Ref[PendingRequest]]
+}
 
 type Route
 pub impl Show for Route
@@ -114,6 +126,9 @@ pub impl @json.FromJson for Route
 
 type RouteInfo
 pub impl ToJson for RouteInfo
+
+type ScriptOutput
+pub impl ToJson for ScriptOutput
 
 type StatusInfo
 pub impl ToJson for StatusInfo

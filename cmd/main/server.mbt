@@ -114,25 +114,34 @@ fn get_shell() -> (String, String) {
 }
 
 ///|
-async fn execute_script(script_name : String, command : String) -> Unit {
-  // Get platform-specific shell
-  let (shell, arg) = get_shell()
+struct ScriptOutput {
+  exit_code : Int
+  output : String
+} derive(ToJson)
 
-  // Execute the script command using platform-specific shell
-  let exit_code = @process.run(shell, [arg, command])
-  if exit_code == 0 {
-    println("Script \{script_name} executed successfully")
-  } else {
-    println("Script \{script_name} failed with exit code: \{exit_code}")
+///|
+fn ScriptOutput::to_msgpack(self : ScriptOutput) -> @msgpack.Value {
+  @msgpack.map({
+    "exit_code": @msgpack.int(self.exit_code),
+    "output": @msgpack.string(self.output),
+  })
+}
+
+///|
+async fn execute_script_handler(content : String) -> ScriptOutput? {
+  match global_config.val {
+    Some({ scripts: Some(scripts), .. }) =>
+      Some(process_script_execution(content, scripts))
+    _ => None
   }
 }
 
 ///|
 async fn execute_script_with_output(
-  script_name : String,
+  script_name : StringView,
   command : String,
   input_data : String,
-) -> String {
+) -> ScriptOutput {
   // Get platform-specific shell
   let (shell, arg) = get_shell()
 
@@ -145,17 +154,18 @@ async fn execute_script_with_output(
     // Unix/Linux: use echo | command syntax
     "echo '\{input_data}' | \{command}"
   }
+  let (r, w) = @pipe.pipe()
+  defer r.close()
 
   // Execute and capture output (best effort with available tools)
-  let exit_code = @process.run(shell, [arg, full_command])
+  let exit_code = @process.run(shell, [arg, full_command], stdout=w)
+  w.close()
   if exit_code == 0 {
     println("Script \{script_name} executed successfully with input")
-    // Return a success indicator
-    "Script executed successfully"
   } else {
     println("Script \{script_name} failed with exit code: \{exit_code}")
-    "Script execution failed"
   }
+  { exit_code, output: r.read_all().text() }
 }
 
 ///|
@@ -445,10 +455,40 @@ async fn handle_reconnects(
 }
 
 ///|
+async fn process_script_execution(
+  content_str : String,
+  scripts : Map[String, String],
+) -> ScriptOutput {
+  let parts = content_str.split(" ").to_array()
+  let (name, args) = match parts {
+    [name, .. args] => (name, args)
+    _ => {
+      let empty : Array[StringView] = []
+      (""[:], empty[:])
+    }
+  }
+  match scripts.get(name.to_string()) {
+    Some(command) => {
+      let args_str = args.join(" ")
+      let full_command = if args_str.is_empty() {
+        command
+      } else {
+        "\{command} \{args_str}"
+      }
+      println("Executed script: \{content_str}")
+      execute_script_with_output(name, full_command, "")
+    }
+    None => {
+      println("Script not found: \{content_str}")
+      { exit_code: 1, output: "Script not found: \{content_str}" }
+    }
+  }
+}
+
+///|
 async fn handle_pending_messages(
   transport : &Transport,
   peer_id : String,
-  root : @async.TaskGroup[Unit],
 ) -> Unit {
   for {
     // Check for pending messages every 100ms
@@ -459,25 +499,40 @@ async fn handle_pending_messages(
     for pending_msg in pending {
       let target = pending_msg.target
       let msg = pending_msg.msg
+      println(
+        "PendingMessage: processing id=\{msg.id} kind=\{msg.kind} target=\{target}",
+      )
 
       // Check if message is for self
       if target == peer_id {
         // Handle message to self directly
-        match msg.data {
-          String(script_name) => {
-            root.spawn_bg(fn() {
-              match global_config.val {
-                Some({ scripts: Some(scripts), .. }) =>
-                  match scripts.get(script_name) {
-                    Some(command) => execute_script(script_name, command)
-                    None => println("Script not found: \{script_name}")
-                  }
-                _ => println("Config not available")
+        println("PendingMessage: self-handle id=\{msg.id}")
+        // Extract content from message data
+        let content_opt = match msg.data {
+          String(s) => Some(s)
+          Binary(raw) =>
+            // Try to decrypt if encrypted (though we prefer String for self)
+            if msg.encrypted {
+              match decrypt_from_peer(peer_id, raw) {
+                Some(d) => Some(@utf8.decode(d))
+                None => None
               }
-            })
-            println("Processed self-message for \{target}: \{script_name}")
-          }
-          _ => println("Self-message has no data")
+            } else {
+              Some(@utf8.decode(raw))
+            }
+          _ => None
+        }
+        match content_opt {
+          Some(content) =>
+            match execute_script_handler(content) {
+              Some(output) => {
+                println("PendingMessage: self-resolve id=\{msg.id}")
+                resolve_request(msg.id, output.to_json().stringify())
+              }
+              None =>
+                println("PendingMessage: self-config-missing id=\{msg.id}")
+            }
+          None => println("PendingMessage: self-no-data id=\{msg.id}")
         }
       } else {
         // Try to find and send to remote peer
@@ -496,6 +551,7 @@ async fn handle_pending_messages(
           for conn in target_conns {
             ignore(send_message(transport, conn.remote_addr, msg))
             println("Sent data to \{target} directly via \{conn.remote_addr}")
+            println("PendingMessage: sent id=\{msg.id} target=\{target}")
           }
           continue
         }
@@ -515,6 +571,7 @@ async fn handle_pending_messages(
               println(
                 "Sent data to \{target} via route \{next_hop} (\{next_hop_addr})",
               )
+              println("PendingMessage: routed id=\{msg.id} target=\{target}")
               continue
             } else {
               println(
@@ -550,6 +607,9 @@ async fn handle_pending_messages(
                 )
                 let relay_addr = relay_conns[0].remote_addr
                 ignore(send_message(transport, relay_addr, relayed_msg))
+                println(
+                  "PendingMessage: relayed id=\{msg.id} target=\{target} via=\{relay_addr}",
+                )
               }
             }
           }
@@ -1165,36 +1225,55 @@ async fn handle_incoming_message(
 
       // Execute scripts with received data and send back output
       root.spawn_bg(fn() {
-        if global_config.val is Some({ scripts: Some(scripts), .. }) { // Collect script outputs
-          let script_outputs : Array[String] = []
-          for script_name, command in scripts {
-            let output = execute_script_with_output(
-              script_name,
-              command,
-              @utf8.decode(data_content),
+        let content_str = @utf8.decode(data_content)
+        match execute_script_handler(content_str) {
+          Some(output) => {
+            // Send response back to sender with script outputs
+            let response_msg = Message::new(
+              kind="data_response",
+              from=id,
+              addr=local_addr,
+              relay=1,
+              data=output.to_msgpack(),
+              payload=msg.id,
             )
-            script_outputs.push("\{script_name}: \{output}")
-            println("Executed script \{script_name} with received data")
+            // Add pending message instead of direct send
+            add_pending_message(msg.from, response_msg)
+            println(
+              "DataResponse: queued id=\{response_msg.id} correlation=\{msg.id} to=\{msg.from}",
+            )
           }
-          // Send response back to sender with script outputs
-          let response_msg = Message::new(
-            kind="data_response",
-            from=id,
-            addr=local_addr,
-            relay=1,
-            data=script_outputs.map(@msgpack.string) |> @msgpack.array,
-          )
-          // Add pending message instead of direct send
-          add_pending_message(msg.from, response_msg)
-        } else {
-          println("No scripts configured, received data: \{data_content}")
+          None =>
+            println("No scripts configured, received data: \{data_content}")
         }
       })
     }
-    { kind: "data_response", data: response_data, .. } => {
+    { kind: "data_response", data: response_data, payload: correlation_id, .. } => {
       // Handle response from script execution
       println("Received script response from \{msg.from}:")
       println(response_data)
+
+      // If this is a response to a pending request, resolve it
+      match correlation_id {
+        Some(id) => {
+          println("DataResponse: resolve correlation=\{id} from=\{msg.from}")
+          // Try to convert response to JSON string
+          match response_data {
+            Array(arr) => {
+              let strings = []
+              for v in arr {
+                if v is String(s) {
+                  strings.push(s)
+                }
+              }
+              resolve_request(id, strings.to_json().stringify())
+            }
+            _ =>
+              resolve_request(id, response_data.to_string().unwrap_or("error"))
+          }
+        }
+        None => println("DataResponse: missing correlation from=\{msg.from}")
+      }
     }
     { kind: "sync", data: Array(conn_entries), .. } => {
       // Handle connection update from peer
@@ -1330,7 +1409,7 @@ async fn start_listener_service(
   // Start heartbeat/health check background task
   root.spawn_bg(fn() { handle_heartbeat(transport, local_addr, id) })
   // Start pending message sender background task
-  root.spawn_bg(fn() { handle_pending_messages(transport, id, root) })
+  root.spawn_bg(fn() { handle_pending_messages(transport, id) })
   // Start periodic connection update task
   root.spawn_bg(fn() { handle_periodic_updates(transport, id, local_addr) })
 
