@@ -11,7 +11,5 @@ struct Config {
 
 ///|
 async fn Config::from_file(path : String) -> Config {
-  let json = @fs.read_file(path).json()
-  let config = @json.from_json(json)
-  config
+  @fs.read_file(path).text() |> @json5.parse |> @json.from_json
 }

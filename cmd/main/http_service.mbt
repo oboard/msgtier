@@ -51,10 +51,10 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
   let server = @http.Server::new(@socket.Addr::parse(addr))
   server.run_forever((request, body, conn) => match
     (request.meth, request.path) {
-    (Get, "/config") => get_config_handler(conn)
-    (Get, "/status") => status_handler(conn)
-    (Get, "/download") => download_handler(conn)
-    (Post, "/send") => {
+    (Get, "/api/config") => get_config_handler(conn)
+    (Get, "/api/status") => status_handler(conn)
+    (Get, "/api/download") => download_handler(conn)
+    (Post, "/api/send") => {
       // Extract target from headers
       let target = match request.headers.get("target") {
         Some(t) => t
@@ -127,8 +127,59 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
           ..end_response()
       }
     }
+    (Get, path) => serve_static_handler(conn, path)
     _ => notfound_handler(conn)
   })
+}
+
+///|
+async fn serve_static_handler(
+  conn : @http.ServerConnection,
+  path : String,
+) -> Unit {
+  let static_root = "web/dist"
+  let path = if path == "/" { "/index.html" } else { path }
+
+  // Basic security check
+  if path.contains("..") {
+    notfound_handler(conn)
+    return
+  }
+  let full_path = static_root + path
+  if @fs.exists(full_path) {
+    serve_file(conn, full_path, path)
+  } else {
+    notfound_handler(conn)
+  }
+}
+
+///|
+async fn serve_file(
+  conn : @http.ServerConnection,
+  file_path : String,
+  path : String,
+) -> Unit {
+  try {
+    let file = @fs.open(file_path, mode=ReadOnly)
+    let content_type = match path {
+      _ as p if p.has_suffix(".html") => "text/html"
+      _ as p if p.has_suffix(".css") => "text/css"
+      _ as p if p.has_suffix(".js") => "text/javascript"
+      _ as p if p.has_suffix(".json") => "application/json"
+      _ as p if p.has_suffix(".png") => "image/png"
+      _ as p if p.has_suffix(".jpg") || p.has_suffix(".jpeg") => "image/jpeg"
+      _ as p if p.has_suffix(".svg") => "image/svg+xml"
+      _ as p if p.has_suffix(".ico") => "image/x-icon"
+      _ => "application/octet-stream"
+    }
+    conn
+    ..send_response(200, "OK", extra_headers={ "Content-Type": content_type })
+    ..write_reader(file)
+    ..end_response()
+    file.close()
+  } catch {
+    _ => notfound_handler(conn)
+  }
 }
 
 ///|
@@ -254,7 +305,6 @@ async fn notfound_handler(conn : @http.ServerConnection) -> Unit {
 async fn download_handler(conn : @http.ServerConnection) -> Unit {
   let args = @env.args()
   let exe_path = if args.length() > 0 { args[0] } else { "./msgtier" }
-
   try {
     let content = @fs.read_file(exe_path)
     conn

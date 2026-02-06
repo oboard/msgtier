@@ -41,7 +41,6 @@ fn compute_and_store_shared_secret(
   let priv_key = get_private_key()
   let shared = @x25519.compute_shared_secret(priv_key, peer_public_key)
   global_shared_secrets.val[peer_id] = shared
-  println("Computed shared secret with peer \{peer_id}")
 }
 
 ///|

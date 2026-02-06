@@ -19,22 +19,10 @@ pub fn TcpTransport::new(addr_str : String) -> TcpTransport raise {
 
 ///|
 impl Transport for TcpTransport with send(self, target, data) {
-  let conn = match self.connections.get(target) {
-    Some(c) => c
-    None =>
-      try {
-        let target_clean = if target.has_prefix("tcp://") {
-          target[6:].to_string()
-        } else {
-          target
-        }
-        let target_addr = @socket.Addr::parse(target_clean)
-        let c = @socket.Tcp::connect(target_addr)
-        self.connections[target] = c
-        c
-      } catch {
-        _ => return false
-      }
+  let target_clean = if target.has_prefix("tcp://") {
+    target[6:].to_string()
+  } else {
+    target
   }
 
   // Framing: 4 bytes length + data
@@ -45,75 +33,84 @@ impl Transport for TcpTransport with send(self, target, data) {
     (len >> 8).to_byte(),
     len.to_byte(),
   ]
-  try {
-    conn.write(header)
-    conn.write(data)
-    true
-  } catch {
-    _ => {
-      // Retry once with new connection
-      self.connections.remove(target)
-      try {
-        let target_clean = if target.has_prefix("tcp://") {
-          target[6:].to_string()
-        } else {
-          target
+
+  // Retry loop (max 2 attempts)
+  for i = 0; i < 2; i = i + 1 {
+    try {
+      // Get or create connection
+      // We use a mutable variable to avoid complex match/async interaction issues
+      let mut conn_opt = self.connections.get(target)
+      if conn_opt is None {
+        try {
+          let target_addr = @socket.Addr::parse(target_clean)
+          let c = @socket.Tcp::connect(target_addr)
+          self.connections[target] = c
+          conn_opt = Some(c)
+        } catch {
+          _ => () // Will be handled by outer try/catch or loop
         }
-        let target_addr = @socket.Addr::parse(target_clean)
-        let c = @socket.Tcp::connect(target_addr)
-        self.connections[target] = c
-        c.write(header)
-        c.write(data)
-        true
-      } catch {
-        _ => false
       }
+      match conn_opt {
+        Some(conn) => {
+          // Combine header and data to ensure atomic write
+          // This prevents interleaving of header/data when multiple threads share the connection
+          let packet_buf = FixedArray::make(4 + len, b'\x00')
+          for k = 0; k < 4; k = k + 1 {
+            packet_buf[k] = header[k]
+          }
+          for k = 0; k < len; k = k + 1 {
+            packet_buf[4 + k] = data[k]
+          }
+          let full_packet = packet_buf.unsafe_reinterpret_as_bytes()
+          conn.write(full_packet)
+          return true
+        }
+        None =>
+          // Connection creation failed
+          if i == 1 {
+            return false
+          }
+      }
+    } catch {
+      _ =>
+        // Connection failed or write failed
+        self.connections.remove(target)
     }
   }
+  false
 }
 
 ///|
-impl Transport for TcpTransport with listen(self, root, handler, on_disconnect) {
-  for {
+impl Transport for TcpTransport with listen(self, _root, handler, on_disconnect) {
+  self.server.run_forever(fn(conn, remote_addr) {
+    let reader = BufferedReader::new(conn)
     try {
-      let (conn, remote_addr) = self.server.accept()
-      root.spawn_bg(fn() {
-        try {
-          let reader = BufferedReader::new(conn)
-          // TCP Connection Handler
-          // Read loop with framing
-          for {
-            // Read 4 bytes length
-            let header_buf = FixedArray::make(4, b'\x00')
-            reader.read_exact(header_buf, 4)
-            let header_bytes = header_buf.unsafe_reinterpret_as_bytes()
-            let len = (header_bytes[0].to_int() << 24) |
-              (header_bytes[1].to_int() << 16) |
-              (header_bytes[2].to_int() << 8) |
-              header_bytes[3].to_int()
-            if len > 10 * 1024 * 1024 { // 10MB limit sanity check
-              break
-            }
-            let data_buf = FixedArray::make(len, b'\x00')
-            reader.read_exact(data_buf, len)
-            // Convert FixedArray to Bytes (immutable copy)
-            let data_bytes = data_buf.unsafe_reinterpret_as_bytes()
-            handler(data_bytes, remote_addr.to_string())
-          }
-        } catch {
-          _ => {
-            println("Connection closed or error from \{remote_addr}")
-            on_disconnect(remote_addr.to_string())
-          }
+      // TCP Connection Handler - Read loop with framing
+      for {
+        // Read 4 bytes length header
+        let header_buf = FixedArray::make(4, b'\x00')
+        reader.read_exact(header_buf, 4)
+        let header_bytes = header_buf.unsafe_reinterpret_as_bytes()
+        let len = (header_bytes[0].to_int() << 24) |
+          (header_bytes[1].to_int() << 16) |
+          (header_bytes[2].to_int() << 8) |
+          header_bytes[3].to_int()
+
+        // Sanity check: 10MB limit
+        if len > 10 * 1024 * 1024 {
+          break
         }
-      })
-    } catch {
-      _ => {
-        // Yield on accept error
-        @async.sleep(100)
+
+        // Read message data
+        let data_buf = FixedArray::make(len, b'\x00')
+        reader.read_exact(data_buf, len)
+        let data_bytes = data_buf.unsafe_reinterpret_as_bytes()
+        handler(data_bytes, remote_addr.to_string())
       }
+    } catch {
+      _ => on_disconnect(remote_addr.to_string())
     }
-  }
+  })
 }
 
 ///|
@@ -151,7 +148,8 @@ async fn BufferedReader::read_exact(
       match self.conn.read_some() {
         Some(chunk) => {
           if chunk.length() == 0 {
-            continue
+            // Connection closed by peer
+            raise TransportError::TransportError("Connection closed by peer")
           }
           self.buffer = chunk
           self.offset = 0

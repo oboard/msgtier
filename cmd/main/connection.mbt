@@ -13,7 +13,7 @@ struct Connection {
   relay : Int // 1 = direct, 2+ = relayed through N-1 peers
   metadata : Map[String, String]?
   latency_ms : Int? // Latest RTT in milliseconds (null if no pings yet)
-  latency_history : Array[Int] // Recent RTT samples (last 10)
+  latency_history : Array[Int] // Recent RTT samples (last 20, approx 1 minute)
   packets_sent : Int // Total pings sent
   packets_lost : Int // Pings without pong response
   bytes_sent : UInt64 // Total bytes sent through connection

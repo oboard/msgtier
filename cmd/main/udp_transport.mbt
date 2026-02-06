@@ -28,7 +28,12 @@ impl Transport for UdpTransport with send(self, target, data) {
 }
 
 ///|
-impl Transport for UdpTransport with listen(self, _root, handler, _on_disconnect) {
+impl Transport for UdpTransport with listen(
+  self,
+  _root,
+  handler,
+  _on_disconnect,
+) {
   let buf = FixedArray::make(65536, b'0')
   for {
     try {

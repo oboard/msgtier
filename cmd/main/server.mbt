@@ -61,6 +61,19 @@ fn handle_new_connection(
     }
   }
 
+  // For TCP, if this is not a discovery message (no peer_info),
+  // try to reuse any existing TCP connection to this peer.
+  // This handles the case where incoming messages come from ephemeral ports
+  // but should be mapped to the stable listening connection.
+  if protocol == "tcp" && peer_info is None {
+    for existing_conn in existing_conns {
+      if existing_conn.protocol == "tcp" &&
+        existing_conn.local_addr == local_addr {
+        return (existing_conn, false, is_new_peer)
+      }
+    }
+  }
+
   // Add new connection with protocol
   update_global_connection_manager(fn(manager) {
     let mgr = manager.add_connection(
@@ -590,7 +603,7 @@ async fn handle_periodic_updates(
 ///|
 async fn handle_incoming_message(
   bytes : Bytes,
-  sender : String,
+  sender_addr : String,
   id : String,
   local_addr : String,
   root : @async.TaskGroup[Unit],
@@ -600,7 +613,7 @@ async fn handle_incoming_message(
     e => {
       let error_msg = e.to_string()
       println(
-        "DEBUG: Msgpack decode error - \{error_msg}, sender: \{sender}, bytes: \{bytes.length()}",
+        "DEBUG: Msgpack decode error - \{error_msg}, sender: \{sender_addr}, bytes: \{bytes.length()}",
       )
       // Log first 20 bytes for debugging
       if bytes.length() > 0 {
@@ -621,14 +634,12 @@ async fn handle_incoming_message(
       return
     }
   }
-  // println("Received message: \{msg}")
-  let sender_addr = sender
-
   // Skip messages from self, unless target is self
   if msg.from == id && msg.target != Some(id) {
     return
   }
-  println("\{msg.from}(\{sender}): \{msg.kind}")
+  // Logger
+  println("[\{msg.kind}]\t\{msg.from}(\{sender_addr})")
   // Handle the connection - always create/update connection for any message
   // Determine connectable address from hello message
   let connectable_addr = if msg.kind == "hello" && !msg.addr.is_empty() {
@@ -639,16 +650,16 @@ async fn handle_incoming_message(
           // Extract IP from sender (IP:Port)
           // Find last index of ':' manually
           let mut idx = -1
-          for i = 0; i < sender.length(); i = i + 1 {
-            if sender[i] == ':' {
+          for i = 0; i < sender_addr.length(); i = i + 1 {
+            if sender_addr[i] == ':' {
               idx = i
             }
           }
           let sender_ip = if idx == -1 {
-            sender
+            sender_addr
           } else {
-            sender[:idx].to_string() catch {
-              _ => sender
+            sender_addr[:idx].to_string() catch {
+              _ => sender_addr
             }
           }
 
@@ -700,10 +711,17 @@ async fn handle_incoming_message(
   // Use the message's relay count as the hop depth for this connection
   // msg.relay already indicates how many hops the message took to reach us
   let relay_depth_to_use = msg.relay
+  // Use connectable_addr (listening address) if available, otherwise fallback to sender_addr
+  // This ensures we register the stable listening address for the connection
+  let effective_addr = if !connectable_addr.is_empty() {
+    connectable_addr
+  } else {
+    sender_addr
+  }
   let (conn, is_new_connection, is_new_peer) = handle_new_connection(
     msg.from,
     local_addr,
-    sender_addr,
+    effective_addr,
     transport.protocol(),
     peer_info?,
     relay_depth=relay_depth_to_use,
@@ -713,14 +731,15 @@ async fn handle_incoming_message(
     // Send hello to new peer
     let our_addresses = get_our_addresses(local_addr)
     let hello_msg = create_hello_message(id, local_addr, 1, peers=our_addresses)
-    ignore(send_message(transport, sender_addr, hello_msg))
-    println("Sent hello to new peer \{msg.from} at \{sender_addr}")
+    // Use conn.remote_addr to ensure we reply to the stable address (not ephemeral)
+    ignore(send_message(transport, conn.remote_addr, hello_msg))
+    // println("Sent hello to new peer \{msg.from} at \{conn.remote_addr}")
 
     // Broadcast sync
     try broadcast_sync(transport, id, local_addr) |> ignore catch {
       _ => println("Failed to broadcast sync for new peer")
     }
-    println("Broadcasted sync for new peer \{msg.from}")
+    // println("Broadcasted sync for new peer \{msg.from}")
   }
 
   // Check if state is changing from non-Connected to Connected
@@ -857,7 +876,7 @@ async fn handle_incoming_message(
           broadcast=true,
         )
         ignore(send_message(transport, peer_addr, broadcast_msg))
-        println("Forwarding broadcast from \{msg.from} via \{peer_addr}")
+        // println("[broadcast]\t\{msg.from}(\{sender_addr}) -> \{peer_addr}")
       }
     }
   }
@@ -882,15 +901,14 @@ async fn handle_incoming_message(
             false
           } else {
             // Secret matches - accept connection
-            println("Accepted peer \{msg.from} at \{sender_addr}")
+            // println("Accepted peer \{msg.from} at \{sender_addr}")
             true
           }
         }
-        None => {
+        None =>
           // No config - accept hello
-          println("Accepted peer \{msg.from} at \{sender_addr} (no config)")
+          // println("Accepted peer \{msg.from} at \{sender_addr} (no config)")
           true
-        }
       }
       if !secret_valid {
         return
@@ -1205,9 +1223,6 @@ async fn handle_incoming_message(
               update_global_peer_manager(fn(manager) {
                 manager.update_route(peer_id, msg.from, new_hops)
               })
-              println(
-                "Learned route to \{peer_id} via \{msg.from} (hops=\{new_hops})",
-              )
 
               // Add discovered address to known peers for potential direct connection
               if remote_addr != "routed" && !remote_addr.has_prefix("0.0.0.0:") {
@@ -1302,7 +1317,6 @@ async fn start_listener_service(
       })
     },
     fn(remote_addr) {
-      println("Disconnect signal for \{remote_addr}")
       let all_conns = get_global_connection_manager().get_all_connections()
       for conn in all_conns {
         if conn.remote_addr == remote_addr {
@@ -1312,7 +1326,8 @@ async fn start_listener_service(
               ConnectionState::Disconnected,
             )
           })
-          println("Marked connection \{conn.id} as Disconnected")
+          println("[disconnect]\t\{conn.peer_id}(\{remote_addr})")
+          // println("Marked connection \{conn.id} as Disconnected")
         }
       }
     },
