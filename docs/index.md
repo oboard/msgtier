@@ -25,6 +25,8 @@ features:
     details: Continuous heartbeat monitoring with automatic failure detection and reconnection.
   - title: Script Execution
     details: Execute custom scripts on message receipt using platform-specific shells.
+  - title: Multi-Transport
+    details: Support for UDP, TCP, and WebSocket protocols for flexible connectivity.
   - title: Cross-Platform
     details: Runs on Windows, macOS, and Linux with zero external dependencies.
 ---

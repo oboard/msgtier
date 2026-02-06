@@ -32,11 +32,11 @@ curl http://localhost:9000/config
   "secret": "my-secret",
   "listeners": [
     "udp://0.0.0.0:6666",
-    "udp://0.0.0.0:6667"
+    "tcp://0.0.0.0:6667"
   ],
   "peers": [
     "udp://127.0.0.1:6668",
-    "udp://127.0.0.1:6669"
+    "ws://127.0.0.1:6669"
   ],
   "web_api": "127.0.0.1:9000",
   "scripts": {

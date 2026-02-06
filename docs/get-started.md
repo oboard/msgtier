@@ -22,11 +22,12 @@ Create a `node.json` configuration file for each node:
   "secret": "shared-secret-key",
   "listeners": [
     "udp://0.0.0.0:6666",
-    "udp://0.0.0.0:6667"
+    "tcp://0.0.0.0:6667",
+    "ws://0.0.0.0:6668"
   ],
   "peers": [
-    "udp://127.0.0.1:6668",
-    "udp://127.0.0.1:6669"
+    "udp://127.0.0.1:6669",
+    "ws://127.0.0.1:6670"
   ],
   "web_api": "127.0.0.1:9000",
   "scripts": {
@@ -42,8 +43,8 @@ Create a `node.json` configuration file for each node:
 |-------|------|-------------|
 | `id` | String | Unique identifier for this node |
 | `secret` | String | Shared secret key (reserved for future use) |
-| `listeners` | Array | UDP addresses to listen on (use 0.0.0.0 to bind all interfaces) |
-| `peers` | Array | Initial peer addresses to connect to |
+| `listeners` | Array | Addresses to listen on. Supported protocols: `udp://`, `tcp://`, `ws://`. Use 0.0.0.0 to bind all interfaces |
+| `peers` | Array | Initial peer addresses to connect to. Supported protocols: `udp://`, `tcp://`, `ws://` |
 | `web_api` | String | HTTP server address (optional) |
 | `scripts` | Object | Named scripts that can be triggered via messages |
 

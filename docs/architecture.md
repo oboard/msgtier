@@ -98,14 +98,14 @@ Messages flow through the system in the following sequence:
          │
          ▼
 ┌──────────────────────────┐
-│  UDP Send                │  Send message via UDP to remote address
+│  Transport Send          │  Send message via appropriate transport (UDP/TCP/WS)
 │  (via active connection) │
 └────────┬─────────────────┘
          │
          ▼
 ┌──────────────────────────┐
 │  Target Node             │  Receive and process message
-│  (UDP Handler)           │
+│  (Transport Handler)     │
 └────────┬─────────────────┘
          │ Parse message type
          ▼
@@ -136,7 +136,7 @@ On startup, the node:
 - Loads configuration from JSON file (node ID, listeners, peers, scripts)
 - **Generates X25519 key pair for end-to-end encryption**
 - Starts HTTP API server on configured address
-- Creates UDP listeners on all configured addresses
+- Creates listeners on all configured addresses (UDP, TCP, WebSocket)
 - Spawns three background tasks per listener: heartbeat, reconnection, pending message processing
 
 ### 2. Connection Establishment
@@ -172,19 +172,19 @@ When HTTP POST /send is received:
 - Message is queued to `pending_messages`
 - Pending message processor (100ms interval) retrieves the queue
 - For each queued message: finds best active connection to target peer
-- Sends message via UDP to remote address
+- Sends message via appropriate transport to remote address
 - Clears processed messages from queue
 
 ### 6. Message Reception and Script Execution
 
-When UDP message arrives:
+When a message arrives (via any transport):
 - Message is decoded from MessagePack format
 - Connection state is updated (marked Active)
 - **If message is encrypted: decrypt using shared secret derived from X25519 ECDH**
 - If message type is `data`: extract script name from body
 - Lookup script name in configuration scripts map
 - If found: spawn async task to execute script with platform-specific shell
-- Execute asynchronously to avoid blocking UDP handler
+- Execute asynchronously to avoid blocking the transport handler
 
 ## Message Types Reference
 
