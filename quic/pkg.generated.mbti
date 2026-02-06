@@ -1,0 +1,145 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/quic"
+
+import {
+  "moonbitlang/async/socket",
+}
+
+// Values
+pub fn encode_frame(Frame) -> Bytes
+
+pub fn encode_packet(Header, Bytes) -> Bytes
+
+pub fn parse_frames(Bytes) -> Array[Frame]
+
+pub fn parse_header(BytesView) -> Header?
+
+pub fn slice(Bytes, Int, Int) -> Bytes
+
+// Errors
+
+// Types and methods
+pub struct AckFrame {
+  largest_acknowledged : Int64
+  delay : Int64
+  first_ack_range : Int64
+}
+pub impl Eq for AckFrame
+pub impl Show for AckFrame
+
+pub struct Connection {
+  addr : String
+  conn_id : String
+  is_server : Bool
+  mut next_packet_number : Int64
+  streams : Map[Int64, Stream]
+}
+pub fn Connection::handle_frame(Self, Frame) -> Unit
+pub fn Connection::new(String, String, Bool) -> Self
+pub fn Connection::next_packet_number(Self) -> Int64
+pub fn Connection::open_stream(Self) -> Stream
+
+pub struct ConnectionCloseFrame {
+  error_code : Int64
+  frame_type : Int64?
+  reason_phrase : String
+}
+pub impl Eq for ConnectionCloseFrame
+pub impl Show for ConnectionCloseFrame
+
+pub struct CryptoFrame {
+  offset : Int64
+  data : Bytes
+}
+pub impl Eq for CryptoFrame
+pub impl Show for CryptoFrame
+
+pub struct Endpoint {
+  socket : @socket.UdpServer
+  connections : Map[String, Connection]
+}
+pub fn Endpoint::connect(Self, String) -> Connection
+pub async fn Endpoint::listen(Self, (Connection, Stream) -> Unit) -> Unit
+pub fn Endpoint::new(String) -> Self raise
+pub async fn Endpoint::send_stream_data(Self, Connection, Int64, Bytes) -> Unit
+
+pub(all) enum Frame {
+  Padding
+  Ping
+  Ack(AckFrame)
+  ResetStream(ResetStreamFrame)
+  StopSending(StopSendingFrame)
+  Crypto(CryptoFrame)
+  NewToken(NewTokenFrame)
+  Stream(StreamFrame)
+  MaxData(Int64)
+  MaxStreamData(Int64, Int64)
+  ConnectionClose(ConnectionCloseFrame)
+  HandshakeDone
+}
+pub impl Eq for Frame
+pub impl Show for Frame
+
+pub struct Header {
+  first_byte : Byte
+  version : UInt?
+  dest_cid : BytesView
+  src_cid : BytesView?
+  packet_number : Int64
+  payload_length : Int?
+}
+pub impl Show for Header
+
+pub struct NewTokenFrame {
+  token : Bytes
+}
+pub impl Eq for NewTokenFrame
+pub impl Show for NewTokenFrame
+
+pub(all) enum PacketType {
+  Initial
+  Handshake
+  ZeroRTT
+  OneRTT
+  Retry
+  VersionNegotiation
+}
+pub impl Eq for PacketType
+pub impl Show for PacketType
+
+pub struct ResetStreamFrame {
+  stream_id : Int64
+  error_code : Int64
+  final_size : Int64
+}
+pub impl Eq for ResetStreamFrame
+pub impl Show for ResetStreamFrame
+
+pub struct StopSendingFrame {
+  stream_id : Int64
+  error_code : Int64
+}
+pub impl Eq for StopSendingFrame
+pub impl Show for StopSendingFrame
+
+pub struct Stream {
+  id : Int64
+  mut offset : Int64
+  mut fin : Bool
+  mut incoming_data : Bytes
+}
+pub impl Show for Stream
+
+pub struct StreamFrame {
+  stream_id : Int64
+  offset : Int64
+  fin : Bool
+  data : Bytes
+}
+pub impl Eq for StreamFrame
+pub impl Show for StreamFrame
+
+// Type aliases
+
+// Traits
+

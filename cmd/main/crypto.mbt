@@ -63,10 +63,9 @@ fn encrypt_for_peer(peer_id : String, data : Bytes) -> Bytes {
 fn decrypt_from_peer(peer_id : String, encrypted : Bytes) -> Bytes? {
   match get_shared_secret(peer_id) {
     Some(shared) => @x25519.decrypt(shared, encrypted)
-    None => {
-      println("No shared secret with peer \{peer_id}")
+    None =>
+      // println("No shared secret with peer \{peer_id}")
       None
-    }
   }
 }
 

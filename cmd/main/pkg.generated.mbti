@@ -4,6 +4,7 @@ package "oboard/msgtier/cmd/main"
 import {
   "moonbitlang/async",
   "moonbitlang/core/json",
+  "oboard/msgtier/quic",
 }
 
 // Values
@@ -100,6 +101,11 @@ pub impl ToJson for PeerNodeStatus
 pub impl @json.FromJson for PeerNodeStatus
 
 type PendingMessage
+
+pub struct QuicTransport {
+  endpoint : @quic.Endpoint
+}
+pub fn QuicTransport::new(String) -> Self raise
 
 type Route
 pub impl Show for Route

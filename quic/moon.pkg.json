@@ -1,0 +1,11 @@
+{
+  "import": [
+    "moonbitlang/async/socket",
+    "moonbitlang/core/bytes",
+    "moonbitlang/core/buffer",
+    "moonbitlang/core/encoding/utf8"
+  ],
+  "wbtest-import": [
+    "moonbitlang/async"
+  ]
+}

@@ -17,6 +17,7 @@
     "moonbitlang/async/io",
     "moonbitlang/async/process",
     "oboard/msgtier/uuidm",
-    "moonbitlang/x/json5"
+    "moonbitlang/x/json5",
+    "oboard/msgtier/quic"
   ]
 }

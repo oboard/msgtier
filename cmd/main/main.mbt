@@ -33,6 +33,7 @@ async fn main {
             "tcp" => (TcpTransport::new(host) : &Transport)
             "udp" => (UdpTransport::new(host) : &Transport)
             "ws" => (WebSocketTransport::new(host) : &Transport)
+            "quic" => (QuicTransport::new(host) : &Transport)
             _ => abort("Unknown protocol: \{scheme}")
           }
           root.spawn(fn() { start_listener_service(root, transport, id) })
