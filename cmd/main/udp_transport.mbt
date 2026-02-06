@@ -14,12 +14,8 @@ pub fn UdpTransport::new(addr_str : String) -> UdpTransport raise {
 ///|
 impl Transport for UdpTransport with send(self, target, data) {
   try {
-    let target_clean = if target.has_prefix("udp://") {
-      target[6:].to_string()
-    } else {
-      target
-    }
-    let target_addr = @socket.Addr::parse(target_clean)
+    let target = target.strip_prefix("udp://").unwrap_or(target).to_string()
+    let target_addr = @socket.Addr::parse(target)
     self.server.sendto(data, target_addr)
     true
   } catch {

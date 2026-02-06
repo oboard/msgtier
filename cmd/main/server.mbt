@@ -173,6 +173,14 @@ async fn send_message(
   if peer.is_empty() {
     return false
   }
+
+  // Protocol check: ensure target address matches transport protocol
+  if peer.contains("://") {
+    let protocol = transport.protocol()
+    if !peer.has_prefix(protocol + "://") {
+      return false
+    }
+  }
   try {
     let msgpack_bytes = msg.to_msgpack()
     transport.send(peer, msgpack_bytes)
@@ -193,25 +201,37 @@ async fn send_message_with_fallback(
   fallback_addr : String,
   msg : Message,
 ) -> Unit noraise {
+  let protocol = transport.protocol()
+
   // Try primary address - fire and forget
   if !primary_addr.is_empty() {
-    try {
-      let msgpack_bytes = msg.to_msgpack()
-      transport.send(primary_addr, msgpack_bytes) |> ignore
-      println("Sent to primary \{primary_addr}")
-    } catch {
-      _ => println("Failed to send to primary \{primary_addr}")
+    // Check protocol compatibility
+    let compatible = !primary_addr.contains("://") ||
+      primary_addr.has_prefix(protocol + "://")
+    if compatible {
+      try {
+        let msgpack_bytes = msg.to_msgpack()
+        transport.send(primary_addr, msgpack_bytes) |> ignore
+        println("Sent to primary \{primary_addr}")
+      } catch {
+        _ => println("Failed to send to primary \{primary_addr}")
+      }
     }
   }
 
   // Try fallback address - fire and forget
   if !fallback_addr.is_empty() && fallback_addr != primary_addr {
-    try {
-      let msgpack_bytes = msg.to_msgpack()
-      transport.send(fallback_addr, msgpack_bytes) |> ignore
-      println("Sent to fallback \{fallback_addr}")
-    } catch {
-      _ => println("Failed to send to fallback \{fallback_addr}")
+    // Check protocol compatibility
+    let compatible = !fallback_addr.contains("://") ||
+      fallback_addr.has_prefix(protocol + "://")
+    if compatible {
+      try {
+        let msgpack_bytes = msg.to_msgpack()
+        transport.send(fallback_addr, msgpack_bytes) |> ignore
+        println("Sent to fallback \{fallback_addr}")
+      } catch {
+        _ => println("Failed to send to fallback \{fallback_addr}")
+      }
     }
   }
 }
@@ -351,7 +371,10 @@ async fn broadcast_sync(
     )
     for conn in peer_conns {
       if conn.state == ConnectionState::Connected {
-        ignore(send_message(transport, conn.remote_addr, update_msg))
+        // Only send if connection protocol matches transport protocol
+        if conn.protocol == transport.protocol() {
+          ignore(send_message(transport, conn.remote_addr, update_msg))
+        }
       }
     }
   }
@@ -403,6 +426,9 @@ async fn handle_reconnects(
     let known_peers = get_all_known_peers()
     for peer_addr in known_peers {
       // Parse URL to check protocol
+      if !peer_addr.has_prefix(transport.protocol() + "://") {
+        continue
+      }
 
       // Check if we already have an active connection to this peer address
       let all_conns = get_global_connection_manager().get_all_connections()
@@ -778,7 +804,7 @@ async fn handle_incoming_message(
     } else {
       // Message is for someone else, forward it
       // Check if this node has already processed this message (prevent loops using DFS path tracking)
-      let already_visited = msg.visited.any(fn(peer_id) { peer_id == id })
+      let already_visited = msg.visited.any(peer_id => peer_id == id)
       if !already_visited {
         let updated_visited = msg.visited
         updated_visited.push(id)
@@ -1332,24 +1358,4 @@ async fn start_listener_service(
       }
     },
   )
-}
-
-///|
-async fn listen_udp(
-  root : @async.TaskGroup[Unit],
-  addr : @socket.Addr,
-  id : String,
-) -> Unit {
-  let transport = UdpTransport::new(addr.to_string())
-  start_listener_service(root, transport, id)
-}
-
-///|
-async fn listen_tcp(
-  root : @async.TaskGroup[Unit],
-  addr : @socket.Addr,
-  id : String,
-) -> Unit {
-  let transport = TcpTransport::new(addr.to_string())
-  start_listener_service(root, transport, id)
 }

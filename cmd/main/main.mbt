@@ -29,21 +29,14 @@ async fn main {
           let host = listener.get_host()
           let scheme = listener.scheme
           println("Listening on \{listener}")
-          match scheme {
-            "tcp" =>
-              ignore(
-                root.spawn(fn() {
-                  listen_tcp(root, @socket.Addr::parse(host), id)
-                }),
-              )
-            "udp" =>
-              ignore(
-                root.spawn(fn() {
-                  listen_udp(root, @socket.Addr::parse(host), id)
-                }),
-              )
-            _ => println("Unknown protocol: \{scheme}")
+          let transport = match scheme {
+            "tcp" => (TcpTransport::new(host) : &Transport)
+            "udp" => (UdpTransport::new(host) : &Transport)
+            "ws" => (WebSocketTransport::new(host) : &Transport)
+            _ => abort("Unknown protocol: \{scheme}")
           }
+          root.spawn(fn() { start_listener_service(root, transport, id) })
+          |> ignore
         }
         if config.web_api is Some(addr) {
           println("HTTP API listening on http://\{addr}")

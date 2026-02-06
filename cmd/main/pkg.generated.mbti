@@ -2,6 +2,7 @@
 package "oboard/msgtier/cmd/main"
 
 import {
+  "moonbitlang/async",
   "moonbitlang/core/json",
 }
 
@@ -43,6 +44,8 @@ pub fn update_global_connection_manager((ConnectionManager) -> ConnectionManager
 pub fn update_global_peer_manager((PeerManager) -> PeerManager) -> Unit
 
 // Errors
+type TransportError
+pub impl Show for TransportError
 
 // Types and methods
 type BufferedReader
@@ -119,12 +122,15 @@ pub fn TcpTransport::new(String) -> Self raise
 type UdpTransport
 pub fn UdpTransport::new(String) -> Self raise
 
+type WebSocketTransport
+pub fn WebSocketTransport::new(String) -> Self raise
+
 // Type aliases
 
 // Traits
 pub trait Transport {
   async send(Self, String, Bytes) -> Bool
-  async listen(Self, (Bytes, String) -> Unit) -> Unit
+  async listen(Self, @async.TaskGroup[Unit], (Bytes, String) -> Unit, (String) -> Unit) -> Unit
   local_addr(Self) -> String
   protocol(Self) -> String
 }

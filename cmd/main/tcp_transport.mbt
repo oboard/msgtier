@@ -19,11 +19,7 @@ pub fn TcpTransport::new(addr_str : String) -> TcpTransport raise {
 
 ///|
 impl Transport for TcpTransport with send(self, target, data) {
-  let target_clean = if target.has_prefix("tcp://") {
-    target[6:].to_string()
-  } else {
-    target
-  }
+  let target = target.strip_prefix("tcp://").unwrap_or(target).to_string()
 
   // Framing: 4 bytes length + data
   let len = data.length()
@@ -42,7 +38,7 @@ impl Transport for TcpTransport with send(self, target, data) {
       let mut conn_opt = self.connections.get(target)
       if conn_opt is None {
         try {
-          let target_addr = @socket.Addr::parse(target_clean)
+          let target_addr = @socket.Addr::parse(target)
           let c = @socket.Tcp::connect(target_addr)
           self.connections[target] = c
           conn_opt = Some(c)

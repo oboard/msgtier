@@ -13,6 +13,7 @@
     "oboard/msgtier/msgpack",
     "oboard/msgtier/x25519",
     "moonbitlang/async/http",
+    "moonbitlang/async/websocket",
     "moonbitlang/async/io",
     "moonbitlang/async/process",
     "oboard/msgtier/uuidm",
