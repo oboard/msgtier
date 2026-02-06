@@ -38,7 +38,7 @@ pub fn record_hello_time(String) -> Unit
 
 pub fn remove_connected_peer(String) -> Unit
 
-pub fn resolve_request(String, String) -> Unit
+pub fn resolve_request(String, Map[String, String], Bytes) -> Unit
 
 pub fn set_relay_path(String, String, String) -> Unit
 
@@ -48,7 +48,7 @@ pub fn update_global_connection_manager((ConnectionManager) -> ConnectionManager
 
 pub fn update_global_peer_manager((PeerManager) -> PeerManager) -> Unit
 
-pub async fn wait_for_response(String, Int) -> String?
+pub async fn wait_for_response(String, Int) -> (Bytes, Map[String, String])?
 
 // Errors
 type TransportError
@@ -116,7 +116,7 @@ pub struct QuicTransport {
 pub fn QuicTransport::new(String) -> Self raise
 
 pub struct RequestTracker {
-  pending : Map[String, Ref[PendingRequest]]
+  pending : Map[String, PendingRequest]
 }
 
 type Route

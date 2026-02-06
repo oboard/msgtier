@@ -102,18 +102,6 @@ fn handle_new_connection(
 }
 
 ///|
-#cfg(platform="windows")
-fn get_shell() -> (String, String) {
-  ("cmd.exe", "/c")
-}
-
-///|
-#cfg(not(platform="windows"))
-fn get_shell() -> (String, String) {
-  ("sh", "-c")
-}
-
-///|
 struct ScriptOutput {
   exit_code : Int
   output : String
@@ -138,34 +126,27 @@ async fn execute_script_handler(content : String) -> ScriptOutput? {
 
 ///|
 async fn execute_script_with_output(
-  script_name : StringView,
-  command : String,
+  program : String,
+  args : Array[String],
   input_data : String,
 ) -> ScriptOutput {
-  // Get platform-specific shell
-  let (shell, arg) = get_shell()
+  // Create a pipe for stdin if we have input data
+  let (stdin_r, stdin_w) = @pipe.pipe()
+  let (stdout_r, stdout_w) = @pipe.pipe()
 
-  // Create a shell command that echoes input data and pipes to the script command
-  // This allows passing data to the script and capturing its output
-  let full_command = if shell == "cmd.exe" {
-    // Windows: use echo | command syntax
-    "echo \{input_data} | \{command}"
-  } else {
-    // Unix/Linux: use echo | command syntax
-    "echo '\{input_data}' | \{command}"
+  // Write input data to stdin pipe in a background task
+  if input_data.length() > 0 {
+    // Write input and close write end
+    stdin_w.write(@utf8.encode(input_data)) |> ignore
   }
-  let (r, w) = @pipe.pipe()
-  defer r.close()
+  stdin_w.close()
+  defer stdout_r.close()
+  defer stdin_r.close()
 
-  // Execute and capture output (best effort with available tools)
-  let exit_code = @process.run(shell, [arg, full_command], stdout=w)
-  w.close()
-  if exit_code == 0 {
-    println("Script \{script_name} executed successfully with input")
-  } else {
-    println("Script \{script_name} failed with exit code: \{exit_code}")
-  }
-  { exit_code, output: r.read_all().text() }
+  // Execute and capture output directly
+  let exit_code = @process.run(program, args, stdin=stdin_r, stdout=stdout_w)
+  stdout_w.close()
+  { exit_code, output: stdout_r.read_all().text() }
 }
 
 ///|
@@ -455,6 +436,50 @@ async fn handle_reconnects(
 }
 
 ///|
+fn parse_command_args(command : String) -> Array[String] {
+  let args = []
+  let mut current_arg = StringBuilder::new()
+  let mut in_single_quote = false
+  let mut in_double_quote = false
+  let mut escaped = false
+  for i = 0; i < command.length(); i = i + 1 {
+    let c = command[i].to_int().unsafe_to_char()
+    if escaped {
+      current_arg.write_char(c)
+      escaped = false
+    } else {
+      match c {
+        '\\' => escaped = true
+        '\'' =>
+          if !in_double_quote {
+            in_single_quote = !in_single_quote
+          } else {
+            current_arg.write_char(c)
+          }
+        '"' =>
+          if !in_single_quote {
+            in_double_quote = !in_double_quote
+          } else {
+            current_arg.write_char(c)
+          }
+        ' ' | '\t' | '\n' | '\r' =>
+          if in_single_quote || in_double_quote {
+            current_arg.write_char(c)
+          } else if current_arg.to_string().length() > 0 {
+            args.push(current_arg.to_string())
+            current_arg = StringBuilder::new()
+          }
+        _ => current_arg.write_char(c)
+      }
+    }
+  }
+  if current_arg.to_string().length() > 0 {
+    args.push(current_arg.to_string())
+  }
+  args
+}
+
+///|
 async fn process_script_execution(
   content_str : String,
   scripts : Map[String, String],
@@ -469,14 +494,19 @@ async fn process_script_execution(
   }
   match scripts.get(name.to_string()) {
     Some(command) => {
-      let args_str = args.join(" ")
-      let full_command = if args_str.is_empty() {
-        command
-      } else {
-        "\{command} \{args_str}"
+      // Split command string into program and args using proper parser
+      let cmd_parts = parse_command_args(command)
+      let (program, cmd_args) = match cmd_parts {
+        [prog, .. rest] => (prog, rest)
+        _ => ("", [])
       }
-      println("Executed script: \{content_str}")
-      execute_script_with_output(name, full_command, "")
+
+      // Append user-provided args to command args
+      let final_args = []
+      final_args.push_iter(cmd_args.iter())
+      final_args.push_iter(args.iter().map(fn(s) { s.to_string() }))
+      println("[script]\t\{content_str}")
+      execute_script_with_output(program, final_args, "")
     }
     None => {
       println("Script not found: \{content_str}")
@@ -499,14 +529,10 @@ async fn handle_pending_messages(
     for pending_msg in pending {
       let target = pending_msg.target
       let msg = pending_msg.msg
-      println(
-        "PendingMessage: processing id=\{msg.id} kind=\{msg.kind} target=\{target}",
-      )
 
       // Check if message is for self
       if target == peer_id {
         // Handle message to self directly
-        println("PendingMessage: self-handle id=\{msg.id}")
         // Extract content from message data
         let content_opt = match msg.data {
           String(s) => Some(s)
@@ -525,10 +551,12 @@ async fn handle_pending_messages(
         match content_opt {
           Some(content) =>
             match execute_script_handler(content) {
-              Some(output) => {
-                println("PendingMessage: self-resolve id=\{msg.id}")
-                resolve_request(msg.id, output.to_json().stringify())
-              }
+              Some(output) =>
+                resolve_request(
+                  msg.id,
+                  { "code": output.exit_code.to_string() },
+                  @utf8.encode(output.output),
+                )
               None =>
                 println("PendingMessage: self-config-missing id=\{msg.id}")
             }
@@ -1266,10 +1294,18 @@ async fn handle_incoming_message(
                   strings.push(s)
                 }
               }
-              resolve_request(id, strings.to_json().stringify())
+              resolve_request(
+                id,
+                {},
+                @utf8.encode(strings.to_json().stringify()),
+              )
             }
             _ =>
-              resolve_request(id, response_data.to_string().unwrap_or("error"))
+              resolve_request(
+                id,
+                {},
+                @utf8.encode(response_data.to_string().unwrap_or("error")),
+              )
           }
         }
         None => println("DataResponse: missing correlation from=\{msg.from}")

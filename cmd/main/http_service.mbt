@@ -126,11 +126,13 @@ async fn handle_http_request(
 
           // Wait for response with timeout (10 seconds)
           match wait_for_response(msg.id, 10000) {
-            Some(response) =>
+            Some((response, headers)) =>
+              // Ensure Content-Type is set if missing
+              // if !headers.contains("Content-Type") {
+              //   headers["Content-Type"] = "application/json"
+              // }
               conn
-              ..send_response(200, "OK", extra_headers={
-                "Content-Type": "application/json",
-              })
+              ..send_response(200, "OK", extra_headers=headers)
               ..write(response)
               ..end_response()
             None =>
