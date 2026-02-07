@@ -20,7 +20,12 @@ fn handle_new_connection(
   let my_id = get_config().id
   if actual_peer_id == my_id && !my_id.is_empty() {
     let dummy_conn = Connection::new(
-      my_id, actual_peer_id, local_addr, remote_addr, protocol, session_id?,
+      my_id,
+      actual_peer_id,
+      local_addr,
+      remote_addr,
+      protocol,
+      session_id?,
     )
     let dummy_conn = { ..dummy_conn, state: ConnectionState::Connected }
     return (dummy_conn, false, false)
@@ -182,16 +187,16 @@ async fn handle_reconnects(
         continue
       }
 
-      // Check if we already have an active connection to this peer address
-      let has_active_conn = current_conns.any(conn => conn.remote_addr ==
-        peer_addr &&
-        conn.state == ConnectionState::Connected)
+      // // Check if we already have an active connection to this peer address
+      // let has_active_conn = current_conns.any(conn => conn.remote_addr ==
+      //   peer_addr &&
+      //   conn.state == ConnectionState::Connected)
 
-      // Only send hello if we don't have an active connection
-      if !has_active_conn {
-        // println("Attempting reconnection to \{peer_addr}...")
-        send_message(transport, peer_addr, hello_msg) |> ignore
-      }
+      // // Only send hello if we don't have an active connection
+      // if !has_active_conn {
+      // println("Attempting reconnection to \{peer_addr}...")
+      send_message(transport, peer_addr, hello_msg) |> ignore
+      // }
     }
   }
 }
@@ -1250,7 +1255,9 @@ async fn start_listener_service(
     fn(bytes, sender) {
       let sender = transport.protocol() + "://" + sender
       root.spawn_bg(fn() {
-        handle_incoming_message(bytes, sender, my_id, local_addr, root, transport)
+        handle_incoming_message(
+          bytes, sender, my_id, local_addr, root, transport,
+        )
       })
     },
     fn(remote_addr) {

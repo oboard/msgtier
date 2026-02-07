@@ -24,13 +24,33 @@ test "Connection::new ID ignores ports" {
 
 ///|
 test "Connection::new analyzes NAT type" {
+  // Loopback to Loopback -> NoNAT
   let conn_local = Connection::new(
     "peerA", "peerB", "127.0.0.1:8000", "127.0.0.1:9000", "tcp",
   )
   inspect(conn_local.nat_type, content="NoNAT")
 
+  // Private to Public -> PortRestricted
   let conn_remote = Connection::new(
     "peerA", "peerB", "192.168.1.10:8000", "8.8.8.8:9000", "tcp",
   )
-  inspect(conn_remote.nat_type, content="Unknown")
+  inspect(conn_remote.nat_type, content="PortRestricted")
+
+  // Public to Public -> NoNAT
+  let conn_public = Connection::new(
+    "peerA", "peerB", "1.1.1.1:8000", "8.8.8.8:9000", "tcp",
+  )
+  inspect(conn_public.nat_type, content="NoNAT")
+
+  // Private to Private (Same Subnet) -> NoNAT
+  let conn_lan = Connection::new(
+    "peerA", "peerB", "192.168.1.10:8000", "192.168.1.20:9000", "tcp",
+  )
+  inspect(conn_lan.nat_type, content="NoNAT")
+
+  // Private to Private (Diff Subnet) -> Symmetric
+  let conn_diff_lan = Connection::new(
+    "peerA", "peerB", "192.168.1.10:8000", "192.168.2.20:9000", "tcp",
+  )
+  inspect(conn_diff_lan.nat_type, content="Symmetric")
 }
