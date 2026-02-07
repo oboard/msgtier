@@ -425,23 +425,52 @@ async fn handle_reconnects(
   for {
     // Sleep with fixed interval
     @async.sleep(reconnect_interval)
-    // Broadcast hello only to peers we don't have active connections with
-    // Send directly to each known peer address with relay=1
+
+    // Get current connections once for this iteration
+    let current_conns = get_global_connection_manager().get_all_connections()
+
+    // Build list of target addresses
+    let targets = []
+
+    // 1. Add known peers
     let known_peers = get_all_known_peers()
-    for peer_addr in known_peers {
+    for addr in known_peers {
+      targets.push(addr)
+    }
+
+    // 2. Add addresses from existing connections (if not 0.0.0.0)
+    for conn in current_conns {
+      let addr = conn.remote_addr
+      if !addr.contains("0.0.0.0") && !addr.is_empty() {
+        // Avoid duplicates
+        let mut exists = false
+        for t in targets {
+          if t == addr {
+            exists = true
+            break
+          }
+        }
+        if !exists {
+          targets.push(addr)
+        }
+      }
+    }
+
+    // Process each target
+    for peer_addr in targets {
       // Parse URL to check protocol
       if !peer_addr.has_prefix(transport.protocol() + "://") {
         continue
       }
 
       // Check if we already have an active connection to this peer address
-      let all_conns = get_global_connection_manager().get_all_connections()
-      let has_active_conn = all_conns.any(conn => conn.remote_addr == peer_addr &&
+      let has_active_conn = current_conns.any(conn => conn.remote_addr ==
+        peer_addr &&
         conn.state == ConnectionState::Connected)
 
       // Only send hello if we don't have an active connection
       if !has_active_conn {
-        // println("Attempting reconnection to \{target_addr}...")
+        // println("Attempting reconnection to \{peer_addr}...")
         send_message(transport, peer_addr, hello_msg) |> ignore
       }
     }
