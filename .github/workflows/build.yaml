@@ -1,0 +1,139 @@
+name: release
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: js
+            artifact_name: msgtier.js
+            install_script: unix.sh
+            build_target: js
+          - os: ubuntu-latest
+            target: x86_64-linux-gnu
+            artifact_name: msgtier-linux-x64
+            install_script: unix.sh
+            build_target: native
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: msgtier-macos-x64
+            install_script: unix.sh
+            build_target: native
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: msgtier-macos-arm64
+            install_script: unix.sh
+            build_target: native
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install system dependencies (Linux)
+        if: matrix.build_target == 'native' && matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev
+
+      - name: Install MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/${{ matrix.install_script }} | bash
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      - name: Verify MoonBit installation
+        run: moon version --all
+
+      - name: Install dependencies
+        run: |
+          moon update
+          moon install
+
+      - name: Set ulimit
+        run: ulimit -s 8176
+
+      - name: Run tests
+        run: |
+          moon check --deny-warn
+          moon test --target js
+
+      - name: Build binary
+        run: |
+          moon build --target ${{ matrix.build_target }}
+
+      - name: Prepare artifact (Native)
+        if: matrix.build_target == 'native'
+        run: |
+          mkdir -p artifacts
+          cp target/native/release/build/main/main.exe artifacts/${{ matrix.artifact_name }}
+          chmod +x artifacts/${{ matrix.artifact_name }}
+
+      - name: Prepare artifact (JS)
+        if: matrix.build_target == 'js'
+        run: |
+          mkdir -p artifacts
+          cp target/js/release/build/main/main.js artifacts/${{ matrix.artifact_name }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: artifacts/${{ matrix.artifact_name }}
+          retention-days: 1
+
+  # release:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   if: startsWith(github.ref, 'refs/tags/')
+  #   permissions:
+  #     contents: write
+  #   steps:
+  #     - uses: actions/checkout@v4
+
+  #     - name: Download all artifacts
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         path: artifacts
+
+  #     - name: Display structure of downloaded files
+  #       run: ls -la artifacts/
+
+      # - name: Create Release
+      #   uses: softprops/action-gh-release@v2
+      #   with:
+      #     tag_name: ${{ github.ref_name }}
+      #     name: Release ${{ github.ref_name }}
+      #     body: |
+      #       ## MsgTier ${{ github.ref_name }}
+            
+      #       ### Downloads
+      #       - **JavaScript**: `msgtier.js` (requires Node.js)
+      #       - **Linux x64**: `msgtier-linux-x64`
+      #       - **macOS x64**: `msgtier-macos-x64`
+      #       - **macOS ARM64**: `msgtier-macos-arm64`
+            
+      #       ### Installation
+      #       **JavaScript version:**
+      #       1. Download `msgtier.js`
+      #       2. Run: `node msgtier.js`
+            
+      #       **Native binaries:**
+      #       1. Download the appropriate binary for your platform
+      #       2. Make it executable: `chmod +x msgtier-*`
+      #       3. Run: `./msgtier-*`
+            
+      #       ### Changes
+      #       See the commit history for detailed changes in this release.
+      #     files: |
+      #       artifacts/msgtier.js/msgtier.js
+      #       artifacts/msgtier-linux-x64/msgtier-linux-x64
+      #       artifacts/msgtier-macos-x64/msgtier-macos-x64
+      #       artifacts/msgtier-macos-arm64/msgtier-macos-arm64
+      #     draft: false
+      #     prerelease: false
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
