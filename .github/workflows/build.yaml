@@ -9,11 +9,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            target: js
-            artifact_name: msgtier.js
-            install_script: unix.sh
-            build_target: js
+          # - os: ubuntu-latest
+          #   target: js
+          #   artifact_name: msgtier.js
+          #   install_script: unix.sh
+          #   build_target: js
           - os: ubuntu-latest
             target: x86_64-linux-gnu
             artifact_name: msgtier-linux-x64
@@ -59,7 +59,7 @@ jobs:
       - name: Run tests
         run: |
           moon check --deny-warn
-          moon test --target js
+          moon test --target native
 
       - name: Build binary
         run: |
@@ -72,11 +72,11 @@ jobs:
           cp target/native/release/build/main/main.exe artifacts/${{ matrix.artifact_name }}
           chmod +x artifacts/${{ matrix.artifact_name }}
 
-      - name: Prepare artifact (JS)
-        if: matrix.build_target == 'js'
-        run: |
-          mkdir -p artifacts
-          cp target/js/release/build/main/main.js artifacts/${{ matrix.artifact_name }}
+      # - name: Prepare artifact (JS)
+      #   if: matrix.build_target == 'js'
+      #   run: |
+      #     mkdir -p artifacts
+      #     cp target/js/release/build/main/main.js artifacts/${{ matrix.artifact_name }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
