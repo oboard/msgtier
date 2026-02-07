@@ -44,7 +44,7 @@ impl Transport for UdpTransport with listen(
 
 ///|
 impl Transport for UdpTransport with local_addr(self) {
-  "udp://" + self.server.addr().to_string()
+  self.server.addr().to_string()
 }
 
 ///|

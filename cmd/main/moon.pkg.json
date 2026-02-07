@@ -20,6 +20,7 @@
     "moonbitlang/x/json5",
     "oboard/msgtier/quic",
     "moonbitlang/async/pipe",
-    "moonbitlang/async/cond_var"
+    "moonbitlang/async/cond_var",
+    "moonbitlang/x/crypto"
   ]
 }

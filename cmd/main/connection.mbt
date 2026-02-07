@@ -32,13 +32,44 @@ enum ConnectionState {
 
 ///|
 fn Connection::new(
+  my_id : String,
   peer_id : String,
   local_addr : String,
   remote_addr : String,
   protocol : String,
 ) -> Connection {
+  let (id1, id2) = if my_id < peer_id {
+    (my_id, peer_id)
+  } else {
+    (peer_id, my_id)
+  }
+
+  // Extract ports to ensure consistent ID regardless of IP view (0.0.0.0 vs 127.0.0.1)
+  let get_port_or_addr = fn(addr_str : String) -> String {
+    match @url.Url::parse(addr_str) {
+      Some(u) =>
+        match u.port {
+          Some(p) => p.to_string()
+          None => addr_str
+        }
+      None => addr_str
+    }
+  }
+
+  let p1 = get_port_or_addr(local_addr)
+  let p2 = get_port_or_addr(remote_addr)
+  let (port1, port2) = if p1 < p2 {
+    (p1, p2)
+  } else {
+    (p2, p1)
+  }
+
+  // Use protocol and ports for ID to ensure consistency across peers
+  // even if they see different IP addresses for each other
+  let raw_id = "\{id1}:\{id2}:\{protocol}:\{port1}:\{port2}"
+  let id = bytes_to_hex(Bytes::from_array(@crypto.sha256(@utf8.encode(raw_id))))
   {
-    id: "\{peer_id}:\{local_addr}:\{remote_addr}",
+    id,
     local_addr,
     remote_addr,
     protocol,

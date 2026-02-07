@@ -111,7 +111,7 @@ impl Transport for TcpTransport with listen(self, _root, handler, on_disconnect)
 
 ///|
 impl Transport for TcpTransport with local_addr(self) {
-  "tcp://" + self.server.addr().to_string()
+  self.server.addr().to_string()
 }
 
 ///|

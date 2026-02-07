@@ -16,6 +16,10 @@ pub fn add_known_peer(peer_addr : String) -> Unit {
     if url.hostname() == "0.0.0.0" {
       url.set_hostname("127.0.0.1")
     }
+    // Remove trailing slash from path if it is just root
+    if url.pathname() == "/" {
+      url.set_pathname("")
+    }
     let peer_addr = url.to_string()
     let peers = global_known_peers.val
     if !peers.contains(peer_addr) {

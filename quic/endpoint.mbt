@@ -14,6 +14,11 @@ pub fn Endpoint::new(addr_str : String) -> Endpoint raise {
 }
 
 ///|
+pub fn Endpoint::addr(self : Endpoint) -> @socket.Addr {
+  self.socket.addr()
+}
+
+///|
 pub async fn Endpoint::listen(
   self : Endpoint,
   handler : (Connection, Stream) -> Unit,

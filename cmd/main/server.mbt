@@ -12,6 +12,18 @@ fn handle_new_connection(
 ) -> (Connection, Bool, Bool) {
   // Get the actual peer ID (from peer_info if available, otherwise from peer_id parameter)
   let actual_peer_id = if peer_info is Some(info) { info.id } else { peer_id }
+
+  // Prevent connecting to self
+  // If we are connecting to ourselves, return a dummy connected connection
+  // and do NOT add it to the connection manager.
+  let my_id = get_config().id
+  if actual_peer_id == my_id && !my_id.is_empty() {
+    let dummy_conn = Connection::new(
+      my_id, actual_peer_id, local_addr, remote_addr, protocol,
+    )
+    let dummy_conn = { ..dummy_conn, state: ConnectionState::Connected }
+    return (dummy_conn, false, false)
+  }
   let mut is_new_peer = false
 
   // Add or update peer with provided info
@@ -76,8 +88,9 @@ fn handle_new_connection(
 
   // Add new connection with protocol
   update_global_connection_manager(fn(manager) {
+    let my_id = get_config().id
     let mgr = manager.add_connection(
-      Connection::new(actual_peer_id, local_addr, remote_addr, protocol),
+      Connection::new(my_id, actual_peer_id, local_addr, remote_addr, protocol),
     )
     // Update relay depth for the new connection
     let new_conns = mgr.get_peer_connections(actual_peer_id)
@@ -771,40 +784,43 @@ async fn handle_incoming_message(
   // Handle the connection - always create/update connection for any message
   // Determine connectable address from hello message
   let connectable_addr = if msg.kind == "hello" && !msg.addr.is_empty() {
-    match @url.Url::parse(msg.addr) {
+    // Ensure address has protocol
+    let addr_str = if msg.addr.contains("://") {
+      msg.addr
+    } else {
+      transport.protocol() + "://" + msg.addr
+    }
+    match @url.Url::parse(addr_str) {
       Some(url) => {
         let host = url.hostname()
         if host == "0.0.0.0" || host == "" {
-          // Extract IP from sender (IP:Port)
-          // Find last index of ':' manually
-          let mut idx = -1
-          for i = 0; i < sender_addr.length(); i = i + 1 {
-            if sender_addr[i] == ':' {
-              idx = i
+          // Extract IP from sender (IP:Port or URL)
+          let sender_ip = match @url.Url::parse(sender_addr) {
+            Some(u) => u.hostname()
+            None => {
+              // Fallback for non-URL sender_addr (should not happen with updated transports)
+              let mut idx = -1
+              for i = 0; i < sender_addr.length(); i = i + 1 {
+                if sender_addr[i] == ':' {
+                  idx = i
+                }
+              }
+              if idx != -1 {
+                sender_addr[:idx].to_string() catch {
+                  _ => sender_addr
+                }
+              } else {
+                sender_addr
+              }
             }
           }
-          let sender_ip = if idx == -1 {
-            sender_addr
-          } else {
-            sender_addr[:idx].to_string() catch {
-              _ => sender_addr
-            }
-          }
-
-          // Update host in URL
-          let port = url.get_port()
-          let new_host_str = if port == "" {
-            sender_ip
-          } else {
-            "\{sender_ip}:\{port}"
-          }
-          url.set_host(new_host_str)
+          url.set_hostname(sender_ip)
           url.to_string()
         } else {
-          msg.addr
+          addr_str
         }
       }
-      None => msg.addr
+      None => addr_str
     }
   } else {
     ""
@@ -816,10 +832,29 @@ async fn handle_incoming_message(
   }
   let peer_info = match msg {
     { kind: "hello", public_key: Some(public_key), .. } => {
-      // Include both the actual sender address and the advertised (connectable) address
-      let addrs = [NetworkAddress::{ address: sender_addr }]
-      if !connectable_addr.is_empty() && connectable_addr != sender_addr {
-        addrs.push(NetworkAddress::{ address: connectable_addr })
+      // Get our own listening addresses to prevent attributing them to peers
+      let my_listeners = get_our_addresses(local_addr).map(fn(a) { a.address })
+      let addrs : Array[NetworkAddress] = []
+
+      // Helper to add unique non-self address
+      let add_if_valid = fn(addr : String) {
+        if !my_listeners.contains(addr) &&
+          !addrs.iter().any(fn(a) { a.address == addr }) {
+          addrs.push(NetworkAddress::{ address: addr })
+        }
+      }
+      add_if_valid(sender_addr)
+      if !connectable_addr.is_empty() {
+        add_if_valid(connectable_addr)
+      }
+
+      // Also include addresses from the hello message payload (the peer's other listeners)
+      match msg.peers {
+        Some(peers_list) =>
+          for p in peers_list {
+            add_if_valid(p.address)
+          }
+        None => ()
       }
       Some(NetworkDiscoveryInfo::{
         id: msg.from,
@@ -1257,7 +1292,9 @@ async fn handle_incoming_message(
       }
     }
     { kind: "data", data: Binary(raw_data), encrypted, .. } => {
-      println("DEBUG: Processing data message from \{msg.from}, encrypted=\{encrypted}")
+      println(
+        "DEBUG: Processing data message from \{msg.from}, encrypted=\{encrypted}",
+      )
       // Decrypt data if encrypted
       let data_content = if encrypted {
         match decrypt_from_peer(msg.from, raw_data) {
@@ -1266,7 +1303,9 @@ async fn handle_incoming_message(
             decrypted
           }
           None => {
-            println("Failed to decrypt message from \{msg.from}, raw=\{raw_data}")
+            println(
+              "Failed to decrypt message from \{msg.from}, raw=\{raw_data}",
+            )
             raw_data
           }
         }
@@ -1276,26 +1315,29 @@ async fn handle_incoming_message(
 
       // Check if this is a ProxyMessage
       let is_proxy_msg = try {
-         println("DEBUG: Attempting to decode ProxyMessage")
-         let val = @msgpack.decode(data_content)
-         match ProxyMessage::from_msgpack(val) {
-           Some(proxy_msg) => {
-             println("DEBUG: Spawning handle_proxy_message op=\{proxy_msg.op}")
-             ignore(root.spawn(fn() { handle_proxy_message(root, id, local_addr, msg.from, proxy_msg) }))
-             true
-           }
-           None => {
-             println("DEBUG: Not a ProxyMessage (decode success but mismatch)")
-             false
-           }
-         }
+        println("DEBUG: Attempting to decode ProxyMessage")
+        let val = @msgpack.decode(data_content)
+        match ProxyMessage::from_msgpack(val) {
+          Some(proxy_msg) => {
+            println("DEBUG: Spawning handle_proxy_message op=\{proxy_msg.op}")
+            ignore(
+              root.spawn(fn() {
+                handle_proxy_message(root, id, local_addr, msg.from, proxy_msg)
+              }),
+            )
+            true
+          }
+          None => {
+            println("DEBUG: Not a ProxyMessage (decode success but mismatch)")
+            false
+          }
+        }
       } catch {
-         _ => {
-             println("DEBUG: Not a ProxyMessage (decode failed)")
-             false
-           }
+        _ => {
+          println("DEBUG: Not a ProxyMessage (decode failed)")
+          false
+        }
       }
-
       if !is_proxy_msg {
         // Execute scripts with received data and send back output
         root.spawn_bg(fn() {
@@ -1453,10 +1495,16 @@ async fn handle_incoming_message(
               // Create or update connection if it's a direct neighbor (for compatibility)
               // Only if remote_addr is not "routed" placeholder
               if peer_id == msg.from && remote_addr != "routed" {
+                // Ensure remote_addr has protocol
+                let safe_remote_addr = if remote_addr.contains("://") {
+                  remote_addr
+                } else {
+                  sync_conn.protocol + "://" + remote_addr
+                }
                 let (_conn, _is_new, _is_new_peer) = handle_new_connection(
                   peer_id,
                   local_addr,
-                  remote_addr,
+                  safe_remote_addr,
                   sync_conn.protocol,
                   relay_depth~,
                 )
@@ -1485,7 +1533,7 @@ async fn start_listener_service(
   transport : &Transport,
   id : String,
 ) -> Unit {
-  let local_addr = transport.local_addr()
+  let local_addr = transport.protocol() + "://" + transport.local_addr()
 
   // Start reconnection background task
   root.spawn_bg(fn() { handle_reconnects(transport, local_addr, id) })
@@ -1500,11 +1548,13 @@ async fn start_listener_service(
   transport.listen(
     root,
     fn(bytes, sender) {
+      let sender = transport.protocol() + "://" + sender
       root.spawn_bg(fn() {
         handle_incoming_message(bytes, sender, id, local_addr, root, transport)
       })
     },
     fn(remote_addr) {
+      let remote_addr = transport.protocol() + "://" + remote_addr
       let all_conns = get_global_connection_manager().get_all_connections()
       for conn in all_conns {
         if conn.remote_addr == remote_addr {

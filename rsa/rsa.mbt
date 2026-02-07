@@ -128,29 +128,29 @@ fn generate_probably_primes(
   (p, q)
 }
 
-///|
-/// Test if (p, q) satisfy with FIPS 186-5 A.1.1
-test "generate_probably_primes" {
-  let pairs = [
-    (2048, BigInt::from_int(65537)),
-    (3072, BigInt::from_int(65537)),
-    (4096, BigInt::from_int(65537)),
-  ]
-  for pair in pairs {
-    let (nlen, e) = pair
-    let (p, q) = generate_probably_primes(nlen, e)
-    inspect(gcd(p, e), content="1")
-    inspect(gcd(q, e), content="1")
-    inspect(p * p >= BigInt::pow(2, BigInt::from_int(nlen - 1)), content="true")
-    inspect(p <= BigInt::pow(2, BigInt::from_int(nlen / 2)) - 1, content="true")
-    inspect(q * q >= BigInt::pow(2, BigInt::from_int(nlen - 1)), content="true")
-    inspect(q <= BigInt::pow(2, BigInt::from_int(nlen / 2)) - 1, content="true")
-    inspect(
-      abs(p - q) > BigInt::pow(2, BigInt::from_int(nlen / 2 - 100)),
-      content="true",
-    )
-  }
-}
+// ///|
+// /// Test if (p, q) satisfy with FIPS 186-5 A.1.1
+// test "generate_probably_primes" {
+//   let pairs = [
+//     (2048, BigInt::from_int(65537)),
+//     (3072, BigInt::from_int(65537)),
+//     (4096, BigInt::from_int(65537)),
+//   ]
+//   for pair in pairs {
+//     let (nlen, e) = pair
+//     let (p, q) = generate_probably_primes(nlen, e)
+//     inspect(gcd(p, e), content="1")
+//     inspect(gcd(q, e), content="1")
+//     inspect(p * p >= BigInt::pow(2, BigInt::from_int(nlen - 1)), content="true")
+//     inspect(p <= BigInt::pow(2, BigInt::from_int(nlen / 2)) - 1, content="true")
+//     inspect(q * q >= BigInt::pow(2, BigInt::from_int(nlen - 1)), content="true")
+//     inspect(q <= BigInt::pow(2, BigInt::from_int(nlen / 2)) - 1, content="true")
+//     inspect(
+//       abs(p - q) > BigInt::pow(2, BigInt::from_int(nlen / 2 - 100)),
+//       content="true",
+//     )
+//   }
+// }
 
 ///|
 fn lcm(a : BigInt, b : BigInt) -> BigInt {

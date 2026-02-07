@@ -17,7 +17,7 @@ impl ToJson for PeerNode with to_json(self) {
     "version": self.version,
     "metadata": self.metadata,
     "public_key": bytes_to_hex(self.public_key),
-    "adresses": self.addresses,
+    "addresses": self.addresses,
     "connections": self.connections,
   }
 }

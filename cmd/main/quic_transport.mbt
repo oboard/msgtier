@@ -31,8 +31,8 @@ impl Transport for QuicTransport with listen(
 }
 
 ///|
-impl Transport for QuicTransport with local_addr(_self) {
-  "quic://" // Placeholder - should ideally get from socket
+impl Transport for QuicTransport with local_addr(self) {
+  self.endpoint.addr().to_string()
 }
 
 ///|
