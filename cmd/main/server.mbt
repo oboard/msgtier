@@ -10,7 +10,7 @@ fn handle_new_connection(
   peer_info? : NetworkDiscoveryInfo,
   relay_depth? : Int = 1,
   session_id? : String,
-) -> (Connection, Bool, Bool) {
+) -> Connection {
   // Get the actual peer ID (from peer_info if available, otherwise from peer_id parameter)
   let actual_peer_id = if peer_info is Some(info) { info.id } else { peer_id }
 
@@ -28,9 +28,8 @@ fn handle_new_connection(
       session_id?,
     )
     let dummy_conn = { ..dummy_conn, state: ConnectionState::Connected }
-    return (dummy_conn, false, false)
+    return dummy_conn
   }
-  let mut is_new_peer = false
 
   // Add or update peer with provided info
   if peer_info is Some(info) {
@@ -49,22 +48,6 @@ fn handle_new_connection(
         manager.add_peer_address(info.id, addr_obj.address)
       })
     }
-  } else {
-    // Only create peer if it doesn't exist yet
-    match get_global_peer_manager().get_peer(actual_peer_id) {
-      Some(_) => () // Peer exists, don't override
-      None => {
-        let peer_node = PeerNode::new(
-          id=actual_peer_id,
-          version=VERSION,
-          public_key=[],
-          addresses=[remote_addr],
-          metadata={},
-        )
-        update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
-        is_new_peer = true
-      }
-    }
   }
 
   // Check if connection already exists
@@ -75,20 +58,7 @@ fn handle_new_connection(
     if existing_conn.local_addr == local_addr &&
       existing_conn.remote_addr == remote_addr {
       // Connection already exists, return it with is_new=false
-      return (existing_conn, false, is_new_peer)
-    }
-  }
-
-  // For TCP, if this is not a discovery message (no peer_info),
-  // try to reuse any existing TCP connection to this peer.
-  // This handles the case where incoming messages come from ephemeral ports
-  // but should be mapped to the stable listening connection.
-  if protocol == "tcp" && peer_info is None {
-    for existing_conn in existing_conns {
-      if existing_conn.protocol == "tcp" &&
-        existing_conn.local_addr == local_addr {
-        return (existing_conn, false, is_new_peer)
-      }
+      return existing_conn
     }
   }
 
@@ -123,8 +93,11 @@ fn handle_new_connection(
   let filtered = conns.filter(fn(c) {
     c.local_addr == local_addr && c.remote_addr == remote_addr
   })
-  let conn = if filtered.is_empty() { conns[0] } else { filtered[0] }
-  (conn, true, is_new_peer)
+  if filtered.is_empty() {
+    conns[0]
+  } else {
+    filtered[0]
+  }
 }
 
 ///|
@@ -554,7 +527,7 @@ async fn handle_incoming_message(
   } else {
     sender_addr
   }
-  let (conn, is_new_connection, is_new_peer) = handle_new_connection(
+  let conn = handle_new_connection(
     msg.from,
     local_addr,
     effective_addr,
@@ -566,18 +539,16 @@ async fn handle_incoming_message(
       None => ""
     },
   )
-  let should_reply = if is_new_peer {
-    true
-  } else if msg.kind == "hello" {
+  let should_reply = if msg.kind == "hello" {
     if conn.state != ConnectionState::Connected {
       true
     } else {
-      // Debounce: only reply if we haven't seen them recently (> 2s)
+      // Debounce: only reply if we haven't seen them recently (> 1s)
       // This allows re-establishing connection if peer restarted quickly
       // while preventing infinite hello loops
       let now = @env.now()
       let diff = if now >= conn.last_seen { now - conn.last_seen } else { 0UL }
-      diff > 2000UL
+      diff > 1000UL
     }
   } else {
     false
@@ -599,7 +570,7 @@ async fn handle_incoming_message(
     )
     // Use conn.remote_addr to ensure we reply to the stable address (not ephemeral)
     ignore(send_message(transport, conn.remote_addr, hello_msg))
-    // println("Sent hello to new peer \{msg.from} at \{conn.remote_addr}")
+    println("Sent hello to new peer \{msg.from} at \{conn.remote_addr}")
 
     // Broadcast sync
     try broadcast_sync(transport, id, local_addr) |> ignore catch {
@@ -609,7 +580,7 @@ async fn handle_incoming_message(
   }
 
   // Check if state is changing from non-Connected to Connected
-  let was_disconnected = conn.state != ConnectionState::Connected
+  // let was_disconnected = conn.state != ConnectionState::Connected
 
   // Store peer's public key if provided and compute shared secret (only if not already stored)
   if msg.public_key is Some(pk) {
@@ -633,9 +604,8 @@ async fn handle_incoming_message(
   })
 
   // Only broadcast connection update if this is a NEW connection or state changed to Active
-  if is_new_connection || was_disconnected {
-    root.spawn_bg(fn() { broadcast_sync(transport, id, local_addr) })
-  }
+
+  root.spawn_bg(fn() { broadcast_sync(transport, id, local_addr) })
 
   // Handle message relaying: if target is set and we're not the target, forward it
   if msg.target is Some(target_peer_id) {
@@ -1118,37 +1088,6 @@ async fn handle_incoming_message(
             let relay_depth = sync_conn.relay
             let pk = sync_conn.public_key
 
-            // If relay_depth is 1, it's a direct neighbor of the sender
-            if relay_depth == 1 && peer_id != msg.from {
-              sender_connections.push(PeerConnectionInfo::{
-                peer_id,
-                latency_ms: sync_conn.latency_ms,
-                bandwidth_mbps: sync_conn.bandwidth_mbps,
-                packet_loss_rate: sync_conn.packet_loss_rate,
-                id: sync_conn.id,
-                local_addr: sync_conn.local_addr,
-                remote_addr: sync_conn.remote_addr,
-                state: match sync_conn.state {
-                  "Connected" => Connected
-                  "Connecting" => Connecting
-                  "Init" => Init
-                  "Failed" => Failed
-                  _ => Disconnected
-                },
-                last_seen: sync_conn.last_seen,
-                quality: sync_conn.quality,
-                relay: sync_conn.relay,
-                metadata: sync_conn.metadata,
-                latency_history: sync_conn.latency_history,
-                packets_sent: sync_conn.packets_sent,
-                packets_lost: sync_conn.packets_lost,
-                bytes_sent: sync_conn.bytes_sent,
-                bytes_received: sync_conn.bytes_received,
-                last_ping_time: sync_conn.last_ping_time,
-                nat_type: sync_conn.nat_type,
-              })
-            }
-
             // If the peer is not me
             if peer_id != id {
               // Update Routing Table
@@ -1206,7 +1145,7 @@ async fn handle_incoming_message(
                 } else {
                   sync_conn.protocol + "://" + remote_addr
                 }
-                let (_conn, _is_new, _is_new_peer) = handle_new_connection(
+                let _conn = handle_new_connection(
                   peer_id,
                   local_addr,
                   safe_remote_addr,
