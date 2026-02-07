@@ -576,11 +576,25 @@ async fn handle_pending_messages(
           target,
         )
         if !target_conns.is_empty() {
+          // Select the best connection based on quality/protocol preference
+          // For now, just pick the first one to avoid duplication (corruption)
+          // Ideally we should prefer TCP/QUIC over UDP for large data
+          // And match transport protocol if possible
+          let mut best_conn = target_conns[0]
+
+          // Simple heuristic: try to find a connection with same protocol as transport
+          // This avoids cross-protocol bridging overhead if not needed
           for conn in target_conns {
-            ignore(send_message(transport, conn.remote_addr, msg))
-            println("Sent data to \{target} directly via \{conn.remote_addr}")
-            println("PendingMessage: sent id=\{msg.id} target=\{target}")
+            if conn.protocol == transport.protocol() {
+              best_conn = conn
+              break
+            }
           }
+          ignore(send_message(transport, best_conn.remote_addr, msg))
+          println(
+            "Sent data to \{target} directly via \{best_conn.remote_addr}",
+          )
+          println("PendingMessage: sent id=\{msg.id} target=\{target}")
           continue
         }
 
@@ -1188,6 +1202,7 @@ async fn handle_incoming_message(
       )
       add_pending_message(target, forward)
     }
+    // Proxy handlers moved to kind="data" with ProxyMessage
     { kind: "send", target: Some(target), data, .. } => {
       // When sending new data, encrypt it for the target
       let encrypted_data = match data {
@@ -1242,39 +1257,71 @@ async fn handle_incoming_message(
       }
     }
     { kind: "data", data: Binary(raw_data), encrypted, .. } => {
+      println("DEBUG: Processing data message from \{msg.from}, encrypted=\{encrypted}")
       // Decrypt data if encrypted
-      let data_content = if encrypted &&
-        decrypt_from_peer(msg.from, raw_data) is Some(decrypted) {
-        decrypted
+      let data_content = if encrypted {
+        match decrypt_from_peer(msg.from, raw_data) {
+          Some(decrypted) => {
+            println("DEBUG: Decrypted message from \{msg.from}")
+            decrypted
+          }
+          None => {
+            println("Failed to decrypt message from \{msg.from}, raw=\{raw_data}")
+            raw_data
+          }
+        }
       } else {
-        println("Failed to decrypt message from \{msg.from}, raw=\{raw_data}")
-        raw_data // Fall back to raw data if decryption fails
+        raw_data
       }
 
-      // Execute scripts with received data and send back output
-      root.spawn_bg(fn() {
-        let content_str = @utf8.decode(data_content)
-        match execute_script_handler(content_str) {
-          Some(output) => {
-            // Send response back to sender with script outputs
-            let response_msg = Message::new(
-              kind="data_response",
-              from=id,
-              addr=local_addr,
-              relay=1,
-              data=output.to_msgpack(),
-              payload=msg.id,
-            )
-            // Add pending message instead of direct send
-            add_pending_message(msg.from, response_msg)
-            println(
-              "DataResponse: queued id=\{response_msg.id} correlation=\{msg.id} to=\{msg.from}",
-            )
+      // Check if this is a ProxyMessage
+      let is_proxy_msg = try {
+         println("DEBUG: Attempting to decode ProxyMessage")
+         let val = @msgpack.decode(data_content)
+         match ProxyMessage::from_msgpack(val) {
+           Some(proxy_msg) => {
+             println("DEBUG: Spawning handle_proxy_message op=\{proxy_msg.op}")
+             ignore(root.spawn(fn() { handle_proxy_message(root, id, local_addr, msg.from, proxy_msg) }))
+             true
+           }
+           None => {
+             println("DEBUG: Not a ProxyMessage (decode success but mismatch)")
+             false
+           }
+         }
+      } catch {
+         _ => {
+             println("DEBUG: Not a ProxyMessage (decode failed)")
+             false
+           }
+      }
+
+      if !is_proxy_msg {
+        // Execute scripts with received data and send back output
+        root.spawn_bg(fn() {
+          let content_str = @utf8.decode(data_content)
+          match execute_script_handler(content_str) {
+            Some(output) => {
+              // Send response back to sender with script outputs
+              let response_msg = Message::new(
+                kind="data_response",
+                from=id,
+                addr=local_addr,
+                relay=1,
+                data=output.to_msgpack(),
+                payload=msg.id,
+              )
+              // Add pending message instead of direct send
+              add_pending_message(msg.from, response_msg)
+              println(
+                "DataResponse: queued id=\{response_msg.id} correlation=\{msg.id} to=\{msg.from}",
+              )
+            }
+            None =>
+              println("No scripts configured, received data: \{data_content}")
           }
-          None =>
-            println("No scripts configured, received data: \{data_content}")
-        }
-      })
+        })
+      }
     }
     { kind: "data_response", data: response_data, payload: correlation_id, .. } => {
       // Handle response from script execution

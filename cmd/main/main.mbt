@@ -28,21 +28,41 @@ async fn main {
         for listener in config.listeners {
           let host = listener.get_host()
           let scheme = listener.scheme
-          println("Listening on \{listener}")
-          let transport = match scheme {
-            "tcp" => (TcpTransport::new(host) : &Transport)
-            "udp" => (UdpTransport::new(host) : &Transport)
-            "ws" => (WebSocketTransport::new(host) : &Transport)
-            "quic" => (QuicTransport::new(host) : &Transport)
-            _ => abort("Unknown protocol: \{scheme}")
-          }
-          root.spawn(fn() { start_listener_service(root, transport, id) })
-          |> ignore
+          let _ : @async.Task[Unit] = root.spawn(fn() {
+            for {
+              try {
+                println("Attempting to listen on \{listener}")
+                let transport = match scheme {
+                  "tcp" => (TcpTransport::new(host) : &Transport)
+                  "udp" => (UdpTransport::new(host) : &Transport)
+                  "ws" => (WebSocketTransport::new(host) : &Transport)
+                  "quic" => (QuicTransport::new(host) : &Transport)
+                  _ => abort("Unknown protocol: \{scheme}")
+                }
+                println("Successfully bound to \{listener}")
+                start_listener_service(root, transport, id)
+              } catch {
+                e =>
+                  println(
+                    "Failed to start listener on \{listener}: \{e}. Retrying in 5s...",
+                  )
+              }
+              @async.sleep(5000)
+            }
+          })
+
         }
         if config.web_api is Some(addr) {
-          println("HTTP API listening on http://\{addr}")
-          start_http_service(addr, config)
+          let _ : @async.Task[Unit] = root.spawn(fn() {
+            println("HTTP API listening on http://\{addr}")
+            start_http_service(addr, config)
+          })
+
         }
+
+        // Initialize TCP proxies
+        init_tcp_proxies(root, config) |> ignore
+
         // 等待所有任务完成
         // for task in tasks {
         //   task.wait()

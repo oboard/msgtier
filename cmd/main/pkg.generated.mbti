@@ -3,18 +3,25 @@ package "oboard/msgtier/cmd/main"
 
 import {
   "moonbitlang/async",
+  "moonbitlang/async/socket",
   "moonbitlang/core/json",
   "oboard/msgtier/quic",
 }
 
 // Values
+pub fn add_active_proxy_conn(StringView, @socket.Tcp, StringView) -> Unit
+
 pub fn add_known_peer(String) -> Unit
+
+pub fn add_listener_proxy_conn(StringView, @socket.Tcp) -> Unit
 
 pub fn add_pending_message(String, Message) -> Unit
 
 pub fn add_pending_request(String) -> Unit
 
 pub fn clear_connected_peers() -> Unit
+
+pub fn close_proxy_conn(StringView) -> Unit
 
 pub fn get_all_known_peers() -> Array[String]
 
@@ -30,13 +37,19 @@ pub fn get_relay_path(String) -> (String, String)?
 
 pub let global_request_tracker : RequestTracker
 
+pub fn init_tcp_proxies(@async.TaskGroup[Unit], Config) -> Unit
+
 pub fn network_address(String) -> NetworkAddress
 
 pub fn network_discovery_info(String, String, Array[NetworkAddress], peers? : Array[NetworkAddress], Bytes) -> NetworkDiscoveryInfo
 
 pub fn record_hello_time(String) -> Unit
 
+pub fn remove_active_proxy_conn(StringView) -> Unit
+
 pub fn remove_connected_peer(String) -> Unit
+
+pub fn remove_listener_proxy_conn(StringView) -> Unit
 
 pub fn resolve_request(String, Map[String, String], Bytes) -> Unit
 
@@ -49,6 +62,8 @@ pub fn update_global_connection_manager((ConnectionManager) -> ConnectionManager
 pub fn update_global_peer_manager((PeerManager) -> PeerManager) -> Unit
 
 pub async fn wait_for_response(String, Int) -> (Bytes, Map[String, String])?
+
+pub async fn write_to_proxy_conn(StringView, Bytes) -> Unit noraise
 
 // Errors
 type TransportError
@@ -136,6 +151,8 @@ pub impl ToJson for StatusInfo
 type SyncConnection
 pub impl Show for SyncConnection
 pub impl ToJson for SyncConnection
+
+type TcpProxy
 
 type TcpTransport
 pub fn TcpTransport::new(String) -> Self raise
