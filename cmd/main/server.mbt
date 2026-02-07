@@ -889,8 +889,23 @@ async fn handle_incoming_message(
     peer_info?,
     relay_depth=relay_depth_to_use,
   )
-  if is_new_peer ||
-    (msg.kind == "hello" && conn.state != ConnectionState::Connected) {
+  let should_reply = if is_new_peer {
+    true
+  } else if msg.kind == "hello" {
+    if conn.state != ConnectionState::Connected {
+      true
+    } else {
+      // Debounce: only reply if we haven't seen them recently (> 2s)
+      // This allows re-establishing connection if peer restarted quickly
+      // while preventing infinite hello loops
+      let now = @env.now()
+      let diff = if now >= conn.last_seen { now - conn.last_seen } else { 0UL }
+      diff > 2000UL
+    }
+  } else {
+    false
+  }
+  if should_reply {
     // Send hello to new peer
     let our_addresses = get_our_addresses(local_addr)
     let hello_msg = create_hello_message(id, local_addr, 1, peers=our_addresses)
