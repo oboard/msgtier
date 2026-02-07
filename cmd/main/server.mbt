@@ -139,32 +139,26 @@ async fn handle_reconnects(
     @async.sleep(reconnect_interval)
 
     // Get current connections once for this iteration
-    let current_conns = get_global_connection_manager().get_all_connections()
+    let current_conns = get_global_connection_manager()
+      .get_all_connections()
+      .filter(conn => conn.peer_id == peer_id)
 
     // Build list of target addresses
-    let targets = []
+    let targets = @set.new()
 
     // 1. Add known peers
     let known_peers = get_all_known_peers()
     for addr in known_peers {
-      targets.push(addr)
+      if !addr.contains("0.0.0.0") && !addr.is_empty() {
+        targets.add(addr)
+      }
     }
 
     // 2. Add addresses from existing connections (if not 0.0.0.0)
     for conn in current_conns {
       let addr = conn.remote_addr
       if !addr.contains("0.0.0.0") && !addr.is_empty() {
-        // Avoid duplicates
-        let mut exists = false
-        for t in targets {
-          if t == addr {
-            exists = true
-            break
-          }
-        }
-        if !exists {
-          targets.push(addr)
-        }
+        targets.add(addr)
       }
     }
 
@@ -1207,18 +1201,18 @@ async fn handle_incoming_message(
 async fn start_listener_service(
   root : @async.TaskGroup[Unit],
   transport : &Transport,
-  id : String,
+  my_id : String,
 ) -> Unit {
   let local_addr = transport.protocol() + "://" + transport.local_addr()
 
   // Start reconnection background task
-  root.spawn_bg(fn() { handle_reconnects(transport, local_addr, id) })
+  root.spawn_bg(() => handle_reconnects(transport, local_addr, my_id))
   // Start heartbeat/health check background task
-  root.spawn_bg(fn() { handle_heartbeat(transport, local_addr, id) })
+  root.spawn_bg(() => handle_heartbeat(transport, local_addr, my_id))
   // Start pending message sender background task
-  root.spawn_bg(fn() { handle_pending_messages(transport, id) })
+  root.spawn_bg(() => handle_pending_messages(transport, my_id))
   // Start periodic connection update task
-  root.spawn_bg(fn() { handle_periodic_updates(transport, id, local_addr) })
+  root.spawn_bg(() => handle_periodic_updates(transport, my_id, local_addr))
 
   // Listen loop
   transport.listen(
@@ -1226,7 +1220,7 @@ async fn start_listener_service(
     fn(bytes, sender) {
       let sender = transport.protocol() + "://" + sender
       root.spawn_bg(fn() {
-        handle_incoming_message(bytes, sender, id, local_addr, root, transport)
+        handle_incoming_message(bytes, sender, my_id, local_addr, root, transport)
       })
     },
     fn(remote_addr) {
