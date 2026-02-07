@@ -63,13 +63,13 @@ jobs:
 
       - name: Build binary
         run: |
-          moon build --target ${{ matrix.build_target }}
+          moon build cmd/main --target ${{ matrix.build_target }}
 
       - name: Prepare artifact (Native)
         if: matrix.build_target == 'native'
         run: |
           mkdir -p artifacts
-          cp target/native/release/build/main/main.exe artifacts/${{ matrix.artifact_name }}
+          cp target/native/release/build/cmd/main/main.exe artifacts/${{ matrix.artifact_name }}
           chmod +x artifacts/${{ matrix.artifact_name }}
 
       # - name: Prepare artifact (JS)
