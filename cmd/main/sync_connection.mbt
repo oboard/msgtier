@@ -23,6 +23,7 @@ struct SyncConnection {
   bytes_received : UInt64
   last_ping_time : UInt64?
   version : String
+  nat_type : NatType
 } derive(Show, ToJson)
 
 ///|
@@ -66,6 +67,7 @@ fn SyncConnection::to_msgpack(self : SyncConnection) -> @msgpack.Value {
       None => @msgpack.nil()
     },
     @msgpack.string(self.version),
+    @msgpack.string(self.nat_type.to_string()),
   ])
 }
 
@@ -95,8 +97,18 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         UInt64(bytes_received),
         last_ping_time_val,
         String(version),
+        String(nat_type_str),
       ]
     ) => {
+      let nat_type = match nat_type_str {
+        "NoNAT" => NoNAT
+        "Symmetric" => Symmetric
+        "FullCone" => FullCone
+        "Restricted" => Restricted
+        "PortRestricted" => PortRestricted
+        "Unknown" => Unknown
+        _ => Unknown
+      }
       let latency_ms = match latency_val {
         Int(l) => Some(l)
         _ => None
@@ -146,6 +158,7 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         bytes_received,
         last_ping_time,
         version,
+        nat_type,
       })
     }
     // Backward compatibility for format without protocol
@@ -222,6 +235,7 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         bytes_received,
         last_ping_time,
         version,
+        nat_type: Unknown,
       })
     }
     // Backward compatibility for format without version
@@ -297,6 +311,7 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         bytes_received,
         last_ping_time,
         version: "unknown",
+        nat_type: Unknown,
       })
     }
     // Backward compatibility for old format [peer_id, remote_addr, relay, public_key, latency, bandwidth, loss]
@@ -337,6 +352,7 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         bytes_received: 0UL,
         last_ping_time: None,
         version: "unknown",
+        nat_type: Unknown,
       })
     }
     // Backward compatibility for old format [peer_id, remote_addr, relay, public_key]
@@ -365,6 +381,7 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         bytes_received: 0UL,
         last_ping_time: None,
         version: "unknown",
+        nat_type: Unknown,
       })
     // Backward compatibility for old format [peer_id, remote_addr, relay]
     Array([String(peer_id), String(remote_addr), Int(relay)]) =>
@@ -390,6 +407,7 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         bytes_received: 0UL,
         last_ping_time: None,
         version: "unknown",
+        nat_type: Unknown,
       })
     _ => None
   }

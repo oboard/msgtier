@@ -9,6 +9,7 @@ fn handle_new_connection(
   protocol : String,
   peer_info? : NetworkDiscoveryInfo,
   relay_depth? : Int = 1,
+  session_id? : String,
 ) -> (Connection, Bool, Bool) {
   // Get the actual peer ID (from peer_info if available, otherwise from peer_id parameter)
   let actual_peer_id = if peer_info is Some(info) { info.id } else { peer_id }
@@ -19,7 +20,7 @@ fn handle_new_connection(
   let my_id = get_config().id
   if actual_peer_id == my_id && !my_id.is_empty() {
     let dummy_conn = Connection::new(
-      my_id, actual_peer_id, local_addr, remote_addr, protocol,
+      my_id, actual_peer_id, local_addr, remote_addr, protocol, session_id?,
     )
     let dummy_conn = { ..dummy_conn, state: ConnectionState::Connected }
     return (dummy_conn, false, false)
@@ -90,7 +91,14 @@ fn handle_new_connection(
   update_global_connection_manager(fn(manager) {
     let my_id = get_config().id
     let mgr = manager.add_connection(
-      Connection::new(my_id, actual_peer_id, local_addr, remote_addr, protocol),
+      Connection::new(
+        my_id,
+        actual_peer_id,
+        local_addr,
+        remote_addr,
+        protocol,
+        session_id?,
+      ),
     )
     // Update relay depth for the new connection
     let new_conns = mgr.get_peer_connections(actual_peer_id)
@@ -127,11 +135,16 @@ async fn handle_reconnects(
   peer_id : String,
 ) -> Unit {
   let our_addresses = get_our_addresses(local_addr)
+  // Generate a random session_id for the new connection attempt
+  let session_id = @uuidm.v4_with_rng(
+    @uuidm.SimpleRng::new(@env.now().reinterpret_as_int64()),
+  ).to_string_simple()
   let hello_msg = create_hello_message(
     peer_id,
     local_addr,
     1,
     peers=our_addresses,
+    session_id~,
   )
   let reconnect_interval = 5000 // Fixed interval: 5s
   for {
@@ -543,6 +556,10 @@ async fn handle_incoming_message(
     transport.protocol(),
     peer_info?,
     relay_depth=relay_depth_to_use,
+    session_id=match msg.session_id {
+      Some(sid) => sid
+      None => ""
+    },
   )
   let should_reply = if is_new_peer {
     true
@@ -563,7 +580,18 @@ async fn handle_incoming_message(
   if should_reply {
     // Send hello to new peer
     let our_addresses = get_our_addresses(local_addr)
-    let hello_msg = create_hello_message(id, local_addr, 1, peers=our_addresses)
+    // Use the same session_id if available to link the connection
+    let session_id = match msg.session_id {
+      Some(sid) => sid
+      None => ""
+    }
+    let hello_msg = create_hello_message(
+      id,
+      local_addr,
+      1,
+      peers=our_addresses,
+      session_id=if session_id.is_empty() { "" } else { session_id },
+    )
     // Use conn.remote_addr to ensure we reply to the stable address (not ephemeral)
     ignore(send_message(transport, conn.remote_addr, hello_msg))
     // println("Sent hello to new peer \{msg.from} at \{conn.remote_addr}")
@@ -789,11 +817,12 @@ async fn handle_incoming_message(
                 })
                 if !already_connected {
                   // Send hello to discover this peer via relay through msg.from
+                  let our_addresses = get_our_addresses(local_addr)
                   let hello_msg = create_hello_message(
                     id,
                     local_addr,
-                    2,
-                    peers?=None,
+                    1,
+                    peers=our_addresses,
                   )
                   // Send to both direct and relay addresses (fire and forget)
                   send_message_with_fallback(
@@ -1111,6 +1140,7 @@ async fn handle_incoming_message(
                 bytes_sent: sync_conn.bytes_sent,
                 bytes_received: sync_conn.bytes_received,
                 last_ping_time: sync_conn.last_ping_time,
+                nat_type: sync_conn.nat_type,
               })
             }
 

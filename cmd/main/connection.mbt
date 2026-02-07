@@ -19,7 +19,19 @@ struct Connection {
   bytes_sent : UInt64 // Total bytes sent through connection
   bytes_received : UInt64 // Total bytes received
   last_ping_time : UInt64? // Timestamp when last ping was sent
+  nat_type : NatType
+  session_id : String? // Unique session ID for the connection
 } derive(Show, ToJson, FromJson)
+
+///|
+enum NatType {
+  NoNAT
+  Symmetric
+  FullCone
+  Restricted
+  PortRestricted
+  Unknown
+} derive(Show, ToJson, FromJson, Eq)
 
 ///|
 enum ConnectionState {
@@ -37,6 +49,7 @@ fn Connection::new(
   local_addr : String,
   remote_addr : String,
   protocol : String,
+  session_id? : String,
 ) -> Connection {
   let (id1, id2) = if my_id < peer_id {
     (my_id, peer_id)
@@ -44,25 +57,18 @@ fn Connection::new(
     (peer_id, my_id)
   }
 
-  // Extract ports to ensure consistent ID regardless of IP view (0.0.0.0 vs 127.0.0.1)
-  let get_port_or_addr = fn(addr_str : String) -> String {
-    match @url.Url::parse(addr_str) {
-      Some(u) =>
-        match u.port {
-          Some(p) => p.to_string()
-          None => addr_str
-        }
-      None => addr_str
-    }
+  // Use protocol and sorted peer IDs for ID to ensure consistency across peers
+  // Ports are excluded to handle NAT where external ports may differ from internal ports
+  // If session_id is provided, include it in the hash to distinguish multiple connections
+  let raw_id = match session_id {
+    Some(sid) => "\{id1}:\{id2}:\{protocol}:\{sid}"
+    None => "\{id1}:\{id2}:\{protocol}"
   }
-  let p1 = get_port_or_addr(local_addr)
-  let p2 = get_port_or_addr(remote_addr)
-  let (port1, port2) = if p1 < p2 { (p1, p2) } else { (p2, p1) }
-
-  // Use protocol and ports for ID to ensure consistency across peers
-  // even if they see different IP addresses for each other
-  let raw_id = "\{id1}:\{id2}:\{protocol}:\{port1}:\{port2}"
   let id = bytes_to_hex(Bytes::from_array(@crypto.sha256(@utf8.encode(raw_id))))
+
+  // Analyze NAT type based on address characteristics
+  // This is a preliminary analysis; accurate determination requires STUN/discovery
+  let nat_type = analyze_nat_type(local_addr, remote_addr)
   {
     id,
     local_addr,
@@ -81,7 +87,23 @@ fn Connection::new(
     bytes_sent: 0UL,
     bytes_received: 0UL,
     last_ping_time: None,
+    nat_type,
+    session_id,
   }
+}
+
+///|
+fn analyze_nat_type(local_addr : String, remote_addr : String) -> NatType {
+  // Simple heuristic analysis
+  if local_addr.has_prefix("127.0.0.1") || local_addr.has_prefix("::1") {
+    if remote_addr.has_prefix("127.0.0.1") || remote_addr.has_prefix("::1") {
+      return NoNAT
+    }
+  }
+
+  // If local is private and remote is public, likely behind some NAT
+  // We default to Unknown as we can't distinguish Cone vs Symmetric without more tests
+  Unknown
 }
 
 ///|

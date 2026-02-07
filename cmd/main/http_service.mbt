@@ -300,6 +300,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
         bytes_sent: conn.bytes_sent,
         bytes_received: conn.bytes_received,
         last_ping_time: conn.last_ping_time,
+        nat_type: conn.nat_type,
       })
     }
   }

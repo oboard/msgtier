@@ -65,6 +65,7 @@ pub fn create_sync_message(peer_id : String, local_addr : String) -> Message {
           bytes_received: conn.bytes_received,
           last_ping_time: conn.last_ping_time,
           version: peer.version,
+          nat_type: conn.nat_type
         }
         connections_data.push(sync_conn.to_msgpack())
       }
@@ -102,6 +103,7 @@ pub fn create_sync_message(peer_id : String, local_addr : String) -> Message {
             bytes_received: 0,
             last_ping_time: None,
             version: peer.version,
+            nat_type:Unknown
           }
           connections_data.push(sync_conn.to_msgpack())
         }
@@ -176,6 +178,7 @@ pub fn create_hello_message(
   local_addr : String,
   relay : Int,
   peers? : Array[NetworkAddress],
+  session_id? : String
 ) -> Message {
   let (public_key, secret_hash) = get_identity_info()
   let peers_opt = match peers {
@@ -191,6 +194,7 @@ pub fn create_hello_message(
     peers?=peers_opt,
     public_key~,
     secret_hash~,
+    session_id?,
   )
 }
 

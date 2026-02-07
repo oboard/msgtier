@@ -15,6 +15,7 @@ struct Message {
   secret_hash : String? // Hash of network secret for authentication
   encrypted : Bool // Whether the data field is encrypted
   broadcast : Bool // Whether this message should be broadcast to all peers
+  session_id : String? // Unique identifier for the connection session
 } derive(Show)
 
 ///|
@@ -34,6 +35,7 @@ fn Message::new(
   secret_hash? : String,
   encrypted? : Bool = false,
   broadcast? : Bool = false,
+  session_id? : String,
 ) -> Message {
   {
     id: id.unwrap_or(
@@ -55,13 +57,14 @@ fn Message::new(
     secret_hash,
     encrypted,
     broadcast,
+    session_id,
   }
 }
 
 ///|
 fn Message::to_msgpack(self : Message) -> Bytes {
   // Use fixed array structure for msgpack:
-  // [id, kind, from, addr, relay, visited, encrypted, version, public_key, secret_hash, payload, target, data, peers, broadcast]
+  // [id, kind, from, addr, relay, visited, encrypted, version, public_key, secret_hash, payload, target, data, peers, broadcast, session_id]
   let visited_array : Array[@msgpack.Value] = []
   for peer_id in self.visited {
     visited_array.push(@msgpack.string(peer_id))
@@ -106,6 +109,10 @@ fn Message::to_msgpack(self : Message) -> Bytes {
       None => @msgpack.nil()
     },
     @msgpack.bool(self.broadcast),
+    match self.session_id {
+      Some(sid) => @msgpack.string(sid)
+      None => @msgpack.nil()
+    },
   ]
   @msgpack.encode(@msgpack.array(values))
 }
@@ -116,7 +123,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
     Array(arr) => {
       // Support both old and new message formats for backwards compatibility
       // Old structure: [id, kind, from, addr, relay, encrypted, version, ...]
-      // New structure: [id, kind, from, addr, relay, visited, encrypted, version, ...]
+      // New structure: [id, kind, from, addr, relay, visited, encrypted, version, ..., session_id]
       if arr.length() < 6 {
         fail("Message array too short: expected at least 6 elements")
       }
@@ -256,6 +263,16 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
       } else {
         false
       }
+      let session_id_pos = broadcast_pos + 1
+      let session_id = if arr.length() > session_id_pos {
+        match arr[session_id_pos] {
+          String(v) => Some(v)
+          Nil => None
+          _ => fail("Invalid session_id at position \{session_id_pos}")
+        }
+      } else {
+        None
+      }
       Message::{
         id,
         kind,
@@ -272,6 +289,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         secret_hash,
         encrypted,
         broadcast,
+        session_id,
       }
     }
     _ => fail("Expected msgpack array, got \{msgpack.to_json().stringify()}")
