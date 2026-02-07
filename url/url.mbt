@@ -93,7 +93,11 @@ pub fn Url::to_string(self : Url) -> String {
     Opaque(path) => result.write_string(path)
     Segments(segments) =>
       // Per WHATWG: If host is non-null, path is empty, and URL is special, append "/"
-      if segments.is_empty() && self.host is Some(_) && self.is_special() && self.scheme != "ws" && self.scheme != "wss" {
+      if segments.is_empty() &&
+        self.host is Some(_) &&
+        self.is_special() &&
+        self.scheme != "ws" &&
+        self.scheme != "wss" {
         result.write_char('/')
       } else {
         // Per WHATWG 4.5: If host is null, path is not opaque, path.length > 1,

@@ -58,6 +58,7 @@ pub struct Endpoint {
   socket : @socket.UdpServer
   connections : Map[String, Connection]
 }
+pub fn Endpoint::addr(Self) -> @socket.Addr
 pub fn Endpoint::connect(Self, String) -> Connection
 pub async fn Endpoint::listen(Self, (Connection, Stream) -> Unit) -> Unit
 pub fn Endpoint::new(String) -> Self raise

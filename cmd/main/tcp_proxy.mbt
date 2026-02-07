@@ -311,7 +311,9 @@ pub async fn handle_proxy_message(
           try {
             let addr = @socket.Addr::parse(target_addr)
             // Use timeout for connection to avoid hanging
-            let conn_res = @async.with_timeout_opt(5000, fn() { @socket.Tcp::connect(addr) })
+            let conn_res = @async.with_timeout_opt(5000, fn() {
+              @socket.Tcp::connect(addr)
+            })
             match conn_res {
               Some(conn) => {
                 add_active_proxy_conn(msg.conn_id, conn, sender_id)
@@ -319,59 +321,59 @@ pub async fn handle_proxy_message(
 
                 // Spawn reader
                 root.spawn(fn() {
-              try {
-                for {
-                  match conn.read_some() {
-                    Some(data) => {
-                      if data.length() == 0 {
-                        break
+                  try {
+                    for {
+                      match conn.read_some() {
+                        Some(data) => {
+                          if data.length() == 0 {
+                            break
+                          }
+                          let proxy_msg = ProxyMessage::{
+                            op: "data",
+                            conn_id: msg.conn_id,
+                            target_addr: None,
+                            data: Some(data),
+                          }
+                          let encoded = @msgpack.encode(proxy_msg.to_msgpack())
+                          let encrypted = encrypt_for_peer(sender_id, encoded)
+                          let data_msg = Message::new(
+                            kind="data",
+                            from=local_id,
+                            addr=local_addr,
+                            target=sender_id,
+                            data=@msgpack.binary(encrypted),
+                            encrypted=true,
+                          )
+                          add_pending_message(sender_id, data_msg)
+                        }
+                        None => break
                       }
-                      let proxy_msg = ProxyMessage::{
-                        op: "data",
-                        conn_id: msg.conn_id,
-                        target_addr: None,
-                        data: Some(data),
-                      }
-                      let encoded = @msgpack.encode(proxy_msg.to_msgpack())
-                      let encrypted = encrypt_for_peer(sender_id, encoded)
-                      let data_msg = Message::new(
-                        kind="data",
-                        from=local_id,
-                        addr=local_addr,
-                        target=sender_id,
-                        data=@msgpack.binary(encrypted),
-                        encrypted=true,
-                      )
-                      add_pending_message(sender_id, data_msg)
                     }
-                    None => break
+                  } catch {
+                    _ => ()
                   }
-                }
-              } catch {
-                _ => ()
-              }
-              // Connection closed
-              println("Proxy target connection closed: \{msg.conn_id}")
-              let proxy_msg = ProxyMessage::{
-                op: "close",
-                conn_id: msg.conn_id,
-                target_addr: None,
-                data: None,
-              }
-              let encoded = @msgpack.encode(proxy_msg.to_msgpack())
-              let encrypted = encrypt_for_peer(sender_id, encoded)
-              let close_msg = Message::new(
-                kind="data",
-                from=local_id,
-                addr=local_addr,
-                target=sender_id,
-                data=@msgpack.binary(encrypted),
-                encrypted=true,
-              )
-              add_pending_message(sender_id, close_msg)
-              remove_active_proxy_conn(msg.conn_id)
-            })
-            |> ignore
+                  // Connection closed
+                  println("Proxy target connection closed: \{msg.conn_id}")
+                  let proxy_msg = ProxyMessage::{
+                    op: "close",
+                    conn_id: msg.conn_id,
+                    target_addr: None,
+                    data: None,
+                  }
+                  let encoded = @msgpack.encode(proxy_msg.to_msgpack())
+                  let encrypted = encrypt_for_peer(sender_id, encoded)
+                  let close_msg = Message::new(
+                    kind="data",
+                    from=local_id,
+                    addr=local_addr,
+                    target=sender_id,
+                    data=@msgpack.binary(encrypted),
+                    encrypted=true,
+                  )
+                  add_pending_message(sender_id, close_msg)
+                  remove_active_proxy_conn(msg.conn_id)
+                })
+                |> ignore
               }
               None => println("Connect timeout to \{target_addr}")
             }
@@ -383,7 +385,9 @@ pub async fn handle_proxy_message(
         None => println("Proxy connect missing target_addr")
       }
     "data" => {
-      println("Received proxy_data for conn_id=\{msg.conn_id} from \{sender_id}")
+      println(
+        "Received proxy_data for conn_id=\{msg.conn_id} from \{sender_id}",
+      )
       // Recovery logic
       match msg.target_addr {
         Some(target_addr) => {
@@ -465,7 +469,6 @@ pub async fn handle_proxy_message(
         }
         None => ()
       }
-
       match msg.data {
         Some(bytes) =>
           if bytes.length() > 0 {

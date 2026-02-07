@@ -55,14 +55,9 @@ fn Connection::new(
       None => addr_str
     }
   }
-
   let p1 = get_port_or_addr(local_addr)
   let p2 = get_port_or_addr(remote_addr)
-  let (port1, port2) = if p1 < p2 {
-    (p1, p2)
-  } else {
-    (p2, p1)
-  }
+  let (port1, port2) = if p1 < p2 { (p1, p2) } else { (p2, p1) }
 
   // Use protocol and ports for ID to ensure consistency across peers
   // even if they see different IP addresses for each other

@@ -6,10 +6,8 @@ test "ProxyMessage roundtrip" {
     target_addr: Some("127.0.0.1:8080"),
     data: Some(b"\x01\x02\x03"),
   }
-  
   let msgpack = original.to_msgpack()
   let decoded = ProxyMessage::from_msgpack(msgpack)
-  
   match decoded {
     Some(msg) => {
       assert_eq(msg.op, original.op)
@@ -29,10 +27,8 @@ test "ProxyMessage minimal roundtrip" {
     target_addr: None,
     data: None,
   }
-  
   let msgpack = original.to_msgpack()
   let decoded = ProxyMessage::from_msgpack(msgpack)
-  
   match decoded {
     Some(msg) => {
       assert_eq(msg.op, original.op)
