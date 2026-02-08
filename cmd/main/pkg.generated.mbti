@@ -3,6 +3,7 @@ package "oboard/msgtier/cmd/main"
 
 import {
   "moonbitlang/async",
+  "moonbitlang/async/socket",
   "moonbitlang/core/json",
   "oboard/msgtier/quic",
 }
@@ -10,10 +11,29 @@ import {
 // Values
 
 // Errors
+type AddressParseError
+pub impl Show for AddressParseError
+
 type TransportError
 pub impl Show for TransportError
 
 // Types and methods
+pub struct Address {
+  protocol : Protocol
+  host : String
+  port : UInt16
+}
+pub fn Address::new(Protocol, String, UInt16) -> Self
+pub fn Address::parse(String) -> Self raise
+pub fn Address::socket_addr(Self) -> @socket.Addr raise
+pub fn Address::to_socket_string(Self) -> String
+pub fn Address::to_url_string(Self) -> String
+pub impl Eq for Address
+pub impl Hash for Address
+pub impl Show for Address
+pub impl ToJson for Address
+pub impl @json.FromJson for Address
+
 type BufferedReader
 
 type Config
@@ -75,6 +95,21 @@ type PendingMessage
 
 type PendingRequest
 
+pub enum Protocol {
+  Tcp
+  Udp
+  Ws
+  Wss
+  Quic
+}
+pub fn Protocol::parse(StringView) -> Self?
+pub fn Protocol::to_string(Self) -> String
+pub impl Eq for Protocol
+pub impl Hash for Protocol
+pub impl Show for Protocol
+pub impl ToJson for Protocol
+pub impl @json.FromJson for Protocol
+
 type ProxyMessage
 pub impl Show for ProxyMessage
 pub impl ToJson for ProxyMessage
@@ -82,6 +117,7 @@ pub impl @json.FromJson for ProxyMessage
 
 pub struct QuicTransport {
   endpoint : @quic.Endpoint
+  connections : Map[String, @quic.Connection]
 }
 
 pub struct RequestTracker {
@@ -124,5 +160,7 @@ pub trait Transport {
   async listen(Self, @async.TaskGroup[Unit], (Bytes, String) -> Unit, (String) -> Unit) -> Unit
   local_addr(Self) -> String
   protocol(Self) -> String
+  protocol_type(Self) -> Protocol
+  local_address(Self) -> Address
 }
 

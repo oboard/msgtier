@@ -224,6 +224,13 @@ async fn handle_pending_messages(
       let target = pending_msg.target
       let msg = pending_msg.msg
 
+      // Address target: send directly on this transport
+      if target.contains("://") {
+        ignore(send_message(transport, target, msg))
+        // println("PendingMessage: direct addr=\{target} id=\{msg.id}")
+        continue
+      }
+
       // Check if message is for self
       if target == peer_id {
         // Handle message to self directly
@@ -380,10 +387,15 @@ async fn handle_heartbeat(
 
       // Send ping to all connections of this peer
       for conn in peer_conns {
+        let ping_local_addr = if conn.local_addr.is_empty() {
+          local_addr
+        } else {
+          conn.local_addr
+        }
         let ping_msg = Message::new(
           kind="ping",
           from~,
-          addr=local_addr,
+          addr=ping_local_addr,
           version=VERSION,
         )
         // Record ping time before sending
@@ -394,7 +406,9 @@ async fn handle_heartbeat(
         update_global_connection_manager(fn(manager) {
           manager.update_connection_packet_loss(conn.id, 1, 0)
         })
-        ignore(send_message(transport, conn.remote_addr, ping_msg))
+        if conn.protocol == transport.protocol() {
+          ignore(send_message(transport, conn.remote_addr, ping_msg))
+        }
 
         // Check if connection has timed out (no response for CONNECTION_TIMEOUT_MS)
         if current_time - conn.last_seen > CONNECTION_TIMEOUT_MS &&
@@ -420,7 +434,7 @@ async fn handle_periodic_updates(
   peer_id : String,
   local_addr : String,
 ) -> Unit {
-  let update_interval = 5000 // 5 seconds
+  let update_interval = 10000 // 10 seconds
   for {
     @async.sleep(update_interval)
     broadcast_sync(transport, peer_id, local_addr) |> ignore
@@ -560,13 +574,10 @@ async fn handle_incoming_message(
   // Use the message's relay count as the hop depth for this connection
   // msg.relay already indicates how many hops the message took to reach us
   let relay_depth_to_use = msg.relay
-  // Use connectable_addr (listening address) if available, otherwise fallback to sender_addr
-  // This ensures we register the stable listening address for the connection
-  let effective_addr = if !connectable_addr.is_empty() {
-    connectable_addr
-  } else {
-    sender_addr
-  }
+  // Use sender_addr for the active connection to ensure we reply to the correct ephemeral port
+  // (crucial for TCP/WS behind NAT and UDP NAT rebinding).
+  // connectable_addr is still used above for updating PeerNode (discovery) and known peers.
+  let effective_addr = sender_addr
   let (conn, is_new_connection, is_new_peer) = handle_new_connection(
     msg.from,
     local_addr,
@@ -869,20 +880,19 @@ async fn handle_incoming_message(
       if advertised_peers is Some(peer_addrs) {
         let all_conns = get_global_connection_manager().get_all_connections()
         for peer_addr_obj in peer_addrs {
-          let peer_addr = peer_addr_obj.address
-          // Skip 0.0.0.0 addresses (bind-all, not connectable) and our own address
-          if !peer_addr.has_prefix("0.0.0.0:") && peer_addr != local_addr {
+          let peer_url = peer_addr_obj.address
+          if !is_bind_all_address(peer_url) && peer_url != local_addr {
             // Track this peer address for active connection attempts
-            add_known_peer(peer_addr)
+            add_known_peer(peer_url)
 
             // Check if we already have a relay path for this address
-            match get_relay_path(peer_addr) {
+            match get_relay_path(peer_url) {
               Some(_) =>
                 // Already greeted this address, skip to avoid duplicate hellos
                 ()
               None => {
                 // First time seeing this address - set relay path and send hello
-                set_relay_path(peer_addr, "unknown", msg.from)
+                set_relay_path(peer_url, "unknown", msg.from)
 
                 // Check if we already have ANY connection to this address (active or not)
                 let already_connected = all_conns.any(fn(conn) {
@@ -899,10 +909,10 @@ async fn handle_incoming_message(
                   )
                   // Send to both direct and relay addresses (fire and forget)
                   send_message_with_fallback(
-                    transport, peer_addr, sender_addr, hello_msg,
+                    transport, peer_url, sender_addr, hello_msg,
                   )
                   println(
-                    "Sent hello to discovered peer at \{peer_addr} (fallback: \{sender_addr})",
+                    "Sent hello to discovered peer at \{peer_url} (fallback: \{sender_addr})",
                   )
                 }
               }
@@ -918,11 +928,11 @@ async fn handle_incoming_message(
       if should_rebroadcast_hello(msg.from) {
         record_hello_time(msg.from)
         let known_peers = get_all_known_peers()
-        for peer_addr in known_peers {
+        for peer_url in known_peers {
           // Don't send back to the peer we just received it from
           // Also skip 0.0.0.0 addresses (bind-all, not connectable)
-          if peer_addr != sender_addr && !peer_addr.has_prefix("0.0.0.0:") {
-            ignore(send_message(transport, peer_addr, msg))
+          if peer_url != sender_addr && !is_bind_all_address(peer_url) {
+            ignore(send_message(transport, peer_url, msg))
           }
         }
       }
@@ -1228,7 +1238,7 @@ async fn handle_incoming_message(
               })
 
               // Add discovered address to known peers for potential direct connection
-              if remote_addr != "routed" && !remote_addr.has_prefix("0.0.0.0:") {
+              if remote_addr != "routed" && !is_bind_all_address(remote_addr) {
                 add_known_peer(remote_addr)
               }
 
@@ -1239,7 +1249,7 @@ async fn handle_incoming_message(
               match get_global_peer_manager().get_peer(peer_id) {
                 None => {
                   let addresses = if remote_addr != "routed" &&
-                    !remote_addr.has_prefix("0.0.0.0:") {
+                    !is_bind_all_address(remote_addr) {
                     [remote_addr]
                   } else {
                     []
@@ -1258,7 +1268,7 @@ async fn handle_incoming_message(
                 Some(_) =>
                   // If we have a valid address, add it
                   if remote_addr != "routed" &&
-                    !remote_addr.has_prefix("0.0.0.0:") {
+                    !is_bind_all_address(remote_addr) {
                     update_global_peer_manager(fn(manager) {
                       manager.add_peer_address(peer_id, remote_addr)
                     })

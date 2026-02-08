@@ -126,7 +126,7 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
   global_config.val = Some(config)
   for {
     try {
-      let server = @http.Server::new(@socket.Addr::parse(addr))
+      let server = @http.Server::new(@socket.Addr::parse(addr), reuse_addr=true)
       server.run_forever(handle_http_request)
     } catch {
       e => {
@@ -205,14 +205,6 @@ async fn get_config_handler(conn : @http.ServerConnection) -> Unit {
 }
 
 ///|
-fn get_config() -> Config {
-  match global_config.val {
-    Some(config) => config
-    None => abort("Missing config")
-  }
-}
-
-///|
 async fn status_handler(conn : @http.ServerConnection) -> Unit {
   let all_peers = get_global_peer_manager().get_all_peers()
 
@@ -220,7 +212,10 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
   let my_config = get_config()
   let my_id = my_config.id
   let my_pk = get_public_key()
-  let my_addrs = my_config.listeners
+  let my_addrs = my_config.listeners.map(addr => addr.replace(
+    old="0.0.0.0",
+    new="127.0.0.1",
+  ))
 
   // Get my active direct connections
   let all_conns = get_global_connection_manager().get_all_connections()

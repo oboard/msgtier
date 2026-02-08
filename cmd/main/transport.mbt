@@ -16,4 +16,14 @@ pub trait Transport {
   ) -> Unit
   local_addr(Self) -> String
   protocol(Self) -> String
+
+  ///|
+  /// Get the protocol type as a typed enum.
+  ///|
+  protocol_type(Self) -> Protocol
+
+  ///|
+  /// Get the local address as a typed Address.
+  ///|
+  local_address(Self) -> Address
 }

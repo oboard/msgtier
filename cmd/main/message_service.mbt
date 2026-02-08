@@ -14,7 +14,7 @@ fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
     Some(config) => {
       let addrs : Array[NetworkAddress] = []
       for listener_url in config.listeners {
-        let addr_str = listener_url.to_string()
+        let addr_str = listener_url.replace(old="0.0.0.0", new="127.0.0.1")
         addrs.push(NetworkAddress::{ address: addr_str })
       }
       addrs

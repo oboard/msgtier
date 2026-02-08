@@ -12,9 +12,12 @@ let global_known_peers : Ref[Map[String, UInt64]] = Ref::new({})
 ///|
 /// Add a peer address to the known peers list
 fn add_known_peer(peer_addr : String) -> Unit {
+  if is_bind_all_address(peer_addr) {
+    return
+  }
   if @url.Url::parse(peer_addr) is Some(url) {
     if url.hostname() == "0.0.0.0" {
-      url.set_hostname("127.0.0.1")
+      return
     }
     // Remove trailing slash from path if it is just root
     if url.pathname() == "/" {
@@ -25,6 +28,14 @@ fn add_known_peer(peer_addr : String) -> Unit {
     if !peers.contains(peer_addr) {
       peers[peer_addr] = @env.now() // Track when we first learned about this peer
     }
+  }
+}
+
+///|
+fn is_bind_all_address(addr : String) -> Bool {
+  match @url.Url::parse(addr) {
+    Some(url) => url.hostname() == "0.0.0.0"
+    None => addr.contains("0.0.0.0")
   }
 }
 

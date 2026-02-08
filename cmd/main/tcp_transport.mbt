@@ -14,7 +14,7 @@ fn TcpTransport::new(addr_str : String) -> TcpTransport raise {
   let addr = @socket.Addr::parse(addr_str) catch {
     e => abort("Invalid address: " + e.to_string())
   }
-  { server: @socket.TcpServer::new(addr), connections: {} }
+  { server: @socket.TcpServer::new(addr, reuse_addr=true), connections: {} }
 }
 
 ///|
@@ -72,6 +72,8 @@ impl Transport for TcpTransport with send(self, target, data) {
 ///|
 impl Transport for TcpTransport with listen(self, _root, handler, on_disconnect) {
   self.server.run_forever(fn(conn, remote_addr) {
+    let remote_addr_str = remote_addr.to_string()
+    self.connections[remote_addr_str] = conn
     let reader = BufferedReader::new(conn)
     try {
       // TCP Connection Handler - Read loop with framing
@@ -94,10 +96,13 @@ impl Transport for TcpTransport with listen(self, _root, handler, on_disconnect)
         let data_buf = FixedArray::make(len, b'\x00')
         reader.read_exact(data_buf, len)
         let data_bytes = data_buf.unsafe_reinterpret_as_bytes()
-        handler(data_bytes, remote_addr.to_string())
+        handler(data_bytes, remote_addr_str)
       }
     } catch {
-      _ => on_disconnect(remote_addr.to_string())
+      _ => {
+        self.connections.remove(remote_addr_str)
+        on_disconnect(remote_addr_str)
+      }
     }
   })
 }
@@ -110,6 +115,19 @@ impl Transport for TcpTransport with local_addr(self) {
 ///|
 impl Transport for TcpTransport with protocol(_self) {
   "tcp"
+}
+
+///|
+impl Transport for TcpTransport with protocol_type(_self) {
+  Tcp
+}
+
+///|
+impl Transport for TcpTransport with local_address(self) {
+  let addr_str = "tcp://" + self.server.addr().to_string()
+  Address::parse(addr_str) catch {
+    _ => abort("Invalid local address: " + addr_str)
+  }
 }
 
 ///|

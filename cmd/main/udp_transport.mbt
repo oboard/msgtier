@@ -51,3 +51,16 @@ impl Transport for UdpTransport with local_addr(self) {
 impl Transport for UdpTransport with protocol(_self) {
   "udp"
 }
+
+///|
+impl Transport for UdpTransport with protocol_type(_self) {
+  Udp
+}
+
+///|
+impl Transport for UdpTransport with local_address(self) {
+  let addr_str = "udp://" + self.server.addr().to_string()
+  Address::parse(addr_str) catch {
+    _ => abort("Invalid local address: " + addr_str)
+  }
+}

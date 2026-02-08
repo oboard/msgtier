@@ -15,7 +15,7 @@ fn WebSocketTransport::new(addr_str : String) -> WebSocketTransport raise {
   let addr = @socket.Addr::parse(addr_str) catch {
     e => abort("Invalid address: " + e.to_string())
   }
-  { server: @http.Server::new(addr), connections: {} }
+  { server: @http.Server::new(addr, reuse_addr=true), connections: {} }
 }
 
 ///|
@@ -105,4 +105,17 @@ impl Transport for WebSocketTransport with local_addr(self) {
 ///|
 impl Transport for WebSocketTransport with protocol(_self) {
   "ws"
+}
+
+///|
+impl Transport for WebSocketTransport with protocol_type(_self) {
+  Ws
+}
+
+///|
+impl Transport for WebSocketTransport with local_address(self) {
+  let addr_str = "ws://" + self.server.addr().to_string()
+  Address::parse(addr_str) catch {
+    _ => abort("Invalid local address: " + addr_str)
+  }
 }
