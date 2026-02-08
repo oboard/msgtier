@@ -8,6 +8,10 @@ struct WebSocketConnWrapper {
 struct WebSocketTransport {
   server : @http.Server
   connections : Map[StringView, WebSocketConnWrapper]
+  mut handler : ((Bytes, String) -> Unit)?
+  mut on_disconnect : ((String) -> Unit)?
+  mut root : @async.TaskGroup[Unit]?
+  reader_started : Map[StringView, Bool]
 }
 
 ///|
@@ -15,7 +19,14 @@ fn WebSocketTransport::new(addr_str : String) -> WebSocketTransport raise {
   let addr = @socket.Addr::parse(addr_str) catch {
     e => abort("Invalid address: " + e.to_string())
   }
-  { server: @http.Server::new(addr, reuse_addr=true), connections: {} }
+  {
+    server: @http.Server::new(addr, reuse_addr=true),
+    connections: {},
+    handler: None,
+    on_disconnect: None,
+    root: None,
+    reader_started: {},
+  }
 }
 
 ///|
@@ -51,6 +62,37 @@ impl Transport for WebSocketTransport with send(self, target, data) {
         let ws = @websocket.connect(url)
         let wrapper = WebSocketConnWrapper::{ conn: ws, sending: true }
         self.connections[target_clean] = wrapper
+        if self.reader_started.get(target_clean) is None {
+          match (self.root, self.handler, self.on_disconnect) {
+            (Some(root), Some(handler), Some(on_disconnect)) => {
+              self.reader_started[target_clean] = true
+              root.spawn_bg(fn() {
+                try {
+                  for {
+                    let msg = ws.recv()
+                    match msg.kind {
+                      Text => {
+                        let text = msg.read_all().text()
+                        handler(@utf8.encode(text), target_clean.to_string())
+                      }
+                      Binary => {
+                        let bytes = msg.read_all().binary()
+                        handler(bytes, target_clean.to_string())
+                      }
+                    }
+                  }
+                } catch {
+                  _ => {
+                    self.connections.remove(target_clean)
+                    self.reader_started.remove(target_clean)
+                    on_disconnect(target_clean.to_string())
+                  }
+                }
+              })
+            }
+            _ => ()
+          }
+        }
         ws.send_binary(data)
         wrapper.sending = false
         true
@@ -64,18 +106,23 @@ impl Transport for WebSocketTransport with send(self, target, data) {
 ///|
 impl Transport for WebSocketTransport with listen(
   self,
-  _root,
+  root,
   handler,
   on_disconnect,
 ) {
+  self.handler = Some(handler)
+  self.on_disconnect = Some(on_disconnect)
+  self.root = Some(root)
   self.server.run_forever(fn(request, _resp, conn) {
     let client_addr = conn.client_addr().to_string()
     try {
       let ws = @websocket.from_http_server(request, conn)
       self.connections[client_addr] = { conn: ws, sending: false }
+      self.reader_started[client_addr] = true
       defer {
         ws.close()
         self.connections.remove(client_addr)
+        self.reader_started.remove(client_addr)
         on_disconnect(client_addr)
       }
       for {
