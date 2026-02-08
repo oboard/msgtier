@@ -11,6 +11,19 @@ test "Connection::new generates hash id" {
 }
 
 ///|
+test "Connection::new uses session_id as id" {
+  let conn = Connection::new(
+    "peerA",
+    "peerB",
+    "tcp://127.0.0.1:8000",
+    "tcp://127.0.0.1:9000",
+    "tcp",
+    session_id="session-123",
+  )
+  inspect(conn.id, content="session-123")
+}
+
+///|
 test "Connection::new ID ignores ports" {
   let conn1 = Connection::new(
     "peerA", "peerB", "tcp://127.0.0.1:8000", "tcp://127.0.0.1:9000", "tcp",

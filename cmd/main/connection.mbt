@@ -7,7 +7,6 @@ struct Connection {
   remote_addr : String
   protocol : String // "tcp", "udp", etc.
   peer_id : String
-  state : ConnectionState
   last_seen : UInt64 // timestamp
   quality : Int // connection quality metric (0-100)
   relay : Int // 1 = direct, 2+ = relayed through N-1 peers
@@ -34,13 +33,6 @@ enum NatType {
 } derive(Show, ToJson, FromJson, Eq)
 
 ///|
-enum ConnectionState {
-  Init
-  Connecting
-  Connected
-  Disconnected
-  Failed
-} derive(Show, ToJson, FromJson, Eq)
 
 ///|
 fn Connection::new(
@@ -56,15 +48,17 @@ fn Connection::new(
   } else {
     (peer_id, my_id)
   }
-
-  // Use protocol and sorted peer IDs for ID to ensure consistency across peers
-  // Ports are excluded to handle NAT where external ports may differ from internal ports
-  // If session_id is provided, include it in the hash to distinguish multiple connections
-  let raw_id = match session_id {
-    Some(sid) => "\{id1}:\{id2}:\{protocol}:\{sid}"
-    None => "\{id1}:\{id2}:\{protocol}"
+  let normalized_session = match session_id {
+    Some(sid) => if sid.is_empty() { None } else { Some(sid) }
+    None => None
   }
-  let id = bytes_to_hex(Bytes::from_array(@crypto.sha256(@utf8.encode(raw_id))))
+  let id = match normalized_session {
+    Some(sid) => sid
+    None => {
+      let raw_id = "\{id1}:\{id2}:\{protocol}"
+      bytes_to_hex(Bytes::from_array(@crypto.sha256(@utf8.encode(raw_id))))
+    }
+  }
 
   // Analyze NAT type based on address characteristics
   // This is a preliminary analysis; accurate determination requires STUN/discovery
@@ -75,7 +69,6 @@ fn Connection::new(
     remote_addr,
     protocol,
     peer_id,
-    state: Init,
     last_seen: @env.now(),
     quality: 0,
     relay: 1,
@@ -88,7 +81,7 @@ fn Connection::new(
     bytes_received: 0UL,
     last_ping_time: None,
     nat_type,
-    session_id,
+    session_id: normalized_session,
   }
 }
 
@@ -225,14 +218,6 @@ fn is_same_subnet(ip1 : String, ip2 : String) -> Bool {
 }
 
 ///|
-fn Connection::update_state(
-  self : Connection,
-  new_state : ConnectionState,
-) -> Connection {
-  { ..self, state: new_state }
-}
-
-///|
 fn Connection::update_relay(self : Connection, relay_depth : Int) -> Connection {
   { ..self, relay: relay_depth }
 }
@@ -244,14 +229,6 @@ fn Connection::update_last_seen(
   timestamp : UInt64,
 ) -> Connection {
   { ..self, last_seen: timestamp }
-}
-
-///|
-fn Connection::is_active(self : Connection) -> Bool {
-  match self.state {
-    Connected => true
-    _ => false
-  }
 }
 
 ///|

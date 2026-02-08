@@ -7,12 +7,10 @@ struct SyncConnection {
   latency_ms : Int?
   bandwidth_mbps : Double
   packet_loss_rate : Int
-
   // New fields to match Connection struct
   id : String
   local_addr : String
   protocol : String
-  state : String // serialized ConnectionState
   last_seen : UInt64
   quality : Int
   metadata : Map[String, String]?
@@ -44,7 +42,6 @@ fn SyncConnection::to_msgpack(self : SyncConnection) -> @msgpack.Value {
     @msgpack.string(self.id),
     @msgpack.string(self.local_addr),
     @msgpack.string(self.protocol),
-    @msgpack.string(self.state),
     @msgpack.uint64(self.last_seen),
     @msgpack.int(self.quality),
     match self.metadata {
@@ -86,7 +83,32 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         String(id),
         String(local_addr),
         String(protocol),
-        String(state),
+        UInt64(last_seen),
+        Int(quality),
+        metadata_val,
+        Array(latency_history_val),
+        Int(packets_sent),
+        Int(packets_lost),
+        UInt64(bytes_sent),
+        UInt64(bytes_received),
+        last_ping_time_val,
+        String(version),
+        String(nat_type_str),
+      ]
+    )
+    | Array(
+      [
+        String(peer_id),
+        String(remote_addr),
+        Int(relay),
+        Binary(public_key),
+        latency_val,
+        Float(bandwidth_mbps),
+        Int(packet_loss_rate),
+        String(id),
+        String(local_addr),
+        String(protocol),
+        String(_),
         UInt64(last_seen),
         Int(quality),
         metadata_val,
@@ -147,7 +169,6 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         id,
         local_addr,
         protocol,
-        state,
         last_seen,
         quality,
         metadata,
@@ -173,7 +194,7 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         Int(packet_loss_rate),
         String(id),
         String(local_addr),
-        String(state),
+        String(_state),
         UInt64(last_seen),
         Int(quality),
         metadata_val,
@@ -224,7 +245,6 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         id,
         local_addr,
         protocol: "unknown",
-        state,
         last_seen,
         quality,
         metadata,
@@ -238,177 +258,6 @@ fn SyncConnection::from_msgpack(msgpack : @msgpack.Value) -> SyncConnection? {
         nat_type: Unknown,
       })
     }
-    // Backward compatibility for format without version
-    Array(
-      [
-        String(peer_id),
-        String(remote_addr),
-        Int(relay),
-        Binary(public_key),
-        latency_val,
-        Float(bandwidth_mbps),
-        Int(packet_loss_rate),
-        String(id),
-        String(local_addr),
-        String(state),
-        UInt64(last_seen),
-        Int(quality),
-        metadata_val,
-        Array(latency_history_val),
-        Int(packets_sent),
-        Int(packets_lost),
-        UInt64(bytes_sent),
-        UInt64(bytes_received),
-        last_ping_time_val,
-      ]
-    ) => {
-      let latency_ms = match latency_val {
-        Int(l) => Some(l)
-        _ => None
-      }
-      let metadata = match metadata_val {
-        Map(m) => {
-          let map = {}
-          for k, v in m {
-            match v {
-              String(vs) => map[k] = vs
-              _ => ()
-            }
-          }
-          Some(map)
-        }
-        _ => None
-      }
-      let latency_history = latency_history_val.map(fn(v) {
-        match v {
-          Int(i) => i
-          _ => 0
-        }
-      })
-      let last_ping_time = match last_ping_time_val {
-        UInt64(t) => Some(t)
-        _ => None
-      }
-      Some(SyncConnection::{
-        peer_id,
-        remote_addr,
-        relay,
-        public_key,
-        latency_ms,
-        bandwidth_mbps,
-        packet_loss_rate,
-        id,
-        local_addr,
-        protocol: "unknown",
-        state,
-        last_seen,
-        quality,
-        metadata,
-        latency_history,
-        packets_sent,
-        packets_lost,
-        bytes_sent,
-        bytes_received,
-        last_ping_time,
-        version: "unknown",
-        nat_type: Unknown,
-      })
-    }
-    // Backward compatibility for old format [peer_id, remote_addr, relay, public_key, latency, bandwidth, loss]
-    Array(
-      [
-        String(peer_id),
-        String(remote_addr),
-        Int(relay),
-        Binary(public_key),
-        latency_val,
-        Float(bandwidth_mbps),
-        Int(packet_loss_rate),
-      ]
-    ) => {
-      let latency_ms = match latency_val {
-        Int(l) => Some(l)
-        _ => None
-      }
-      Some(SyncConnection::{
-        peer_id,
-        remote_addr,
-        relay,
-        public_key,
-        latency_ms,
-        bandwidth_mbps,
-        packet_loss_rate,
-        id: "",
-        local_addr: "",
-        protocol: "unknown",
-        state: "Connected",
-        last_seen: 0UL,
-        quality: 0,
-        metadata: None,
-        latency_history: [],
-        packets_sent: 0,
-        packets_lost: 0,
-        bytes_sent: 0UL,
-        bytes_received: 0UL,
-        last_ping_time: None,
-        version: "unknown",
-        nat_type: Unknown,
-      })
-    }
-    // Backward compatibility for old format [peer_id, remote_addr, relay, public_key]
-    Array(
-      [String(peer_id), String(remote_addr), Int(relay), Binary(public_key)]
-    ) =>
-      Some(SyncConnection::{
-        peer_id,
-        remote_addr,
-        relay,
-        public_key,
-        latency_ms: None,
-        bandwidth_mbps: 0.0,
-        packet_loss_rate: 0,
-        id: "",
-        local_addr: "",
-        protocol: "unknown",
-        state: "Connected",
-        last_seen: 0UL,
-        quality: 0,
-        metadata: None,
-        latency_history: [],
-        packets_sent: 0,
-        packets_lost: 0,
-        bytes_sent: 0UL,
-        bytes_received: 0UL,
-        last_ping_time: None,
-        version: "unknown",
-        nat_type: Unknown,
-      })
-    // Backward compatibility for old format [peer_id, remote_addr, relay]
-    Array([String(peer_id), String(remote_addr), Int(relay)]) =>
-      Some(SyncConnection::{
-        peer_id,
-        remote_addr,
-        relay,
-        public_key: b"",
-        latency_ms: None,
-        bandwidth_mbps: 0.0,
-        packet_loss_rate: 0,
-        id: "",
-        local_addr: "",
-        protocol: "unknown",
-        state: "Connected",
-        last_seen: 0UL,
-        quality: 0,
-        metadata: None,
-        latency_history: [],
-        packets_sent: 0,
-        packets_lost: 0,
-        bytes_sent: 0UL,
-        bytes_received: 0UL,
-        last_ping_time: None,
-        version: "unknown",
-        nat_type: Unknown,
-      })
     _ => None
   }
 }

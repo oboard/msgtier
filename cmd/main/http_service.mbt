@@ -221,7 +221,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
   let all_conns = get_global_connection_manager().get_all_connections()
   let my_connections : Array[PeerConnectionInfo] = []
   for conn in all_conns {
-    if conn.state == ConnectionState::Connected && conn.relay == 1 {
+    if conn.relay == 1 {
       let elapsed_ms = @env.now() - conn.last_seen
       let bandwidth_mbps = conn.calculate_bandwidth_mbps(elapsed_ms)
       let packet_loss_rate = conn.calculate_packet_loss()
@@ -233,7 +233,6 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
         id: conn.id,
         local_addr: conn.local_addr,
         remote_addr: conn.remote_addr,
-        state: conn.state,
         last_seen: conn.last_seen,
         quality: conn.quality,
         relay: conn.relay,

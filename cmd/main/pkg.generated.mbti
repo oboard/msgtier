@@ -49,13 +49,8 @@ pub impl @json.FromJson for Connection
 type ConnectionManager
 pub impl Show for ConnectionManager
 
-type ConnectionState
-pub impl Eq for ConnectionState
-pub impl Show for ConnectionState
-pub impl ToJson for ConnectionState
-pub impl @json.FromJson for ConnectionState
-
 type Message
+pub impl Eq for Message
 pub impl Show for Message
 
 type NatType
@@ -92,6 +87,8 @@ pub impl ToJson for PeerNodeStatus
 pub impl @json.FromJson for PeerNodeStatus
 
 type PendingMessage
+pub impl Eq for PendingMessage
+pub impl Show for PendingMessage
 
 type PendingRequest
 

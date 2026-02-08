@@ -61,9 +61,10 @@ impl Transport for TcpTransport with send(self, target, data) {
           }
       }
     } catch {
-      _ =>
-        // Connection failed or write failed
+      _ => { // Connection failed or write failed
         self.connections.remove(target)
+        println("TCP send failed for target \{target}: connection closed")
+      }
     }
   }
   false

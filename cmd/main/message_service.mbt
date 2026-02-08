@@ -28,7 +28,7 @@ fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
 }
 
 ///|
-fn create_sync_message(peer_id : String, local_addr : String) -> Message {
+fn create_sync_message(my_id : String, local_addr : String) -> Message {
   // Create a message that includes all current connections of this node
   let all_peers = get_global_peer_manager().get_all_peers()
   let all_conns = get_global_connection_manager().get_all_connections()
@@ -38,37 +38,34 @@ fn create_sync_message(peer_id : String, local_addr : String) -> Message {
   for peer in all_peers {
     let peer_conns = peer.get_all_connections(all_conns)
     for conn in peer_conns {
-      if conn.is_active() {
-        let pk = peer.public_key
-        let elapsed_ms = @env.now() - conn.last_seen
-        let bandwidth_mbps = conn.calculate_bandwidth_mbps(elapsed_ms)
-        let packet_loss_rate = conn.calculate_packet_loss()
-        let sync_conn = SyncConnection::{
-          peer_id: peer.id,
-          remote_addr: conn.remote_addr,
-          relay: conn.relay,
-          public_key: pk,
-          latency_ms: conn.latency_ms,
-          bandwidth_mbps,
-          packet_loss_rate,
-          id: conn.id,
-          protocol: conn.protocol,
-          local_addr: conn.local_addr,
-          state: conn.state.to_string(),
-          last_seen: conn.last_seen,
-          quality: conn.quality,
-          metadata: conn.metadata,
-          latency_history: conn.latency_history,
-          packets_sent: conn.packets_sent,
-          packets_lost: conn.packets_lost,
-          bytes_sent: conn.bytes_sent,
-          bytes_received: conn.bytes_received,
-          last_ping_time: conn.last_ping_time,
-          version: peer.version,
-          nat_type: conn.nat_type,
-        }
-        connections_data.push(sync_conn.to_msgpack())
+      let pk = peer.public_key
+      let elapsed_ms = @env.now() - conn.last_seen
+      let bandwidth_mbps = conn.calculate_bandwidth_mbps(elapsed_ms)
+      let packet_loss_rate = conn.calculate_packet_loss()
+      let sync_conn = SyncConnection::{
+        peer_id: peer.id,
+        remote_addr: conn.remote_addr,
+        relay: conn.relay,
+        public_key: pk,
+        latency_ms: conn.latency_ms,
+        bandwidth_mbps,
+        packet_loss_rate,
+        id: conn.id,
+        protocol: conn.protocol,
+        local_addr: conn.local_addr,
+        last_seen: conn.last_seen,
+        quality: conn.quality,
+        metadata: conn.metadata,
+        latency_history: conn.latency_history,
+        packets_sent: conn.packets_sent,
+        packets_lost: conn.packets_lost,
+        bytes_sent: conn.bytes_sent,
+        bytes_received: conn.bytes_received,
+        last_ping_time: conn.last_ping_time,
+        version: peer.version,
+        nat_type: conn.nat_type,
       }
+      connections_data.push(sync_conn.to_msgpack())
     }
   }
 
@@ -92,7 +89,6 @@ fn create_sync_message(peer_id : String, local_addr : String) -> Message {
             id: "",
             protocol: "",
             local_addr: "",
-            state: "Routed",
             last_seen: route.timestamp,
             quality: 0,
             metadata: None,
@@ -113,7 +109,7 @@ fn create_sync_message(peer_id : String, local_addr : String) -> Message {
   }
   Message::new(
     kind="sync",
-    from=peer_id,
+    from=my_id,
     addr=local_addr,
     relay=1,
     broadcast=true,
@@ -124,50 +120,19 @@ fn create_sync_message(peer_id : String, local_addr : String) -> Message {
 ///|
 async fn send_message(
   transport : &Transport,
-  peer : String,
+  target_addr : String,
   msg : Message,
 ) -> Bool noraise {
-  if peer.is_empty() {
+  if target_addr.is_empty() {
     return false
-  }
-
-  // Protocol check: ensure target address matches transport protocol
-  if peer.contains("://") {
-    let protocol = transport.protocol()
-    if !peer.has_prefix(protocol + "://") {
-      return false
-    }
   }
   try {
     let msgpack_bytes = msg.to_msgpack()
-    transport.send(peer, msgpack_bytes)
+    transport.send(target_addr, msgpack_bytes)
   } catch {
     _ => {
-      println("Failed to send message to \{peer}")
+      println("Failed to send message to \{target_addr}")
       false
-    }
-  }
-}
-
-///|
-async fn broadcast_sync(
-  transport : &Transport,
-  peer_id : String,
-  local_addr : String,
-) -> Unit {
-  let update_msg = create_sync_message(peer_id, local_addr)
-  let all_peers = get_global_peer_manager().get_all_peers()
-  for peer in all_peers {
-    let peer_conns = get_global_connection_manager().get_active_connections(
-      peer.id,
-    )
-    for conn in peer_conns {
-      if conn.state == ConnectionState::Connected {
-        // Only send if connection protocol matches transport protocol
-        if conn.protocol == transport.protocol() {
-          ignore(send_message(transport, conn.remote_addr, update_msg))
-        }
-      }
     }
   }
 }

@@ -2,15 +2,15 @@
 struct PendingMessage {
   target : String
   msg : Message
-}
+} derive(Show, Eq)
 
 ///|
-let global_pending_messages : Ref[Array[PendingMessage]] = Ref::new([])
+let global_pending_messages : Array[PendingMessage] = []
 
 ///|
 fn add_pending_message(target : String, msg : Message) -> Unit {
   let pending = PendingMessage::{ target, msg }
-  let messages = global_pending_messages.val
+  let messages = global_pending_messages
   messages.push(pending)
 }
 
@@ -18,20 +18,21 @@ fn add_pending_message(target : String, msg : Message) -> Unit {
 fn take_pending_messages(
   predicate : (PendingMessage) -> Bool,
 ) -> Array[PendingMessage] {
-  let messages = global_pending_messages.val
+  let messages = global_pending_messages
   if messages.is_empty() {
     []
   } else {
     let matched = []
-    let kept = []
     for msg in messages {
       if predicate(msg) {
         matched.push(msg)
-      } else {
-        kept.push(msg)
       }
     }
-    global_pending_messages.val = kept
     matched
   }
+}
+
+///|
+fn remove_pending_message(message : PendingMessage) -> Unit {
+  global_pending_messages.retain(pm => pm != message)
 }

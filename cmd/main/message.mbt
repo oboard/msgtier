@@ -16,7 +16,7 @@ struct Message {
   encrypted : Bool // Whether the data field is encrypted
   broadcast : Bool // Whether this message should be broadcast to all peers
   session_id : String? // Unique identifier for the connection session
-} derive(Show)
+} derive(Show, Eq)
 
 ///|
 fn Message::new(

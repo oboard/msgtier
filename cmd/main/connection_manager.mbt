@@ -54,14 +54,6 @@ fn ConnectionManager::get_peer_connections(
 }
 
 ///|
-fn ConnectionManager::get_active_connections(
-  self : ConnectionManager,
-  peer_id : String,
-) -> Array[Connection] {
-  self.get_peer_connections(peer_id).filter(fn(conn) { conn.is_active() })
-}
-
-///|
 fn ConnectionManager::get_all_connections(
   self : ConnectionManager,
 ) -> Array[Connection] {
@@ -70,6 +62,33 @@ fn ConnectionManager::get_all_connections(
     conns.push(conn)
   }
   conns
+}
+
+///|
+fn ConnectionManager::remove_connection(
+  self : ConnectionManager,
+  conn_id : String,
+) -> ConnectionManager {
+  let connections = self.connections
+  match connections.get(conn_id) {
+    Some(conn) => {
+      connections.remove(conn_id)
+      let peer_connections = self.peer_connections
+      match peer_connections.get(conn.peer_id) {
+        Some(ids) => {
+          let new_ids = ids.filter(fn(id) { id != conn_id })
+          if new_ids.is_empty() {
+            peer_connections.remove(conn.peer_id)
+          } else {
+            peer_connections[conn.peer_id] = new_ids
+          }
+        }
+        None => ()
+      }
+      { connections, peer_connections }
+    }
+    None => self
+  }
 }
 
 ///|
@@ -93,7 +112,7 @@ fn ConnectionManager::get_best_direct_connection(
   self : ConnectionManager,
   peer_id : String,
 ) -> Connection? {
-  let active_conns = self.get_active_connections(peer_id)
+  let active_conns = self.get_peer_connections(peer_id)
   if active_conns.is_empty() {
     None
   } else {
@@ -113,22 +132,6 @@ fn ConnectionManager::get_best_direct_connection(
         }),
       )
     }
-  }
-}
-
-///|
-fn ConnectionManager::update_connection_state(
-  self : ConnectionManager,
-  conn_id : String,
-  state : ConnectionState,
-) -> ConnectionManager {
-  let connections = self.connections
-  match connections.get(conn_id) {
-    Some(conn) => {
-      connections[conn_id] = conn.update_state(state)
-      { connections, peer_connections: self.peer_connections }
-    }
-    None => self
   }
 }
 

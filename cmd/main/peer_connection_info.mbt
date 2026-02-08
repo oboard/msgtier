@@ -4,7 +4,6 @@ struct PeerConnectionInfo {
   local_addr : String
   remote_addr : String
   peer_id : String
-  state : ConnectionState
   last_seen : UInt64
   quality : Int
   relay : Int
