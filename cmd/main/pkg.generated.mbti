@@ -9,6 +9,7 @@ import {
 }
 
 // Values
+pub fn clear_pending_messages() -> Unit
 
 // Errors
 type AddressParseError
@@ -92,9 +93,10 @@ pub impl Show for PeerNodeStatus
 pub impl ToJson for PeerNodeStatus
 pub impl @json.FromJson for PeerNodeStatus
 
-type PendingMessage
-pub impl Eq for PendingMessage
-pub impl Show for PendingMessage
+pub struct PendingEntry {
+  msg : Message
+  sent_protocols : Map[String, Bool]
+}
 
 type PendingRequest
 
@@ -112,11 +114,6 @@ pub impl Hash for Protocol
 pub impl Show for Protocol
 pub impl ToJson for Protocol
 pub impl @json.FromJson for Protocol
-
-type ProxyMessage
-pub impl Show for ProxyMessage
-pub impl ToJson for ProxyMessage
-pub impl @json.FromJson for ProxyMessage
 
 pub struct QuicTransport {
   endpoint : @quic.Endpoint
@@ -140,12 +137,6 @@ pub impl ToJson for ScriptOutput
 
 type StatusInfo
 pub impl ToJson for StatusInfo
-
-type SyncConnection
-pub impl Show for SyncConnection
-pub impl ToJson for SyncConnection
-
-type TcpProxy
 
 type TcpTransport
 

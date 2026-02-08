@@ -4,12 +4,20 @@ let global_keypair : Ref[(Bytes, Bytes)?] = Ref::new(None)
 
 ///|
 /// Shared secrets with peers: peer_id -> shared_secret
-let global_shared_secrets :Map[String, Bytes] = {}
+let global_shared_secrets : Map[String, Bytes] = {}
 
 ///|
 /// Initialize the X25519 key pair for this node
-fn init_keypair() -> Unit {
-  let (priv_key, pub_key) = @x25519.generate_keypair()
+fn init_keypair(secret : String) -> Unit {
+  let priv_key = match secret {
+    "" => @x25519.generate_private_key()
+    s => {
+      let secret_bytes = @utf8.encode(s)
+      let hash = @crypto.sha256(secret_bytes)
+      @x25519.clamp_scalar(Bytes::from_array(hash))
+    }
+  }
+  let pub_key = @x25519.compute_public_key(priv_key)
   global_keypair.val = Some((priv_key, pub_key))
 }
 
@@ -40,6 +48,9 @@ fn compute_and_store_shared_secret(
   let priv_key = get_private_key()
   let shared = @x25519.compute_shared_secret(priv_key, peer_public_key)
   global_shared_secrets[peer_id] = shared
+  log_debug(
+    "DEBUG: Computed shared secret for \{peer_id}: \{bytes_to_hex(shared)}",
+  )
 }
 
 ///|
@@ -52,19 +63,27 @@ fn get_shared_secret(peer_id : String) -> Bytes? {
 /// Encrypt data for a peer using shared secret
 fn encrypt_for_peer(peer_id : String, data : Bytes) -> Bytes {
   match get_shared_secret(peer_id) {
-    Some(shared) => @x25519.encrypt(shared, data)
+    Some(shared) => {
+      log_debug(
+        "DEBUG: Encrypting for \{peer_id} with secret \{bytes_to_hex(shared)}...",
+      )
+      @x25519.encrypt(shared, data)
+    }
     None => []
   }
 }
 
 ///|
 /// Decrypt data from a peer using shared secret
-fn decrypt_from_peer(source_id : String, encrypted : Bytes) -> Bytes? {
-  match get_shared_secret(source_id) {
-    Some(shared) => @x25519.decrypt(shared, encrypted)
-    None =>
-      // println("No shared secret with peer \{peer_id}")
-      None
+fn decrypt_from_peer(peer_id : String, encrypted : Bytes) -> Bytes? {
+  match get_shared_secret(peer_id) {
+    Some(shared) => {
+      log_debug(
+        "DEBUG: Decrypting from \{peer_id} with secret \{bytes_to_hex(shared)}...",
+      )
+      @x25519.decrypt(shared, encrypted)
+    }
+    None => None
   }
 }
 

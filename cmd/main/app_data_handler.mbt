@@ -1,4 +1,23 @@
 ///|
+let processed_messages_cache : Ref[Map[String, UInt64]] = Ref::new({})
+
+///|
+fn check_and_mark_processed(id : String, timestamp : UInt64) -> Bool {
+  let now = @env.now()
+  // TTL Check (30s)
+  if now > timestamp && now - timestamp > 30000 {
+    log_warn("Dropping expired message \{id}, age=\{now - timestamp}ms")
+    return true
+  }
+  let cache = processed_messages_cache.val
+  if cache.contains(id) {
+    return true
+  }
+  cache[id] = now
+  false
+}
+
+///|
 fn handle_data_message(
   root : @async.TaskGroup[Unit],
   id : String,
@@ -8,6 +27,10 @@ fn handle_data_message(
 ) -> Unit {
   match msg.payload {
     Some(correlation_id) => {
+      if check_and_mark_processed(msg.id, msg.timestamp) {
+        log_warn("Duplicate or expired response \{msg.id} ignored")
+        return
+      }
       log_info("Received data response from \{msg.source_id}:")
       let final_data = match data_value {
         Binary(raw) => {
@@ -29,37 +52,90 @@ fn handle_data_message(
                 data_value
               }
             }
+            // Handle empty payload bytes (decryption failure or empty response)
+            // But if raw was not empty and we failed to decrypt (returning b""), we shouldn't fallback to data_value (which is raw)
+            // If raw was empty, data_value is likely Nil or Binary(b"")
+          } else if raw.length() > 0 && msg.encrypted {
+            // Decryption failed (logged above), return Nil
+            @msgpack.nil()
           } else {
+            // Not encrypted or empty raw, return data_value
             data_value
           }
         }
         _ => data_value
       }
-      log_debug(final_data.to_string().unwrap_or("error"))
+      log_debug(
+        "DEBUG: Final response data: " +
+        final_data.to_string().unwrap_or("error"),
+      )
       handle_data_response(correlation_id, final_data, msg.source_id)
     }
     None => {
       // Extract raw binary data or use String directly
+      // check_and_mark_processed(msg.id, msg.timestamp) has been removed from here
+      // because message processing logic should be idempotent if possible,
+      // or handled by the caller. But wait, user requested idempotency.
+      // The issue is check_and_mark_processed was called TWICE in the provided log context?
+      // No, the log shows "Duplicate or expired message ... ignored" only ONCE per ID for the *response* path in previous turn.
+      // But for *request* path (None case), we also need it.
 
+      if check_and_mark_processed(msg.id, msg.timestamp) {
+        log_warn("Duplicate or expired message \{msg.id} ignored")
+        return
+      }
       log_debug(
         "DEBUG: Processing data message from \{msg.source_id}, encrypted=\{msg.encrypted}",
       )
+      match data_value {
+        Binary(b) =>
+          log_debug("DEBUG: Received data_value Binary len=\{b.length()}")
+        String(s) =>
+          log_debug("DEBUG: Received data_value String len=\{s.length()}")
+        _ => log_debug("DEBUG: Received data_value Other")
+      }
       let data_content = if msg.encrypted && data_value is Binary(raw_data) {
-        @msgpack.decode(
-          match decrypt_from_peer(msg.source_id, raw_data) {
-            Some(decrypted) => {
-              log_debug("DEBUG: Decrypted message from \{msg.source_id}")
-              decrypted
+        let decrypted_bytes = match decrypt_from_peer(msg.source_id, raw_data) {
+          Some(decrypted) => {
+            log_debug(
+              "DEBUG: Decrypted message from \{msg.source_id}, len=\{decrypted.length()}",
+            )
+            // Debug: print first few bytes
+            if decrypted.length() > 0 {
+              // Simplified logging to avoid string replace issues
+              log_debug("DEBUG: Decrypted bytes length: \{decrypted.length()}")
+              let mut s = ""
+              for i = 0; i < decrypted.length(); i = i + 1 {
+                s = s + decrypted[i].to_int().to_string() + " "
+              }
+              log_debug("DEBUG: Decrypted bytes: \{s}")
             }
-            None => {
-              log_error(
-                "Failed to decrypt message from \{msg.source_id}, raw length=\{raw_data.length()}",
-              )
-              raw_data
+            decrypted
+          }
+          None => {
+            log_error(
+              "Failed to decrypt message from \{msg.source_id}, raw length=\{raw_data.length()}",
+            )
+            b""
+          }
+        }
+        if decrypted_bytes.length() > 0 {
+          let decoded = @msgpack.decode(decrypted_bytes) catch {
+            _ => {
+              log_error("DEBUG: Failed to decode decrypted bytes")
+              @msgpack.nil()
             }
-          },
-        ) catch {
-          _ => @msgpack.nil()
+          }
+          log_debug("DEBUG: Decoded MsgPack type: \{decoded}")
+          decoded
+        } else {
+          // Decryption failed or empty payload
+          if raw_data.length() > 0 {
+            log_warn(
+              "DEBUG: Decryption failed for non-empty payload, returning nil",
+            )
+          }
+          @msgpack.nil()
         }
       } else {
         data_value

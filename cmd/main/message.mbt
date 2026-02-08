@@ -16,7 +16,11 @@ struct Message {
   encrypted : Bool // Whether the data field is encrypted
   broadcast : Bool // Whether this message should be broadcast to all peers
   session_id : String? // Unique identifier for the connection session
+  timestamp : UInt64 // Creation timestamp for TTL and deduplication
 } derive(Show, Eq)
+
+///|
+let message_id_counter : Ref[Int] = Ref::new(0)
 
 ///|
 fn Message::new(
@@ -36,11 +40,15 @@ fn Message::new(
   encrypted? : Bool = false,
   broadcast? : Bool = false,
   session_id? : String,
+  timestamp? : UInt64,
 ) -> Message {
+  message_id_counter.val += 1
   {
     id: id.unwrap_or(
       @uuidm.v4_with_rng(
-        @uuidm.SimpleRng::new(@env.now().reinterpret_as_int64()),
+        @uuidm.SimpleRng::new(
+          @env.now().reinterpret_as_int64() + message_id_counter.val.to_int64(),
+        ),
       ).to_string_simple(),
     ),
     kind,
@@ -52,12 +60,13 @@ fn Message::new(
     peers,
     payload,
     target_id,
-    body: body,
+    body,
     public_key,
     secret_hash,
     encrypted,
     broadcast,
     session_id,
+    timestamp: timestamp.unwrap_or(@env.now()),
   }
 }
 
@@ -116,6 +125,7 @@ fn Message::to_msgpack(self : Message) -> Bytes {
       Some(sid) => @msgpack.string(sid)
       None => @msgpack.nil()
     },
+    @msgpack.uint64(self.timestamp),
   ]
   @msgpack.encode(@msgpack.array(values))
 }
@@ -126,7 +136,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
     Array(arr) => {
       // Support both old and new message formats for backwards compatibility
       // Old structure: [id, kind, from, addr, relay, encrypted, version, ...]
-      // New structure: [id, kind, from, addr, relay, visited, encrypted, version, ..., session_id]
+      // New structure: [id, kind, from, addr, relay, visited, encrypted, version, ..., session_id, timestamp]
       if arr.length() < 6 {
         fail("Message array too short: expected at least 6 elements")
       }
@@ -277,6 +287,16 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
       } else {
         None
       }
+      let timestamp_pos = session_id_pos + 1
+      let timestamp = if arr.length() > timestamp_pos {
+        match arr[timestamp_pos] {
+          UInt64(v) => v
+          Int(v) => v.to_uint64()
+          _ => @env.now()
+        }
+      } else {
+        @env.now()
+      }
       Message::{
         id,
         kind,
@@ -288,12 +308,13 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         peers,
         payload,
         target_id,
-        body: body,
+        body,
         public_key,
         secret_hash,
         encrypted,
         broadcast,
         session_id,
+        timestamp,
       }
     }
     _ => fail("Expected msgpack array, got \{msgpack.to_json().stringify()}")

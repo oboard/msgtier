@@ -328,7 +328,7 @@ fn montgomery_ladder(k : Bytes, u : Fe) -> Fe {
 
 ///|
 /// Clamp a 32-byte scalar for X25519
-fn clamp_scalar(k : Bytes) -> Bytes {
+pub fn clamp_scalar(k : Bytes) -> Bytes {
   let clamped = FixedArray::make(32, b'\x00')
   for i = 0; i < 32 && i < k.length(); i = i + 1 {
     clamped[i] = k[i]

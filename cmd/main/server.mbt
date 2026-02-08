@@ -248,7 +248,8 @@ async fn handle_pending_messages(
     )
 
     // Process each pending message
-    for pending_msg in pending {
+    for entry in pending {
+      let pending_msg = entry.msg
       let cm = get_global_connection_manager()
       let mut sent = false
       let target_peer_ids = match pending_msg.target_id {
@@ -286,6 +287,11 @@ async fn handle_pending_messages(
         }
         for target_connection in target_connections {
           if target_connection.protocol != transport.protocol() {
+            // log_debug("DEBUG: pending skip protocol mismatch conn=\{target_connection.protocol} transport=\{transport.protocol()} id=\{pending_msg.id}")
+            continue
+          }
+          // Skip if already sent via this protocol
+          if entry.sent_protocols.contains(target_connection.protocol) {
             continue
           }
           let target_addr = target_connection.remote_addr
@@ -302,17 +308,26 @@ async fn handle_pending_messages(
           }
         }
         if sent {
+          let required_protocols = []
+          for conn in target_connections {
+            if !required_protocols.contains(conn.protocol) {
+              required_protocols.push(conn.protocol)
+            }
+          }
           log_debug(
-            "DEBUG: pending remove id=\{pending_msg.id} protocol=\{transport.protocol()}",
+            "DEBUG: pending mark sent id=\{pending_msg.id} protocol=\{transport.protocol()}",
           )
-          remove_pending_message(pending_msg) |> ignore
+          mark_pending_message_sent(
+            pending_msg.id,
+            transport.protocol(),
+            required_protocols,
+          )
+          |> ignore
         } else if target_connections.length() > 0 {
-          // If we have connections but failed to send on this specific transport,
-          // check if we should keep it pending or if another transport might handle it.
-          // For now, we only remove if successfully sent.
-          // However, to avoid infinite loops if a specific transport is down but others exist,
-          // we might need more complex logic.
-          // But since 'pending' loop runs on all transports, if one succeeds, it will be removed.
+          // If we have connections but failed to send on this specific transport
+          log_debug(
+            "DEBUG: pending failed to send on any connection protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.id}",
+          )
           ()
         }
       }
@@ -751,6 +766,13 @@ async fn handle_incoming_message(
         }
         Some(_) => () // Peer exists
       }
+
+      // Always compute and store shared secret when receiving hello
+      // This ensures we have the latest shared secret if peer restarted
+      log_debug(
+        "DEBUG: Received Public Key from \{msg.source_id}: \{bytes_to_hex(public_key)}",
+      )
+      compute_and_store_shared_secret(msg.source_id, public_key)
 
       // Discover peers from advertised peer addresses in hello
       // Instead of waiting for welcome, process advertised peers directly

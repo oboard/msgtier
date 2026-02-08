@@ -2,6 +2,8 @@
 package "oboard/msgtier/x25519"
 
 // Values
+pub fn clamp_scalar(Bytes) -> Bytes
+
 pub fn compute_public_key(Bytes) -> Bytes
 
 pub fn compute_shared_secret(Bytes, Bytes) -> Bytes

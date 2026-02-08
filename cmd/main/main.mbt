@@ -7,16 +7,20 @@ let global_config : Ref[Config?] = Ref::new(None)
 ///|
 async fn main {
   // Initialize X25519 key pair
-  init_keypair()
+  // init_keypair()
   @async.with_task_group(fn(root) {
     let args = @env.args()[1:]
     match args {
       [config] => {
         let config = Config::from_file(config)
 
+        // Initialize X25519 key pair from config
+        init_keypair(config.secret)
+
         // Store config globally for access by listeners
         global_config.val = Some(config)
         log_debug(config.to_json().stringify(indent=2))
+        log_debug("DEBUG: My Public Key: \{bytes_to_hex(get_public_key())}")
         let id = config.id
 
         // Initialize shared secret with self for loopback encryption

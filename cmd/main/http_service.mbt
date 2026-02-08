@@ -47,7 +47,12 @@ async fn handle_http_request(
           target_id,
           @msgpack.encode(@msgpack.string(body_str)),
         )
-        (@msgpack.binary(data), true)
+        if data.length() > 0 {
+          (@msgpack.binary(data), true)
+        } else {
+          log_warn("No shared secret for \{target_id}, sending unencrypted")
+          (@msgpack.string(body_str), false)
+        }
       }
 
       // Create data message to send with body as data
@@ -67,6 +72,12 @@ async fn handle_http_request(
       log_debug("  Local: \{local_addr}")
       log_debug("  Data: \{body_str}")
       log_debug("  Self: \{is_self}")
+      log_debug("  Encrypted: \{is_encrypted}")
+      match data_val {
+        Binary(b) => log_debug("  DataVal: Binary len=\{b.length()}")
+        String(s) => log_debug("  DataVal: String len=\{s.length()}")
+        _ => log_debug("  DataVal: Other")
+      }
       log_info(
         "HTTP /send: Added pending message id=\{msg.id} target=\{target_id}",
       )
@@ -77,11 +88,11 @@ async fn handle_http_request(
       match (target_peer, is_self) {
         (Some(_), _) | (None, true) => {
 
-          // Add to pending message queue
-          add_pending_message(msg)
-
           // Register request to track response
           add_pending_request(msg.id)
+
+          // Add to pending message queue
+          add_pending_message(msg)
           log_debug("HTTP /send: Registered request id=\{msg.id}")
 
           // Wait for response with timeout (10 seconds)
