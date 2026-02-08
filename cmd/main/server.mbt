@@ -268,7 +268,7 @@ async fn handle_pending_messages(transport : &Transport) -> Unit {
           sent = true
         }
       } else {
-        let target_peer_id = match pending_msg.msg.target {
+        let target_peer_id = match pending_msg.msg.target_id {
           Some(target_id) => target_id
           None => pending_msg.target
         }
@@ -478,8 +478,8 @@ async fn handle_heartbeat(
         }
         let ping_msg = Message::new(
           kind="ping",
-          from~,
-          addr=ping_local_addr,
+          source_id=from,
+          source_addr=ping_local_addr,
           version=VERSION,
           session_id?=conn.session_id,
         )
@@ -578,22 +578,22 @@ async fn handle_incoming_message(
     }
   }
   // Skip messages from self, unless target is self
-  if msg.from == id && msg.target != Some(id) {
+  if msg.source_id == id && msg.target_id != Some(id) {
     return
   }
   // Logger
-  log_info("[\{msg.kind}]\t\{msg.from}(\{sender_addr})")
+  log_info("[\{msg.kind}]\t\{msg.source_id}(\{sender_addr})")
   log_debug(
     "DEBUG: incoming protocol=\{transport.protocol()} local=\{local_addr} sender=\{sender_addr} kind=\{msg.kind} id=\{msg.id}",
   )
   // Handle the connection - always create/update connection for any message
   // Determine connectable address from hello message
-  let connectable_addr = if msg.kind == "hello" && !msg.addr.is_empty() {
+  let connectable_addr = if msg.kind == "hello" && !msg.source_addr.is_empty() {
     // Ensure address has protocol
-    let addr_str = if msg.addr.contains("://") {
-      msg.addr
+    let addr_str = if msg.source_addr.contains("://") {
+      msg.source_addr
     } else {
-      transport.protocol() + "://" + msg.addr
+      transport.protocol() + "://" + msg.source_addr
     }
     match @url.Url::parse(addr_str) {
       Some(url) => {
@@ -662,7 +662,7 @@ async fn handle_incoming_message(
         None => ()
       }
       Some(NetworkDiscoveryInfo::{
-        id: msg.from,
+        id: msg.source_id,
         version: match msg.version {
           Some(v) => v
           None => VERSION
@@ -686,7 +686,7 @@ async fn handle_incoming_message(
     sender_addr
   }
   let (conn, is_new_connection, _is_new_peer) = handle_new_connection(
-    msg.from,
+    msg.source_id,
     local_addr,
     effective_addr,
     transport.protocol(),
@@ -698,14 +698,14 @@ async fn handle_incoming_message(
     },
   )
   log_debug(
-    "DEBUG: connection handled peer=\{msg.from} local=\{local_addr} remote=\{effective_addr} protocol=\{transport.protocol()} new=\{is_new_connection}",
+    "DEBUG: connection handled peer=\{msg.source_id} local=\{local_addr} remote=\{effective_addr} protocol=\{transport.protocol()} new=\{is_new_connection}",
   )
   // let now = @env.now()
   // let diff = if now >= conn.last_seen { now - conn.last_seen } else { 0UL }
 
   // Store peer's public key if provided and compute shared secret (only if not already stored)
   if msg.public_key is Some(pk) {
-    compute_and_store_shared_secret(msg.from, pk)
+    compute_and_store_shared_secret(msg.source_id, pk)
   }
 
   // Track bytes received
@@ -722,13 +722,13 @@ async fn handle_incoming_message(
   // Only broadcast connection update if this is a NEW connection
   if is_new_connection {
     log_debug(
-      "DEBUG: new connection broadcast_sync peer=\{msg.from} local=\{local_addr}",
+      "DEBUG: new connection broadcast_sync peer=\{msg.source_id} local=\{local_addr}",
     )
     broadcast_sync(id, local_addr)
   }
 
   // Handle message relaying: if target is set and we're not the target, forward it
-  if msg.target is Some(target_peer_id) {
+  if msg.target_id is Some(target_peer_id) {
     if global_config.val is Some({ id, .. }) && id == target_peer_id {
       // Message is for us, continue to process
     } else {
@@ -799,7 +799,7 @@ async fn handle_incoming_message(
       } else {
         let path_str = msg.visited.join(" -> ")
         log_warn(
-          "Dropping message from \{msg.from} to \{target_peer_id}: already visited this node (loop detected), path: \{path_str}",
+          "Dropping message from \{msg.source_id} to \{target_peer_id}: already visited this node (loop detected), path: \{path_str}",
         )
         return
       }
@@ -808,7 +808,7 @@ async fn handle_incoming_message(
 
   // Handle broadcast forwarding: if broadcast is true, forward to all peers (except sender)
   if msg.broadcast &&
-    msg.from != id &&
+    msg.source_id != id &&
     !msg.visited.any(fn(peer_id) { peer_id == id }) {
     // Add current node to visited list to track the path and prevent loops
     let updated_visited = msg.visited
@@ -821,11 +821,11 @@ async fn handle_incoming_message(
         let broadcast_msg = Message::new(
           id=msg.id,
           kind=msg.kind,
-          from=msg.from,
-          addr=msg.addr,
+          source_id=msg.source_id,
+          source_addr=msg.source_addr,
           relay=msg.relay + 1,
           visited=updated_visited, // Keep visited list to track path
-          target?=msg.target,
+          target?=msg.target_id,
           data=msg.data,
           version?=msg.version,
           public_key?=msg.public_key,
@@ -842,7 +842,7 @@ async fn handle_incoming_message(
     {
       kind: "hello",
       secret_hash: Some(peer_secret_hash),
-      from,
+      source_id,
       peers: advertised_peers,
       public_key: Some(public_key),
       ..,
@@ -854,7 +854,7 @@ async fn handle_incoming_message(
           if peer_secret_hash != our_secret_hash {
             // Secret mismatch - reject this peer
             log_warn(
-              "Rejecting peer \{msg.from} at \{sender_addr}: secret mismatch",
+              "Rejecting peer \{msg.source_id} at \{sender_addr}: secret mismatch",
             )
             false
           } else {
@@ -873,14 +873,14 @@ async fn handle_incoming_message(
       }
 
       // Ensure peer exists in manager before learning address
-      match get_global_peer_manager().get_peer(msg.from) {
+      match get_global_peer_manager().get_peer(msg.source_id) {
         None => {
           // Peer doesn't exist yet, create it
           let peer_node = PeerNode::new(
-            id=msg.from,
+            id=msg.source_id,
             version=VERSION,
             public_key~,
-            addresses=[msg.addr],
+            addresses=[msg.source_addr],
             metadata={},
           )
           update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
@@ -905,11 +905,11 @@ async fn handle_incoming_message(
                 ()
               None => {
                 // First time seeing this address - set relay path and send hello
-                set_relay_path(peer_url, "unknown", msg.from)
+                set_relay_path(peer_url, "unknown", msg.source_id)
 
                 // Check if we already have ANY connection to this address (active or not)
                 let already_connected = all_conns.any(fn(conn) {
-                  conn.peer_id == from
+                  conn.peer_id == source_id
                 })
                 if !already_connected {
                   // Send hello to discover this peer via relay through msg.from
@@ -942,8 +942,8 @@ async fn handle_incoming_message(
       // This ensures peer discovery propagates through the network even for peers
       // we only know via relay paths
       // Debounce: only re-broadcast once per peer per 30 seconds
-      if should_rebroadcast_hello(msg.from) {
-        record_hello_time(msg.from)
+      if should_rebroadcast_hello(msg.source_id) {
+        record_hello_time(msg.source_id)
         let known_peers = get_all_known_peers()
         for peer_url in known_peers {
           // Don't send back to the peer we just received it from
@@ -956,14 +956,14 @@ async fn handle_incoming_message(
     }
     { kind: "hello", .. } => {
       // Hello without secret_hash - reject it (backwards compatibility)
-      log_warn("Rejecting hello from \{msg.from}: no secret_hash provided")
+      log_warn("Rejecting hello from \{msg.source_id}: no secret_hash provided")
       ()
     }
     { kind: "ping", .. } => {
       let reply = Message::new(
         kind="pong",
-        from=id,
-        addr=local_addr,
+        source_id=id,
+        source_addr=local_addr,
         session_id?=msg.session_id,
       )
       let ok = send_message(transport, sender_addr, reply)
@@ -973,7 +973,7 @@ async fn handle_incoming_message(
     }
     { kind: "pong", .. } => {
       // Heartbeat response received - mark connection as healthy
-      let peer_id = msg.from
+      let peer_id = msg.source_id
       log_debug(
         "DEBUG: pong recv protocol=\{transport.protocol()} from=\{sender_addr} peer=\{peer_id}",
       )
@@ -1001,18 +1001,18 @@ async fn handle_incoming_message(
         }
       }
     }
-    { kind: "punch_request", target: Some(target), .. } => {
+    { kind: "punch_request", target_id: Some(target), .. } => {
       let punch_to_target = Message::new(
         kind="punch",
-        from=id,
-        addr=local_addr,
+        source_id=id,
+        source_addr=local_addr,
         relay=2,
         target=sender_addr,
       )
       let punch_to_sender = Message::new(
         kind="punch",
-        from=id,
-        addr=local_addr,
+        source_id=id,
+        source_addr=local_addr,
         relay=2,
         target~,
       )
@@ -1021,25 +1021,25 @@ async fn handle_incoming_message(
       // using pending is safer for consistency
       ignore(send_message(transport, sender_addr, punch_to_sender))
     }
-    { kind: "punch", target: Some(target), .. } => {
+    { kind: "punch", target_id: Some(target), .. } => {
       let ack_to_target = Message::new(
         kind="punch_ack",
-        from=id,
-        addr=local_addr,
+        source_id=id,
+        source_addr=local_addr,
       )
       let ack_to_sender = Message::new(
         kind="punch_ack",
-        from=id,
-        addr=local_addr,
+        source_id=id,
+        source_addr=local_addr,
       )
       add_pending_message(target, ack_to_target)
       ignore(send_message(transport, sender_addr, ack_to_sender))
     }
-    { kind: "relay", target: Some(target), data, .. } => {
+    { kind: "relay", target_id: Some(target), data, .. } => {
       let forward = Message::new(
         kind="data",
-        from=msg.from,
-        addr=msg.addr,
+        source_id=msg.source_id,
+        source_addr=msg.source_addr,
         relay=2,
         data~,
         target~,
@@ -1048,7 +1048,7 @@ async fn handle_incoming_message(
       add_pending_message(target, forward)
     }
     // Proxy handlers moved to kind="data" with ProxyMessage
-    { kind: "send", target: Some(target), data, .. } => {
+    { kind: "send", target_id: Some(target), data, .. } => {
       // When sending new data, encrypt it for the target
       let encrypted_data = match data {
         Binary(raw) => @msgpack.binary(encrypt_for_peer(target, raw))
@@ -1056,8 +1056,8 @@ async fn handle_incoming_message(
       }
       let direct = Message::new(
         kind="data",
-        from=msg.from,
-        addr=msg.addr,
+        source_id=msg.source_id,
+        source_addr=msg.source_addr,
         data=encrypted_data,
         target~,
         encrypted=true,
@@ -1082,15 +1082,15 @@ async fn handle_incoming_message(
         Some(relay_conn) => {
           let request = Message::new(
             kind="punch_request",
-            from=id,
-            addr=local_addr,
+            source_id=id,
+            source_addr=local_addr,
             relay=2,
             target~,
           )
           let relay = Message::new(
             kind="relay",
-            from=msg.from,
-            addr=msg.addr,
+            source_id=msg.source_id,
+            source_addr=msg.source_addr,
             relay=2,
             target~,
             data~,
@@ -1103,18 +1103,18 @@ async fn handle_incoming_message(
     }
     { kind: "data", data: Binary(raw_data), encrypted, .. } => {
       log_debug(
-        "DEBUG: Processing data message from \{msg.from}, encrypted=\{encrypted}",
+        "DEBUG: Processing data message from \{msg.source_id}, encrypted=\{encrypted}",
       )
       // Decrypt data if encrypted
       let data_content = if encrypted {
-        match decrypt_from_peer(msg.from, raw_data) {
+        match decrypt_from_peer(msg.source_id, raw_data) {
           Some(decrypted) => {
-            log_debug("DEBUG: Decrypted message from \{msg.from}")
+            log_debug("DEBUG: Decrypted message from \{msg.source_id}")
             decrypted
           }
           None => {
             log_error(
-              "Failed to decrypt message from \{msg.from}, raw=\{raw_data}",
+              "Failed to decrypt message from \{msg.source_id}, raw=\{raw_data}",
             )
             raw_data
           }
@@ -1132,7 +1132,13 @@ async fn handle_incoming_message(
             log_debug("DEBUG: Spawning handle_proxy_message op=\{proxy_msg.op}")
             ignore(
               root.spawn(fn() {
-                handle_proxy_message(root, id, local_addr, msg.from, proxy_msg)
+                handle_proxy_message(
+                  root,
+                  id,
+                  local_addr,
+                  msg.source_id,
+                  proxy_msg,
+                )
               }),
             )
             true
@@ -1157,16 +1163,16 @@ async fn handle_incoming_message(
               // Send response back to sender with script outputs
               let response_msg = Message::new(
                 kind="data_response",
-                from=id,
-                addr=local_addr,
+                source_id=id,
+                source_addr=local_addr,
                 relay=1,
                 data=output.to_msgpack(),
                 payload=msg.id,
               )
               // Add pending message instead of direct send
-              add_pending_message(msg.from, response_msg)
+              add_pending_message(msg.source_id, response_msg)
               log_info(
-                "DataResponse: queued id=\{response_msg.id} correlation=\{msg.id} to=\{msg.from}",
+                "DataResponse: queued id=\{response_msg.id} correlation=\{msg.id} to=\{msg.source_id}",
               )
             }
             None =>
@@ -1177,13 +1183,15 @@ async fn handle_incoming_message(
     }
     { kind: "data_response", data: response_data, payload: correlation_id, .. } => {
       // Handle response from script execution
-      log_info("Received script response from \{msg.from}:")
+      log_info("Received script response from \{msg.source_id}:")
       log_debug(response_data.to_string().unwrap_or("error"))
 
       // If this is a response to a pending request, resolve it
       match correlation_id {
         Some(id) => {
-          log_debug("DataResponse: resolve correlation=\{id} from=\{msg.from}")
+          log_debug(
+            "DataResponse: resolve correlation=\{id} from=\{msg.source_id}",
+          )
           // Try to convert response to JSON string
           match response_data {
             Array(arr) => {
@@ -1207,7 +1215,8 @@ async fn handle_incoming_message(
               )
           }
         }
-        None => log_warn("DataResponse: missing correlation from=\{msg.from}")
+        None =>
+          log_warn("DataResponse: missing correlation from=\{msg.source_id}")
       }
     }
     { kind: "sync", data: Array(conn_entries), .. } => {
@@ -1225,7 +1234,7 @@ async fn handle_incoming_message(
             let pk = sync_conn.public_key
 
             // If relay_depth is 1, it's a direct neighbor of the sender
-            if relay_depth == 1 && peer_id != msg.from {
+            if relay_depth == 1 && peer_id != msg.source_id {
               sender_connections.push(PeerConnectionInfo::{
                 peer_id,
                 latency_ms: sync_conn.latency_ms,
@@ -1255,7 +1264,7 @@ async fn handle_incoming_message(
               // (Since relay_depth is the distance from msg.from to peer_id)
               let new_hops = relay_depth + 1
               update_global_peer_manager(fn(manager) {
-                manager.update_route(peer_id, msg.from, new_hops)
+                manager.update_route(peer_id, msg.source_id, new_hops)
               })
 
               // Add discovered address to known peers for potential direct connection
@@ -1298,7 +1307,7 @@ async fn handle_incoming_message(
 
               // Create or update connection if it's a direct neighbor (for compatibility)
               // Only if remote_addr is not "routed" placeholder
-              if peer_id == msg.from && remote_addr != "routed" {
+              if peer_id == msg.source_id && remote_addr != "routed" {
                 // Ensure remote_addr has protocol
                 let safe_remote_addr = if remote_addr.contains("://") {
                   remote_addr
@@ -1323,7 +1332,7 @@ async fn handle_incoming_message(
       // Update sender's connections in PeerManager
       if !sender_connections.is_empty() {
         update_global_peer_manager(fn(manager) {
-          manager.update_peer_connections(msg.from, sender_connections)
+          manager.update_peer_connections(msg.source_id, sender_connections)
         })
       }
     }

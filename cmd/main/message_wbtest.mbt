@@ -4,8 +4,8 @@ test "message roundtrip encoding/decoding" {
   let original : Message = Message::new(
     id="test-msg-1",
     kind="hello",
-    from="node-a",
-    addr="127.0.0.1:8000",
+    source_id="node-a",
+    source_addr="127.0.0.1:8000",
     relay=1,
     version="1.0",
     encrypted=false,
@@ -20,8 +20,8 @@ test "message roundtrip encoding/decoding" {
   // Verify fields match
   assert_eq(decoded.id, original.id)
   assert_eq(decoded.kind, original.kind)
-  assert_eq(decoded.from, original.from)
-  assert_eq(decoded.addr, original.addr)
+  assert_eq(decoded.source_id, original.source_id)
+  assert_eq(decoded.source_addr, original.source_addr)
   assert_eq(decoded.relay, original.relay)
   assert_eq(decoded.version, original.version)
   assert_eq(decoded.encrypted, original.encrypted)
@@ -33,8 +33,8 @@ test "message with optional fields subset 1" {
   let original : Message = Message::new(
     id="test-msg-2",
     kind="data",
-    from="node-a",
-    addr="127.0.0.1:8000",
+    source_id="node-a",
+    source_addr="127.0.0.1:8000",
     relay=2,
     version="1.0",
     encrypted=true,
@@ -49,8 +49,8 @@ test "message with optional fields subset 1" {
   // Verify fields match
   assert_eq(decoded.id, original.id)
   assert_eq(decoded.kind, original.kind)
-  assert_eq(decoded.from, original.from)
-  assert_eq(decoded.addr, original.addr)
+  assert_eq(decoded.source_id, original.source_id)
+  assert_eq(decoded.source_addr, original.source_addr)
   assert_eq(decoded.relay, original.relay)
   assert_eq(decoded.version, original.version)
   assert_eq(decoded.encrypted, original.encrypted)
@@ -66,8 +66,8 @@ test "message with peers" {
   let original : Message = Message::new(
     id="test-msg-3",
     kind="data",
-    from="node-a",
-    addr="127.0.0.1:8000",
+    source_id="node-a",
+    source_addr="127.0.0.1:8000",
     relay=1,
     peers=peers_list,
   )
@@ -108,8 +108,8 @@ test "message with short array (pre-optional fields)" {
   // Verify required fields are decoded correctly
   assert_eq(decoded.id, "msg-id")
   assert_eq(decoded.kind, "hello")
-  assert_eq(decoded.from, "node-a")
-  assert_eq(decoded.addr, "127.0.0.1:8000")
+  assert_eq(decoded.source_id, "node-a")
+  assert_eq(decoded.source_addr, "127.0.0.1:8000")
   assert_eq(decoded.relay, 1)
   assert_eq(decoded.visited.length(), 0)
   assert_eq(decoded.encrypted, false)
@@ -119,7 +119,7 @@ test "message with short array (pre-optional fields)" {
   assert_eq(decoded.public_key, None)
   assert_eq(decoded.secret_hash, None)
   assert_eq(decoded.payload, None)
-  assert_eq(decoded.target, None)
+  assert_eq(decoded.target_id, None)
   assert_eq(decoded.data, @msgpack.nil())
   assert_eq(decoded.peers, None)
 }

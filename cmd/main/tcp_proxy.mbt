@@ -163,8 +163,8 @@ async fn start_tcp_proxy(
     let encrypted_bytes = encrypt_for_peer(target_peer, encoded_bytes)
     let connect_msg = Message::new(
       kind="data",
-      from=get_config().id,
-      addr=listen_addr,
+      source_id=get_config().id,
+      source_addr=listen_addr,
       target=target_peer,
       data=@msgpack.binary(encrypted_bytes),
       encrypted=true,
@@ -191,8 +191,8 @@ async fn start_tcp_proxy(
             let encrypted_bytes = encrypt_for_peer(target_peer, encoded_bytes)
             let data_msg = Message::new(
               kind="data",
-              from=get_config().id,
-              addr=listen_addr,
+              source_id=get_config().id,
+              source_addr=listen_addr,
               target=target_peer,
               data=@msgpack.binary(encrypted_bytes),
               encrypted=true,
@@ -222,8 +222,8 @@ async fn start_tcp_proxy(
     let encrypted_bytes = encrypt_for_peer(target_peer, encoded_bytes)
     let close_msg = Message::new(
       kind="data",
-      from=get_config().id,
-      addr=listen_addr,
+      source_id=get_config().id,
+      source_addr=listen_addr,
       target=target_peer,
       data=@msgpack.binary(encrypted_bytes),
       encrypted=true,
@@ -335,8 +335,8 @@ async fn handle_proxy_message(
                           let encrypted = encrypt_for_peer(sender_id, encoded)
                           let data_msg = Message::new(
                             kind="data",
-                            from=local_id,
-                            addr=local_addr,
+                            source_id=local_id,
+                            source_addr=local_addr,
                             target=sender_id,
                             data=@msgpack.binary(encrypted),
                             encrypted=true,
@@ -361,8 +361,8 @@ async fn handle_proxy_message(
                   let encrypted = encrypt_for_peer(sender_id, encoded)
                   let close_msg = Message::new(
                     kind="data",
-                    from=local_id,
-                    addr=local_addr,
+                    source_id=local_id,
+                    source_addr=local_addr,
                     target=sender_id,
                     data=@msgpack.binary(encrypted),
                     encrypted=true,
@@ -424,8 +424,8 @@ async fn handle_proxy_message(
                         let encrypted = encrypt_for_peer(sender_id, encoded)
                         let data_msg = Message::new(
                           kind="data",
-                          from=local_id,
-                          addr=local_addr,
+                          source_id=local_id,
+                          source_addr=local_addr,
                           target=sender_id,
                           data=@msgpack.binary(encrypted),
                           encrypted=true,
@@ -448,8 +448,8 @@ async fn handle_proxy_message(
                 let encrypted = encrypt_for_peer(sender_id, encoded)
                 let close_msg = Message::new(
                   kind="data",
-                  from=local_id,
-                  addr=local_addr,
+                  source_id=local_id,
+                  source_addr=local_addr,
                   target=sender_id,
                   data=@msgpack.binary(encrypted),
                   encrypted=true,

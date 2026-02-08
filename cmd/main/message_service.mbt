@@ -109,8 +109,8 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
   }
   Message::new(
     kind="sync",
-    from=my_id,
-    addr=local_addr,
+    source_id=my_id,
+    source_addr=local_addr,
     relay=1,
     broadcast=true,
     data=@msgpack.array(connections_data),
@@ -152,8 +152,8 @@ fn create_hello_message(
   }
   Message::new(
     kind="hello",
-    from=peer_id,
-    addr=local_addr,
+    source_id=peer_id,
+    source_addr=local_addr,
     relay~,
     version=VERSION,
     peers?=peers_opt,

@@ -2,14 +2,14 @@
 struct Message {
   id : String
   kind : String
-  from : String
-  addr : String
+  source_id : String
+  source_addr : String
   relay : Int // Relay depth: 1=direct, 2=relayed once, 3+=relayed multiple times
   visited : Array[String] // Track visited node IDs to prevent routing loops (DFS path tracking)
   version : String?
   peers : Array[NetworkAddress]?
   payload : String?
-  target : String? // If set, relay to this address; if unset, process locally
+  target_id : String? // If set, send to this peer; if unset, broadcast
   data : @msgpack.Value
   public_key : Bytes? // X25519 public key for E2E encryption (sent in hello/welcome)
   secret_hash : String? // Hash of network secret for authentication
@@ -22,8 +22,8 @@ struct Message {
 fn Message::new(
   id? : String,
   kind~ : String,
-  from~ : String,
-  addr~ : String,
+  source_id~ : String,
+  source_addr~ : String,
   relay? : Int = 1,
   visited? : Array[String] = [],
   version? : String,
@@ -44,14 +44,14 @@ fn Message::new(
       ).to_string_simple(),
     ),
     kind,
-    from,
-    addr,
+    source_id,
+    source_addr,
     relay,
     visited,
     version,
     peers,
     payload,
-    target,
+    target_id: target,
     data,
     public_key,
     secret_hash,
@@ -72,8 +72,8 @@ fn Message::to_msgpack(self : Message) -> Bytes {
   let values : Array[@msgpack.Value] = [
     @msgpack.string(self.id),
     @msgpack.string(self.kind),
-    @msgpack.string(self.from),
-    @msgpack.string(self.addr),
+    @msgpack.string(self.source_id),
+    @msgpack.string(self.source_addr),
     @msgpack.int(self.relay),
     @msgpack.array(visited_array),
     @msgpack.bool(self.encrypted), // Always set encrypted field (might be true if message is encrypted)
@@ -93,7 +93,7 @@ fn Message::to_msgpack(self : Message) -> Bytes {
       Some(p) => @msgpack.string(p)
       None => @msgpack.nil()
     },
-    match self.target {
+    match self.target_id {
       Some(t) => @msgpack.string(t)
       None => @msgpack.nil()
     },
@@ -137,11 +137,11 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         String(v) => v
         _ => fail("Invalid or missing kind at position 1")
       }
-      let from = match arr[2] {
+      let source_id = match arr[2] {
         String(v) => v
         _ => fail("Invalid or missing from at position 2")
       }
-      let addr = match arr[3] {
+      let source_addr = match arr[3] {
         String(v) => v
         _ => fail("Invalid or missing addr at position 3")
       }
@@ -218,7 +218,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         None
       }
       let target_pos = payload_pos + 1
-      let target = if arr.length() > target_pos {
+      let target_id = if arr.length() > target_pos {
         match arr[target_pos] {
           String(v) => Some(v)
           Nil => None
@@ -276,14 +276,14 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
       Message::{
         id,
         kind,
-        from,
-        addr,
+        source_id,
+        source_addr,
         relay,
         visited,
         version,
         peers,
         payload,
-        target,
+        target_id,
         data,
         public_key,
         secret_hash,

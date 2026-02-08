@@ -51,8 +51,8 @@ async fn handle_http_request(
       // Create data message to send with body as data
       let msg = Message::new(
         kind="data",
-        from=peer_id,
-        addr=local_addr,
+        source_id=peer_id,
+        source_addr=local_addr,
         relay=1,
         version=VERSION,
         target~,
