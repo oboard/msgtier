@@ -38,34 +38,17 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
   for peer in all_peers {
     let peer_conns = peer.get_all_connections(all_conns)
     for conn in peer_conns {
-      let pk = peer.public_key
       let elapsed_ms = @env.now() - conn.last_seen
       let bandwidth_mbps = conn.calculate_bandwidth_mbps(elapsed_ms)
       let packet_loss_rate = conn.calculate_packet_loss()
-      let sync_conn = SyncConnection::{
-        peer_id: peer.id,
-        remote_addr: conn.remote_addr,
-        relay: conn.relay,
-        public_key: pk,
-        latency_ms: conn.latency_ms,
+      let updated_conn = Connection::{
+        ..conn,
+        public_key: peer.public_key,
         bandwidth_mbps,
         packet_loss_rate,
-        id: conn.id,
-        protocol: conn.protocol,
-        local_addr: conn.local_addr,
-        last_seen: conn.last_seen,
-        quality: conn.quality,
-        metadata: conn.metadata,
-        latency_history: conn.latency_history,
-        packets_sent: conn.packets_sent,
-        packets_lost: conn.packets_lost,
-        bytes_sent: conn.bytes_sent,
-        bytes_received: conn.bytes_received,
-        last_ping_time: conn.last_ping_time,
         version: peer.version,
-        nat_type: conn.nat_type,
       }
-      connections_data.push(sync_conn.to_msgpack())
+      connections_data.push(updated_conn.to_msgpack())
     }
   }
 
@@ -77,29 +60,29 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
     if route.hops > 1 {
       match get_global_peer_manager().get_peer(peer_id) {
         Some(peer) => {
-          let pk = peer.public_key
-          let sync_conn = SyncConnection::{
-            peer_id,
+          let sync_conn = Connection::{
+            id: "",
+            local_addr: "",
             remote_addr: "routed",
+            protocol: "",
+            peer_id,
+            public_key: peer.public_key,
+            last_seen: route.timestamp,
+            quality: 0,
             relay: route.hops,
-            public_key: pk,
+            metadata: None,
             latency_ms: None,
             bandwidth_mbps: 0.0,
             packet_loss_rate: 0,
-            id: "",
-            protocol: "",
-            local_addr: "",
-            last_seen: route.timestamp,
-            quality: 0,
-            metadata: None,
             latency_history: [],
             packets_sent: 0,
             packets_lost: 0,
-            bytes_sent: 0,
-            bytes_received: 0,
+            bytes_sent: 0UL,
+            bytes_received: 0UL,
             last_ping_time: None,
             version: peer.version,
             nat_type: Unknown,
+            session_id: None,
           }
           connections_data.push(sync_conn.to_msgpack())
         }

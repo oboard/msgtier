@@ -858,34 +858,34 @@ async fn handle_incoming_message(
 
       // Parse connection entry: [peer_id, remote_addr, relay, public_key, latency, bandwidth, packet_loss]
       for entry in conn_entries {
-        match SyncConnection::from_msgpack(entry) {
-          Some(sync_conn) => {
-            let peer_id = sync_conn.peer_id
-            let remote_addr = sync_conn.remote_addr
-            let relay_depth = sync_conn.relay
-            let pk = sync_conn.public_key
+        match Connection::from_msgpack(entry) {
+          Some(conn) => {
+            let peer_id = conn.peer_id
+            let remote_addr = conn.remote_addr
+            let relay_depth = conn.relay
+            let pk = conn.public_key
 
             // If relay_depth is 1, it's a direct neighbor of the sender
             if relay_depth == 1 && peer_id != msg.source_id {
               sender_connections.push(PeerConnectionInfo::{
                 peer_id,
-                latency_ms: sync_conn.latency_ms,
-                bandwidth_mbps: sync_conn.bandwidth_mbps,
-                packet_loss_rate: sync_conn.packet_loss_rate,
-                id: sync_conn.id,
-                local_addr: sync_conn.local_addr,
-                remote_addr: sync_conn.remote_addr,
-                last_seen: sync_conn.last_seen,
-                quality: sync_conn.quality,
-                relay: sync_conn.relay,
-                metadata: sync_conn.metadata,
-                latency_history: sync_conn.latency_history,
-                packets_sent: sync_conn.packets_sent,
-                packets_lost: sync_conn.packets_lost,
-                bytes_sent: sync_conn.bytes_sent,
-                bytes_received: sync_conn.bytes_received,
-                last_ping_time: sync_conn.last_ping_time,
-                nat_type: sync_conn.nat_type,
+                latency_ms: conn.latency_ms,
+                bandwidth_mbps: conn.bandwidth_mbps,
+                packet_loss_rate: conn.packet_loss_rate,
+                id: conn.id,
+                local_addr: conn.local_addr,
+                remote_addr: conn.remote_addr,
+                last_seen: conn.last_seen,
+                quality: conn.quality,
+                relay: conn.relay,
+                metadata: conn.metadata,
+                latency_history: conn.latency_history,
+                packets_sent: conn.packets_sent,
+                packets_lost: conn.packets_lost,
+                bytes_sent: conn.bytes_sent,
+                bytes_received: conn.bytes_received,
+                last_ping_time: conn.last_ping_time,
+                nat_type: conn.nat_type,
               })
             }
 
@@ -918,7 +918,7 @@ async fn handle_incoming_message(
                   }
                   let peer_node = PeerNode::new(
                     id=peer_id,
-                    version=sync_conn.version,
+                    version=conn.version,
                     public_key=pk,
                     addresses~,
                     metadata={},
@@ -944,13 +944,13 @@ async fn handle_incoming_message(
                 let safe_remote_addr = if remote_addr.contains("://") {
                   remote_addr
                 } else {
-                  sync_conn.protocol + "://" + remote_addr
+                  conn.protocol + "://" + remote_addr
                 }
                 let (_conn, _is_new, _is_new_peer) = handle_new_connection(
                   peer_id,
                   local_addr,
                   safe_remote_addr,
-                  sync_conn.protocol,
+                  conn.protocol,
                   relay_depth~,
                 )
 
