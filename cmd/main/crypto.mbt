@@ -11,7 +11,6 @@ let global_shared_secrets : Ref[Map[String, Bytes]] = Ref::new({})
 fn init_keypair() -> Unit {
   let (priv_key, pub_key) = @x25519.generate_keypair()
   global_keypair.val = Some((priv_key, pub_key))
-  println("X25519 key pair generated successfully")
 }
 
 ///|

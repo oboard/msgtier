@@ -131,7 +131,7 @@ async fn send_message(
     transport.send(target_addr, msgpack_bytes)
   } catch {
     _ => {
-      println("Failed to send message to \{target_addr}")
+      log_warn("Failed to send message to \{target_addr}")
       false
     }
   }
@@ -183,9 +183,9 @@ async fn send_message_with_fallback(
       try {
         let msgpack_bytes = msg.to_msgpack()
         transport.send(primary_addr, msgpack_bytes) |> ignore
-        println("Sent to primary \{primary_addr}")
+        log_debug("Sent to primary \{primary_addr}")
       } catch {
-        _ => println("Failed to send to primary \{primary_addr}")
+        _ => log_warn("Failed to send to primary \{primary_addr}")
       }
     }
   }
@@ -199,9 +199,9 @@ async fn send_message_with_fallback(
       try {
         let msgpack_bytes = msg.to_msgpack()
         transport.send(fallback_addr, msgpack_bytes) |> ignore
-        println("Sent to fallback \{fallback_addr}")
+        log_debug("Sent to fallback \{fallback_addr}")
       } catch {
-        _ => println("Failed to send to fallback \{fallback_addr}")
+        _ => log_warn("Failed to send to fallback \{fallback_addr}")
       }
     }
   }

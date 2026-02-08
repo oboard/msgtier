@@ -61,16 +61,18 @@ async fn handle_http_request(
       )
 
       // Print to stdout for debugging
-      println("HTTP /send: Queuing message id=\{msg.id} to \{target}")
-      println("  From: \{peer_id}")
-      println("  Local: \{local_addr}")
-      println("  Data: \{body_str}")
-      println("  Encrypted: \{is_encrypted}")
-      println("  Self: \{is_self}")
+      log_debug("HTTP /send: Queuing message id=\{msg.id} to \{target}")
+      log_debug("  From: \{peer_id}")
+      log_debug("  Local: \{local_addr}")
+      log_debug("  Data: \{body_str}")
+      log_debug("  Encrypted: \{is_encrypted}")
+      log_debug("  Self: \{is_self}")
 
       // Add to pending message queue
       add_pending_message(target, msg)
-      println("HTTP /send: Added pending message id=\{msg.id} target=\{target}")
+      log_debug(
+        "HTTP /send: Added pending message id=\{msg.id} target=\{target}",
+      )
 
       // Check if target peer exists or is self
       let target_peer = get_global_peer_manager().get_peer(target)
@@ -79,7 +81,7 @@ async fn handle_http_request(
         (Some(_), _) | (None, true) => {
           // Register request to track response
           add_pending_request(msg.id)
-          println("HTTP /send: Registered request id=\{msg.id}")
+          log_debug("HTTP /send: Registered request id=\{msg.id}")
 
           // Wait for response with timeout (10 seconds)
           match wait_for_response(msg.id, 10000) {
@@ -130,7 +132,7 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
       server.run_forever(handle_http_request)
     } catch {
       e => {
-        println("HTTP server failed to start: \{e}. Retrying in 5 seconds...")
+        log_warn("HTTP server failed to start: \{e}. Retrying in 5 seconds...")
         @async.sleep(5000)
       }
     }

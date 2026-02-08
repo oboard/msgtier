@@ -116,11 +116,11 @@ async fn process_script_execution(
       let final_args = []
       final_args.push_iter(cmd_args.iter())
       final_args.push_iter(args.iter().map(fn(s) { s.to_string() }))
-      println("[script]\t\{content_str}")
+      log_info("[script]\t\{content_str}")
       execute_script_with_output(program, final_args, "")
     }
     None => {
-      println("Script not found: \{content_str}")
+      log_warn("Script not found: \{content_str}")
       { exit_code: 1, output: "Script not found: \{content_str}" }
     }
   }

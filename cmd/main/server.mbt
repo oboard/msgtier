@@ -39,14 +39,22 @@ fn handle_new_connection(
 
   // Add or update peer with provided info
   if peer_info is Some(info) {
-    let peer_node = PeerNode::new(
-      id=info.id,
-      version=info.version,
-      public_key=info.public_key,
-      addresses=[remote_addr],
-      metadata={},
-    )
+    let peer_node = match get_global_peer_manager().get_peer(info.id) {
+      Some(existing) =>
+        { ..existing, version: info.version, public_key: info.public_key }
+      None =>
+        PeerNode::new(
+          id=info.id,
+          version=info.version,
+          public_key=info.public_key,
+          addresses=[remote_addr],
+          metadata={},
+        )
+    }
     update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
+    update_global_peer_manager(fn(manager) {
+      manager.add_peer_address(info.id, remote_addr)
+    })
 
     // Add all addresses provided in peer_info to the peer manager
     for addr_obj in info.addresses {
@@ -249,7 +257,7 @@ async fn handle_pending_messages(transport : &Transport) -> Unit {
       let mut sent = false
       if pending_msg.target.has_prefix(protocol_prefix) {
         let msg = pending_msg.msg
-        println(
+        log_debug(
           "PendingMessage: direct addr=\{pending_msg.target} id=\{msg.id}",
         )
         let success = send_message(transport, pending_msg.target, msg)
@@ -278,7 +286,7 @@ async fn handle_pending_messages(transport : &Transport) -> Unit {
           let msg = pending_msg.msg
 
           // Address target: send directly on this transport
-          println("PendingMessage: direct addr=\{target_addr} id=\{msg.id}")
+          log_debug("PendingMessage: direct addr=\{target_addr} id=\{msg.id}")
           let success = send_message(transport, target_addr, msg)
           log_debug(
             "DEBUG: pending send protocol=\{transport.protocol()} addr=\{target_addr} id=\{msg.id} ok=\{success}",
@@ -492,7 +500,7 @@ async fn handle_heartbeat(
 
         // Check if connection has timed out (no response for CONNECTION_TIMEOUT_MS)
         if current_time - conn.last_seen > CONNECTION_TIMEOUT_MS {
-          println("Connection to \{peer_id} at \{conn.remote_addr} timed out")
+          log_warn("Connection to \{peer_id} at \{conn.remote_addr} timed out")
           update_global_connection_manager(fn(manager) {
             manager.remove_connection(conn.id)
           })
@@ -574,7 +582,7 @@ async fn handle_incoming_message(
     return
   }
   // Logger
-  println("[\{msg.kind}]\t\{msg.from}(\{sender_addr})")
+  log_info("[\{msg.kind}]\t\{msg.from}(\{sender_addr})")
   log_debug(
     "DEBUG: incoming protocol=\{transport.protocol()} local=\{local_addr} sender=\{sender_addr} kind=\{msg.kind} id=\{msg.id}",
   )
@@ -671,8 +679,6 @@ async fn handle_incoming_message(
   // Use the message's relay count as the hop depth for this connection
   // msg.relay already indicates how many hops the message took to reach us
   let relay_depth_to_use = msg.relay
-  // For TCP, prefer connectable_addr (stable listening port) when available.
-  // For UDP/WS, sender_addr is usually correct (ephemeral or connection-bound).
   let effective_addr = if transport.protocol() == "tcp" &&
     !connectable_addr.is_empty() {
     connectable_addr
@@ -751,7 +757,9 @@ async fn handle_incoming_message(
           }
           forwarded = true
           let path_str = relay_msg.visited.join(" -> ")
-          println("Forwarded to \{target_peer_id} directly, path: \{path_str}")
+          log_debug(
+            "Forwarded to \{target_peer_id} directly, path: \{path_str}",
+          )
         }
 
         // 2. Routing table check
@@ -767,7 +775,7 @@ async fn handle_incoming_message(
                 ignore(send_message(transport, next_hop_addr, relay_msg))
                 forwarded = true
                 let path_str = relay_msg.visited.join(" -> ")
-                println(
+                log_debug(
                   "Forwarded to \{target_peer_id} via \{next_hop}, path: \{path_str}",
                 )
               }
@@ -781,7 +789,7 @@ async fn handle_incoming_message(
           // ... existing flood logic?
           // Maybe better to just drop if no route to avoid network storm
           // But for now, let's just log failure
-          println(
+          log_warn(
             "Failed to route message to \{target_peer_id}: no route found",
           )
         }
@@ -790,7 +798,7 @@ async fn handle_incoming_message(
         return
       } else {
         let path_str = msg.visited.join(" -> ")
-        println(
+        log_warn(
           "Dropping message from \{msg.from} to \{target_peer_id}: already visited this node (loop detected), path: \{path_str}",
         )
         return
@@ -845,7 +853,7 @@ async fn handle_incoming_message(
           let our_secret_hash = hash_secret(config.secret)
           if peer_secret_hash != our_secret_hash {
             // Secret mismatch - reject this peer
-            println(
+            log_warn(
               "Rejecting peer \{msg.from} at \{sender_addr}: secret mismatch",
             )
             false
@@ -920,7 +928,7 @@ async fn handle_incoming_message(
                   send_message_with_fallback(
                     transport, peer_url, sender_addr, hello_msg,
                   )
-                  println(
+                  log_info(
                     "Sent hello to discovered peer at \{peer_url} (fallback: \{sender_addr})",
                   )
                 }
@@ -948,7 +956,7 @@ async fn handle_incoming_message(
     }
     { kind: "hello", .. } => {
       // Hello without secret_hash - reject it (backwards compatibility)
-      println("Rejecting hello from \{msg.from}: no secret_hash provided")
+      log_warn("Rejecting hello from \{msg.from}: no secret_hash provided")
       ()
     }
     { kind: "ping", .. } => {
@@ -1157,25 +1165,25 @@ async fn handle_incoming_message(
               )
               // Add pending message instead of direct send
               add_pending_message(msg.from, response_msg)
-              println(
+              log_info(
                 "DataResponse: queued id=\{response_msg.id} correlation=\{msg.id} to=\{msg.from}",
               )
             }
             None =>
-              println("No scripts configured, received data: \{data_content}")
+              log_warn("No scripts configured, received data: \{data_content}")
           }
         })
       }
     }
     { kind: "data_response", data: response_data, payload: correlation_id, .. } => {
       // Handle response from script execution
-      println("Received script response from \{msg.from}:")
-      println(response_data)
+      log_info("Received script response from \{msg.from}:")
+      log_debug(response_data.to_string().unwrap_or("error"))
 
       // If this is a response to a pending request, resolve it
       match correlation_id {
         Some(id) => {
-          println("DataResponse: resolve correlation=\{id} from=\{msg.from}")
+          log_debug("DataResponse: resolve correlation=\{id} from=\{msg.from}")
           // Try to convert response to JSON string
           match response_data {
             Array(arr) => {
@@ -1199,7 +1207,7 @@ async fn handle_incoming_message(
               )
           }
         }
-        None => println("DataResponse: missing correlation from=\{msg.from}")
+        None => log_warn("DataResponse: missing correlation from=\{msg.from}")
       }
     }
     { kind: "sync", data: Array(conn_entries), .. } => {
@@ -1362,7 +1370,7 @@ async fn start_listener_service(
           update_global_connection_manager(fn(manager) {
             manager.remove_connection(conn.id)
           })
-          println("[disconnect]\t\{conn.peer_id}(\{remote_addr})")
+          log_warn("[disconnect]\t\{conn.peer_id}(\{remote_addr})")
           // println("Marked connection \{conn.id} as Disconnected")
         }
       }

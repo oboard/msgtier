@@ -13,12 +13,11 @@ async fn main {
     match args {
       [config] => {
         let config = Config::from_file(config)
-        println(config.to_json().stringify(indent=2))
-        let id = config.id
 
         // Store config globally for access by listeners
         global_config.val = Some(config)
-        set_log_level_from_config(config)
+        log_debug(config.to_json().stringify(indent=2))
+        let id = config.id
 
         // Initialize known peers from config
         for peer_url in config.peers {
@@ -74,7 +73,7 @@ async fn main {
         //   task.wait()
         // }
       }
-      _ => println("MsgTier 0.1")
+      _ => log_info("MsgTier 0.1")
     }
   })
 }

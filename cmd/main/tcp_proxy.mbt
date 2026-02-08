@@ -89,7 +89,7 @@ async fn write_to_proxy_conn(
           conn.write(data) catch {
             _ => remove_listener_proxy_conn(conn_id)
           }
-        None => println("Unknown proxy connection ID: \{conn_id}")
+        None => log_warn("Unknown proxy connection ID: \{conn_id}")
       }
   }
 }
@@ -121,17 +121,17 @@ async fn start_tcp_proxy(
 ) -> Unit {
   let addr = @socket.Addr::parse(listen_addr) catch {
     e => {
-      println("Failed to parse listen address \{listen_addr}: \{e}")
+      log_error("Failed to parse listen address \{listen_addr}: \{e}")
       return
     }
   }
   let listener = @socket.TcpServer::new(addr) catch {
     e => {
-      println("Failed to bind TCP proxy to \{listen_addr}: \{e}")
+      log_error("Failed to bind TCP proxy to \{listen_addr}: \{e}")
       return
     }
   }
-  println(
+  log_info(
     "Started TCP proxy on \{listen_addr} -> \{target_peer} -> \{target_addr}",
   )
   let proxy = TcpProxy::{
@@ -141,10 +141,10 @@ async fn start_tcp_proxy(
     target_addr,
   }
   global_tcp_proxies.val.push(proxy)
-  println("Created proxy: \{proxy}")
+  log_debug("Created proxy: \{proxy}")
   listener.run_forever(fn(conn, remote_addr) {
     let conn_id = @uuidm.v4().to_string()
-    println(
+    log_info(
       "New proxy connection \{conn_id} from \{remote_addr} on \{listen_addr}",
     )
 
@@ -207,7 +207,7 @@ async fn start_tcp_proxy(
     }
 
     // Connection closed
-    println("Proxy connection \{conn_id} closed")
+    log_info("Proxy connection \{conn_id} closed")
     global_proxy_connections.val.remove(conn_id)
     remove_listener_proxy_conn(conn_id)
 
@@ -236,9 +236,9 @@ async fn start_tcp_proxy(
 fn init_tcp_proxies(root : @async.TaskGroup[Unit], config : Config) -> Unit {
   match config.port {
     Some(ports) => {
-      println("Initializing TCP proxies...")
+      log_info("Initializing TCP proxies...")
       ports.each(fn(listen_addr, target_spec) {
-        println("Processing proxy config: \{listen_addr} -> \{target_spec}")
+        log_debug("Processing proxy config: \{listen_addr} -> \{target_spec}")
         // Strip protocol prefixes from listen address
         let clean_listen_addr = match @url.Url::parse(listen_addr) {
           Some(url) => url.get_host()
@@ -266,15 +266,15 @@ fn init_tcp_proxies(root : @async.TaskGroup[Unit], config : Config) -> Unit {
             "127.0.0.1:" + rest
           }
           let _ : @async.Task[Unit] = root.spawn(fn() {
-            println(
+            log_info(
               "Starting TCP proxy on \{clean_listen_addr} for \{peer_id} -> \{target_addr}",
             )
             for {
-              println(
+              log_info(
                 "Attempting to start TCP proxy on \{clean_listen_addr} for \{peer_id} -> \{target_addr}",
               )
               start_tcp_proxy(root, clean_listen_addr, peer_id, target_addr)
-              println(
+              log_warn(
                 "TCP proxy on \{clean_listen_addr} stopped unexpectedly. Retrying in 5s...",
               )
               @async.sleep(5000)
@@ -282,11 +282,11 @@ fn init_tcp_proxies(root : @async.TaskGroup[Unit], config : Config) -> Unit {
           })
 
         } else {
-          println("Invalid target spec for proxy: \{target_spec}")
+          log_warn("Invalid target spec for proxy: \{target_spec}")
         }
       })
     }
-    None => println("No TCP proxies configured.")
+    None => log_info("No TCP proxies configured.")
   }
 }
 
@@ -302,7 +302,7 @@ async fn handle_proxy_message(
     "connect" =>
       match msg.target_addr {
         Some(target_addr) => {
-          println(
+          log_info(
             "Proxy connect request: \{msg.conn_id} -> \{target_addr} from \{sender_id}",
           )
           try {
@@ -314,7 +314,7 @@ async fn handle_proxy_message(
             match conn_res {
               Some(conn) => {
                 add_active_proxy_conn(msg.conn_id, conn, sender_id)
-                println("Connected to proxy target \{target_addr}")
+                log_info("Connected to proxy target \{target_addr}")
 
                 // Spawn reader
                 root.spawn(fn() {
@@ -350,7 +350,7 @@ async fn handle_proxy_message(
                     _ => ()
                   }
                   // Connection closed
-                  println("Proxy target connection closed: \{msg.conn_id}")
+                  log_info("Proxy target connection closed: \{msg.conn_id}")
                   let proxy_msg = ProxyMessage::{
                     op: "close",
                     conn_id: msg.conn_id,
@@ -372,17 +372,19 @@ async fn handle_proxy_message(
                 })
                 |> ignore
               }
-              None => println("Connect timeout to \{target_addr}")
+              None => log_warn("Connect timeout to \{target_addr}")
             }
           } catch {
             e =>
-              println("Failed to connect to proxy target \{target_addr}: \{e}")
+              log_error(
+                "Failed to connect to proxy target \{target_addr}: \{e}",
+              )
           }
         }
-        None => println("Proxy connect missing target_addr")
+        None => log_warn("Proxy connect missing target_addr")
       }
     "data" => {
-      println(
+      log_debug(
         "Received proxy_data for conn_id=\{msg.conn_id} from \{sender_id}",
       )
       // Recovery logic
@@ -397,7 +399,7 @@ async fn handle_proxy_message(
               }
           }
           if !exists {
-            println(
+            log_warn(
               "Proxy connection \{msg.conn_id} not found, attempting recovery to \{target_addr}",
             )
             try {
@@ -458,7 +460,7 @@ async fn handle_proxy_message(
               |> ignore
             } catch {
               e =>
-                println(
+                log_error(
                   "Failed to recover proxy connection to \{target_addr}: \{e}",
                 )
             }
@@ -471,7 +473,7 @@ async fn handle_proxy_message(
           if bytes.length() > 0 {
             write_to_proxy_conn(msg.conn_id, bytes)
           } else {
-            println(
+            log_warn(
               "Warning: Received empty proxy_data for conn_id=\{msg.conn_id}",
             )
           }
@@ -479,9 +481,9 @@ async fn handle_proxy_message(
       }
     }
     "close" => {
-      println("Proxy connection closed: \{msg.conn_id}")
+      log_info("Proxy connection closed: \{msg.conn_id}")
       close_proxy_conn(msg.conn_id)
     }
-    _ => println("Unknown proxy op: \{msg.op}")
+    _ => log_warn("Unknown proxy op: \{msg.op}")
   }
 }

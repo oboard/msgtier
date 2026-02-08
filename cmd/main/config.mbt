@@ -7,6 +7,7 @@ struct Config {
   scripts : Map[String, String]?
   web_api : String?
   metadata : Map[String, String]?
+  log : LogLevel?
   port : Map[String, String]?
 } derive(Show, ToJson, FromJson)
 
