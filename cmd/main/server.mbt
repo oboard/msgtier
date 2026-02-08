@@ -251,69 +251,70 @@ async fn handle_pending_messages(
     for pending_msg in pending {
       let cm = get_global_connection_manager()
       let mut sent = false
-      let target_peer_id = match pending_msg.target_id {
-        Some(target_id) => target_id
-        None => ""
+      let target_peer_ids = match pending_msg.target_id {
+        Some(target_id) => [target_id]
+        None => get_global_peer_manager().get_all_peers().map(p => p.id)
       }
-
-      // Handle loopback (send to self)
-      if target_peer_id == my_id {
-        // Attempt to remove message atomically (returns true if we removed it)
-        // This prevents multiple transports from handling the same local message
-        if remove_pending_message(pending_msg) {
-          log_info(
-            "PendingMessage: handling local loopback id=\{pending_msg.id}",
-          )
-          // Use spawn_bg to avoid blocking the pending loop
-          root.spawn_bg(fn() {
-            handle_data_message(
-              root,
-              my_id,
-              local_addr,
-              pending_msg,
-              pending_msg.body,
+      for target_peer_id in target_peer_ids {
+        // Handle loopback (send to self)
+        if target_peer_id == my_id {
+          // Attempt to remove message atomically (returns true if we removed it)
+          // This prevents multiple transports from handling the same local message
+          if remove_pending_message(pending_msg) {
+            log_info(
+              "PendingMessage: handling local loopback id=\{pending_msg.id}",
             )
-          })
-        }
-        continue
-      }
-      let target_connections = cm.get_peer_connections(target_peer_id)
-      if target_connections.is_empty() {
-        log_debug(
-          "DEBUG: pending no connections protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.id}",
-        )
-        continue
-      }
-      for target_connection in target_connections {
-        if target_connection.protocol != transport.protocol() {
+            // Use spawn_bg to avoid blocking the pending loop
+            root.spawn_bg(fn() {
+              handle_data_message(
+                root,
+                my_id,
+                local_addr,
+                pending_msg,
+                pending_msg.body,
+              )
+            })
+          }
           continue
         }
-        let target_addr = target_connection.remote_addr
-        let msg = pending_msg
-
-        // Address target: send directly on this transport
-        log_debug("PendingMessage: direct addr=\{target_addr} id=\{msg.id}")
-        let success = send_message(transport, target_addr, msg)
-        log_debug(
-          "DEBUG: pending send protocol=\{transport.protocol()} addr=\{target_addr} id=\{msg.id} ok=\{success}",
-        )
-        if success {
-          sent = true
+        let target_connections = cm.get_peer_connections(target_peer_id)
+        if target_connections.is_empty() {
+          log_debug(
+            "DEBUG: pending no connections protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.id}",
+          )
+          continue
         }
-      }
-      if sent {
-        log_debug(
-          "DEBUG: pending remove id=\{pending_msg.id} protocol=\{transport.protocol()}",
-        )
-        remove_pending_message(pending_msg) |> ignore
-      } else if target_connections.length() > 0 {
-        // If we have connections but failed to send on this specific transport,
-        // check if we should keep it pending or if another transport might handle it.
-        // For now, we only remove if successfully sent.
-        // However, to avoid infinite loops if a specific transport is down but others exist,
-        // we might need more complex logic.
-        // But since 'pending' loop runs on all transports, if one succeeds, it will be removed.
-        ()
+        for target_connection in target_connections {
+          if target_connection.protocol != transport.protocol() {
+            continue
+          }
+          let target_addr = target_connection.remote_addr
+          let msg = pending_msg
+
+          // Address target: send directly on this transport
+          log_debug("PendingMessage: direct addr=\{target_addr} id=\{msg.id}")
+          let success = send_message(transport, target_addr, msg)
+          log_debug(
+            "DEBUG: pending send protocol=\{transport.protocol()} addr=\{target_addr} id=\{msg.id} ok=\{success}",
+          )
+          if success {
+            sent = true
+          }
+        }
+        if sent {
+          log_debug(
+            "DEBUG: pending remove id=\{pending_msg.id} protocol=\{transport.protocol()}",
+          )
+          remove_pending_message(pending_msg) |> ignore
+        } else if target_connections.length() > 0 {
+          // If we have connections but failed to send on this specific transport,
+          // check if we should keep it pending or if another transport might handle it.
+          // For now, we only remove if successfully sent.
+          // However, to avoid infinite loops if a specific transport is down but others exist,
+          // we might need more complex logic.
+          // But since 'pending' loop runs on all transports, if one succeeds, it will be removed.
+          ()
+        }
       }
     }
   }
