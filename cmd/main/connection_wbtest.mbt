@@ -11,7 +11,7 @@ test "Connection::new generates hash id" {
 }
 
 ///|
-test "Connection::new includes session_id in hash" {
+test "Connection::new ignores session_id in hash" {
   let conn_base = Connection::new(
     "peerA", "peerB", "tcp://127.0.0.1:8000", "tcp://127.0.0.1:9000", "tcp",
   )
@@ -24,7 +24,7 @@ test "Connection::new includes session_id in hash" {
     session_id="session-123",
   )
   inspect(conn_session.id.length(), content="64")
-  inspect(conn_session.id == conn_base.id, content="false")
+  inspect(conn_session.id == conn_base.id, content="true")
 }
 
 ///|

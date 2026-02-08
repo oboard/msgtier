@@ -52,10 +52,7 @@ fn Connection::new(
     Some(sid) => if sid.is_empty() { None } else { Some(sid) }
     None => None
   }
-  let raw_id = match normalized_session {
-    Some(sid) => "\{id1}:\{id2}:\{protocol}:\{sid}"
-    None => "\{id1}:\{id2}:\{protocol}"
-  }
+  let raw_id = "\{id1}:\{id2}:\{protocol}"
   let id = bytes_to_hex(Bytes::from_array(@crypto.sha256(@utf8.encode(raw_id))))
 
   // Analyze NAT type based on address characteristics
