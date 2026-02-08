@@ -679,12 +679,7 @@ async fn handle_incoming_message(
   // Use the message's relay count as the hop depth for this connection
   // msg.relay already indicates how many hops the message took to reach us
   let relay_depth_to_use = msg.relay
-  let effective_addr = if transport.protocol() == "tcp" &&
-    !connectable_addr.is_empty() {
-    connectable_addr
-  } else {
-    sender_addr
-  }
+  let effective_addr = sender_addr
   let (conn, is_new_connection, _is_new_peer) = handle_new_connection(
     msg.source_id,
     local_addr,
@@ -908,9 +903,8 @@ async fn handle_incoming_message(
                 set_relay_path(peer_url, "unknown", msg.source_id)
 
                 // Check if we already have ANY connection to this address (active or not)
-                let already_connected = all_conns.any(fn(conn) {
-                  conn.peer_id == source_id
-                })
+                let already_connected = all_conns.any(conn => conn.peer_id ==
+                  source_id)
                 if !already_connected {
                   // Send hello to discover this peer via relay through msg.from
                   let our_addresses = get_our_addresses(local_addr)
