@@ -4,7 +4,7 @@ struct UdpTransport {
 }
 
 ///|
-pub fn UdpTransport::new(addr_str : String) -> UdpTransport raise {
+fn UdpTransport::new(addr_str : String) -> UdpTransport raise {
   let addr = @socket.Addr::parse(addr_str) catch {
     e => abort("Invalid address: " + e.to_string())
   }

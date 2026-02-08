@@ -2,49 +2,6 @@
 const PAGE_404 : Bytes = b"<html><head></head><body>Page Not Found</body></html>"
 
 ///|
-pub fn get_connected_peers() -> Array[PeerNode] {
-  get_global_peer_manager().get_all_peers()
-}
-
-///|
-pub fn remove_connected_peer(address : String) -> Unit {
-  // Find peer by connection address and remove it
-  let all_peers = get_global_peer_manager().get_all_peers()
-  let all_conns = get_global_connection_manager().get_all_connections()
-  for peer in all_peers {
-    // Check if any connection for this peer has this address
-    let peer_conns = peer.get_all_connections(all_conns)
-    let has_address = peer_conns.any(fn(conn) { conn.remote_addr == address })
-    if has_address {
-      // Remove all connections for this peer
-      let conns = get_global_connection_manager().get_peer_connections(peer.id)
-      for conn in conns {
-        update_global_connection_manager(fn(manager) {
-          manager.remove_connection(conn.id)
-        })
-      }
-      break
-    }
-  }
-}
-
-///|
-pub fn clear_connected_peers() -> Unit {
-  // Clear all peers and connections
-  let all_peers = get_global_peer_manager().get_all_peers()
-  for peer in all_peers {
-    let conns = get_global_connection_manager().get_peer_connections(peer.id)
-    for conn in conns {
-      update_global_connection_manager(fn(manager) {
-        manager.remove_connection(conn.id)
-      })
-    }
-  }
-}
-
-///|
-
-///|
 async fn handle_http_request(
   request : @http.Request,
   body : &@io.Reader,
@@ -74,7 +31,7 @@ async fn handle_http_request(
       let config = get_config()
       // Get current node ID and local address
       let peer_id = config.id
-      let addrs = config.listeners.map(fn(url) { url.to_string() })
+      let addrs = config.listeners
       let local_addr = if addrs.is_empty() { "127.0.0.1:0" } else { addrs[0] }
 
       // Prepare data payload (plain string for self, encrypted binary for others)
@@ -128,9 +85,6 @@ async fn handle_http_request(
           match wait_for_response(msg.id, 10000) {
             Some((response, headers)) =>
               // Ensure Content-Type is set if missing
-              // if !headers.contains("Content-Type") {
-              //   headers["Content-Type"] = "application/json"
-              // }
               conn
               ..send_response(200, "OK", extra_headers=headers)
               ..write(response)
@@ -173,7 +127,6 @@ async fn start_http_service(addr : String, config : Config) -> Unit {
   for {
     try {
       let server = @http.Server::new(@socket.Addr::parse(addr))
-      defer server.close()
       server.run_forever(handle_http_request)
     } catch {
       e => {
@@ -211,8 +164,14 @@ async fn serve_file(
   file_path : String,
   path : String,
 ) -> Unit {
+  let file = @fs.open(file_path, mode=ReadOnly) catch {
+    _ => {
+      notfound_handler(conn)
+      return
+    }
+  }
+  defer file.close()
   try {
-    let file = @fs.open(file_path, mode=ReadOnly)
     let content_type = match path {
       _ as p if p.has_suffix(".html") => "text/html"
       _ as p if p.has_suffix(".css") => "text/css"
@@ -228,31 +187,21 @@ async fn serve_file(
     ..send_response(200, "OK", extra_headers={ "Content-Type": content_type })
     ..write_reader(file)
     ..end_response()
-    file.close()
   } catch {
-    _ => notfound_handler(conn)
+    _ => ()
   }
 }
 
 ///|
 async fn get_config_handler(conn : @http.ServerConnection) -> Unit {
-  match global_config.val {
-    Some(config) =>
-      // Return the actual configuration, but hide sensitive information
-      conn
-      ..send_response(200, "OK", extra_headers={
-        "Content-Type": "application/json",
-      })
-      ..write(config.to_json().stringify())
-      ..end_response()
-    None =>
-      conn
-      ..send_response(503, "Service Unavailable", extra_headers={
-        "Content-Type": "application/json",
-      })
-      ..write({ "error": "Configuration not available" }.to_json().stringify())
-      ..end_response()
-  }
+  let config = get_config()
+  // Return the actual configuration, but hide sensitive information
+  conn
+  ..send_response(200, "OK", extra_headers={
+    "Content-Type": "application/json",
+  })
+  ..write(config.to_json().stringify())
+  ..end_response()
 }
 
 ///|
@@ -271,7 +220,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
   let my_config = get_config()
   let my_id = my_config.id
   let my_pk = get_public_key()
-  let my_addrs = my_config.listeners.map(url => url.to_string())
+  let my_addrs = my_config.listeners
 
   // Get my active direct connections
   let all_conns = get_global_connection_manager().get_all_connections()
@@ -334,7 +283,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
     peers: all_peers,
     peers_count: all_peers.length(),
     peer_id: config.id,
-    listeners: config.listeners.map(url => url.to_string()),
+    listeners: config.listeners,
     known_peers,
     routes: routes_info,
   }

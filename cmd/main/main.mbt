@@ -21,36 +21,41 @@ async fn main {
 
         // Initialize known peers from config
         for peer_url in config.peers {
-          add_known_peer(peer_url.to_string())
+          add_known_peer(peer_url)
         }
 
         // Don't pre-create peers - they will be created when hello messages arrive
         for listener in config.listeners {
-          let host = listener.get_host()
-          let scheme = listener.scheme
-          let _ : @async.Task[Unit] = root.spawn(fn() {
-            for {
-              try {
-                println("Attempting to listen on \{listener}")
-                let transport = match scheme {
-                  "tcp" => (TcpTransport::new(host) : &Transport)
-                  "udp" => (UdpTransport::new(host) : &Transport)
-                  "ws" => (WebSocketTransport::new(host) : &Transport)
-                  "quic" => (QuicTransport::new(host) : &Transport)
-                  _ => abort("Unknown protocol: \{scheme}")
+          match @url.Url::parse(listener) {
+            Some(url) => {
+              let host = url.get_host()
+              let scheme = url.scheme
+              let _ : @async.Task[Unit] = root.spawn(fn() {
+                for {
+                  try {
+                    println("Attempting to listen on \{listener}")
+                    let transport = match scheme {
+                      "tcp" => (TcpTransport::new(host) : &Transport)
+                      "udp" => (UdpTransport::new(host) : &Transport)
+                      "ws" => (WebSocketTransport::new(host) : &Transport)
+                      "quic" => (QuicTransport::new(host) : &Transport)
+                      _ => abort("Unknown protocol: \{scheme}")
+                    }
+                    println("Successfully bound to \{listener}")
+                    start_listener_service(root, transport, id)
+                  } catch {
+                    e =>
+                      println(
+                        "Failed to start listener on \{listener}: \{e}. Retrying in 5s...",
+                      )
+                  }
+                  @async.sleep(5000)
                 }
-                println("Successfully bound to \{listener}")
-                start_listener_service(root, transport, id)
-              } catch {
-                e =>
-                  println(
-                    "Failed to start listener on \{listener}: \{e}. Retrying in 5s...",
-                  )
-              }
-              @async.sleep(5000)
-            }
-          })
+              })
 
+            }
+            None => println("Invalid listener URL: \{listener}")
+          }
         }
         if config.web_api is Some(addr) {
           let _ : @async.Task[Unit] = root.spawn(fn() {

@@ -10,7 +10,7 @@ struct TcpTransport {
 }
 
 ///|
-pub fn TcpTransport::new(addr_str : String) -> TcpTransport raise {
+fn TcpTransport::new(addr_str : String) -> TcpTransport raise {
   let addr = @socket.Addr::parse(addr_str) catch {
     e => abort("Invalid address: " + e.to_string())
   }
@@ -50,14 +50,7 @@ impl Transport for TcpTransport with send(self, target, data) {
         Some(conn) => {
           // Combine header and data to ensure atomic write
           // This prevents interleaving of header/data when multiple threads share the connection
-          let packet_buf = FixedArray::make(4 + len, b'\x00')
-          for k = 0; k < 4; k = k + 1 {
-            packet_buf[k] = header[k]
-          }
-          for k = 0; k < len; k = k + 1 {
-            packet_buf[4 + k] = data[k]
-          }
-          let full_packet = packet_buf.unsafe_reinterpret_as_bytes()
+          let full_packet = header + data
           conn.write(full_packet)
           return true
         }

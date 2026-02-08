@@ -11,7 +11,7 @@ struct WebSocketTransport {
 }
 
 ///|
-pub fn WebSocketTransport::new(addr_str : String) -> WebSocketTransport raise {
+fn WebSocketTransport::new(addr_str : String) -> WebSocketTransport raise {
   let addr = @socket.Addr::parse(addr_str) catch {
     e => abort("Invalid address: " + e.to_string())
   }

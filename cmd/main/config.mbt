@@ -2,8 +2,8 @@
 struct Config {
   id : String
   secret : String
-  peers : Array[@url.Url]
-  listeners : Array[@url.Url]
+  peers : Array[String]
+  listeners : Array[String]
   scripts : Map[String, String]?
   web_api : String?
   metadata : Map[String, String]?

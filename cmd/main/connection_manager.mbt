@@ -34,33 +34,6 @@ fn ConnectionManager::add_connection(
 }
 
 ///|
-fn ConnectionManager::remove_connection(
-  self : ConnectionManager,
-  conn_id : String,
-) -> ConnectionManager {
-  let connections = self.connections
-  let peer_connections = self.peer_connections
-  match connections.get(conn_id) {
-    Some(conn) => {
-      connections.remove(conn_id)
-      match peer_connections.get(conn.peer_id) {
-        Some(ids) => {
-          let new_ids = ids.filter(fn(id) { id != conn_id })
-          if new_ids.is_empty() {
-            peer_connections.remove(conn.peer_id)
-          } else {
-            peer_connections[conn.peer_id] = new_ids
-          }
-        }
-        None => ()
-      }
-    }
-    None => ()
-  }
-  { connections, peer_connections }
-}
-
-///|
 fn ConnectionManager::get_peer_connections(
   self : ConnectionManager,
   peer_id : String,

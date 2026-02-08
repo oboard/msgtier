@@ -10,7 +10,7 @@ fn handle_new_connection(
   peer_info? : NetworkDiscoveryInfo,
   relay_depth? : Int = 1,
   session_id? : String,
-) -> Connection {
+) -> (Connection, Bool, Bool) {
   // Get the actual peer ID (from peer_info if available, otherwise from peer_id parameter)
   let actual_peer_id = if peer_info is Some(info) { info.id } else { peer_id }
 
@@ -28,8 +28,9 @@ fn handle_new_connection(
       session_id?,
     )
     let dummy_conn = { ..dummy_conn, state: ConnectionState::Connected }
-    return dummy_conn
+    return (dummy_conn, false, false)
   }
+  let mut is_new_peer = false
 
   // Add or update peer with provided info
   if peer_info is Some(info) {
@@ -48,6 +49,22 @@ fn handle_new_connection(
         manager.add_peer_address(info.id, addr_obj.address)
       })
     }
+  } else {
+    // Only create peer if it doesn't exist yet
+    match get_global_peer_manager().get_peer(actual_peer_id) {
+      Some(_) => () // Peer exists, don't override
+      None => {
+        let peer_node = PeerNode::new(
+          id=actual_peer_id,
+          version=VERSION,
+          public_key=[],
+          addresses=[remote_addr],
+          metadata={},
+        )
+        update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
+        is_new_peer = true
+      }
+    }
   }
 
   // Check if connection already exists
@@ -58,7 +75,20 @@ fn handle_new_connection(
     if existing_conn.local_addr == local_addr &&
       existing_conn.remote_addr == remote_addr {
       // Connection already exists, return it with is_new=false
-      return existing_conn
+      return (existing_conn, false, is_new_peer)
+    }
+  }
+
+  // For TCP, if this is not a discovery message (no peer_info),
+  // try to reuse any existing TCP connection to this peer.
+  // This handles the case where incoming messages come from ephemeral ports
+  // but should be mapped to the stable listening connection.
+  if protocol == "tcp" && peer_info is None {
+    for existing_conn in existing_conns {
+      if existing_conn.protocol == "tcp" &&
+        existing_conn.local_addr == local_addr {
+        return (existing_conn, false, is_new_peer)
+      }
     }
   }
 
@@ -93,11 +123,8 @@ fn handle_new_connection(
   let filtered = conns.filter(fn(c) {
     c.local_addr == local_addr && c.remote_addr == remote_addr
   })
-  if filtered.is_empty() {
-    conns[0]
-  } else {
-    filtered[0]
-  }
+  let conn = if filtered.is_empty() { conns[0] } else { filtered[0] }
+  (conn, true, is_new_peer)
 }
 
 ///|
@@ -179,10 +206,18 @@ async fn handle_pending_messages(
   transport : &Transport,
   peer_id : String,
 ) -> Unit {
+  let protocol_prefix = transport.protocol() + "://"
   for {
     // Check for pending messages every 100ms
     @async.sleep(100)
-    let pending = get_pending_messages()
+
+    // Only take messages we can handle:
+    // 1. Specific protocol match (e.g. tcp://...)
+    // 2. No protocol (peer ID) - we try to route these
+    let pending = take_pending_messages(pm => {
+      let t = pm.target
+      t.has_prefix(protocol_prefix) || !t.contains("://")
+    })
 
     // Process each pending message
     for pending_msg in pending {
@@ -234,26 +269,31 @@ async fn handle_pending_messages(
         let target_conns = get_global_connection_manager().get_active_connections(
           target,
         )
+        let mut handled = false
         if !target_conns.is_empty() {
-          // Select the best connection based on quality/protocol preference
-          // For now, just pick the first one to avoid duplication (corruption)
-          // Ideally we should prefer TCP/QUIC over UDP for large data
-          // And match transport protocol if possible
-          let mut best_conn = target_conns[0]
-
-          // Simple heuristic: try to find a connection with same protocol as transport
-          // This avoids cross-protocol bridging overhead if not needed
+          // Find compatible connection
+          let mut compatible_conn = None
           for conn in target_conns {
             if conn.protocol == transport.protocol() {
-              best_conn = conn
+              compatible_conn = Some(conn)
               break
             }
           }
-          ignore(send_message(transport, best_conn.remote_addr, msg))
-          println(
-            "Sent data to \{target} directly via \{best_conn.remote_addr}",
-          )
-          println("PendingMessage: sent id=\{msg.id} target=\{target}")
+          match compatible_conn {
+            Some(conn) => {
+              ignore(send_message(transport, conn.remote_addr, msg))
+              println("Sent data to \{target} directly via \{conn.remote_addr}")
+              handled = true
+            }
+            None => {
+              // Re-queue for other transports
+              add_pending_message(target, msg)
+              handled = true
+            }
+          }
+        }
+        if handled {
+          println("PendingMessage: sent/queued id=\{msg.id} target=\{target}")
           continue
         }
 
@@ -527,7 +567,7 @@ async fn handle_incoming_message(
   } else {
     sender_addr
   }
-  let conn = handle_new_connection(
+  let (conn, is_new_connection, is_new_peer) = handle_new_connection(
     msg.from,
     local_addr,
     effective_addr,
@@ -539,48 +579,105 @@ async fn handle_incoming_message(
       None => ""
     },
   )
-  let should_reply = if msg.kind == "hello" {
+  let (should_broadcast_pong, should_simple_pong) = if is_new_peer {
+    (true, false)
+  } else if msg.kind == "hello" {
     if conn.state != ConnectionState::Connected {
-      true
+      (true, false)
     } else {
       // Debounce: only reply if we haven't seen them recently (> 1s)
       // This allows re-establishing connection if peer restarted quickly
       // while preventing infinite hello loops
       let now = @env.now()
       let diff = if now >= conn.last_seen { now - conn.last_seen } else { 0UL }
-      diff > 1000UL
+      if diff > 1000UL {
+        // Already connected, but haven't seen activity for > 1s.
+        // Reply with pong to keep connection alive immediately.
+        // User requested to send pong to ALL addresses to ensure connections are established.
+        (true, false)
+      } else {
+        (false, false)
+      }
     }
   } else {
-    false
+    (false, false)
   }
-  if should_reply {
-    // Send hello to new peer
-    let our_addresses = get_our_addresses(local_addr)
+  if should_broadcast_pong {
+    // Send pong to peer's all addresses (User requirement: replace hello with pong broadcast)
+    // "收到 hello 之后向这个 peer 的所有地址所有协议发送 pong，这样才能创建所有connection"
     // Use the same session_id if available to link the connection
     let session_id = match msg.session_id {
       Some(sid) => sid
       None => ""
     }
-    let hello_msg = create_hello_message(
-      id,
-      local_addr,
-      1,
-      peers=our_addresses,
+
+    // Create Pong message instead of Hello
+    // Note: Pong usually doesn't carry peers, but we could if needed. 
+    // Here we stick to standard Pong but broadcast it.
+    let pong_msg = Message::new(
+      kind="pong",
+      from=id,
+      addr=local_addr,
+      // Echo the session_id to confirm the session
       session_id=if session_id.is_empty() { "" } else { session_id },
     )
-    // Use conn.remote_addr to ensure we reply to the stable address (not ephemeral)
-    ignore(send_message(transport, conn.remote_addr, hello_msg))
-    println("Sent hello to new peer \{msg.from} at \{conn.remote_addr}")
 
-    // Broadcast sync
-    try broadcast_sync(transport, id, local_addr) |> ignore catch {
-      _ => println("Failed to broadcast sync for new peer")
+    // 1. Send to the address we received from (guaranteed compatible)
+    ignore(send_message(transport, conn.remote_addr, pong_msg))
+
+    // 2. Send to all other known addresses of this peer
+    // Collect unique addresses to avoid duplicates
+    let target_addresses : Map[String, Unit] = {}
+    target_addresses[conn.remote_addr] = ()
+
+    // Add addresses from hello message
+    match msg.peers {
+      Some(peers) =>
+        for p in peers {
+          target_addresses[p.address] = ()
+        }
+      None => ()
     }
-    // println("Broadcasted sync for new peer \{msg.from}")
+
+    // Add addresses from PeerNode if available
+    match get_global_peer_manager().get_peer(msg.from) {
+      Some(node) =>
+        for addr in node.addresses {
+          target_addresses[addr] = ()
+        }
+      None => ()
+    }
+
+    // Iterate and send/queue
+    let my_protocol = transport.protocol() + "://"
+    for addr, _ in target_addresses {
+      if addr != conn.remote_addr {
+        if addr.has_prefix(my_protocol) {
+          ignore(send_message(transport, addr, pong_msg))
+        } else {
+          add_pending_message(addr, pong_msg)
+        }
+      }
+    }
+
+    // Broadcast sync (optional, maybe not needed for Pong, but good for discovery)
+    if is_new_peer {
+      try broadcast_sync(transport, id, local_addr) |> ignore catch {
+        _ => println("Failed to broadcast sync for new peer")
+      }
+    }
+  } else if should_simple_pong {
+    let reply = Message::new(
+      kind="pong",
+      from=id,
+      addr=local_addr,
+      session_id?=msg.session_id,
+    )
+    ignore(send_message(transport, conn.remote_addr, reply))
   }
 
   // Check if state is changing from non-Connected to Connected
-  // let was_disconnected = conn.state != ConnectionState::Connected
+  let was_disconnected = conn.state != ConnectionState::Connected
 
   // Store peer's public key if provided and compute shared secret (only if not already stored)
   if msg.public_key is Some(pk) {
@@ -604,8 +701,9 @@ async fn handle_incoming_message(
   })
 
   // Only broadcast connection update if this is a NEW connection or state changed to Active
-
-  root.spawn_bg(fn() { broadcast_sync(transport, id, local_addr) })
+  if is_new_connection || was_disconnected {
+    root.spawn_bg(fn() { broadcast_sync(transport, id, local_addr) })
+  }
 
   // Handle message relaying: if target is set and we're not the target, forward it
   if msg.target is Some(target_peer_id) {
@@ -1088,6 +1186,37 @@ async fn handle_incoming_message(
             let relay_depth = sync_conn.relay
             let pk = sync_conn.public_key
 
+            // If relay_depth is 1, it's a direct neighbor of the sender
+            if relay_depth == 1 && peer_id != msg.from {
+              sender_connections.push(PeerConnectionInfo::{
+                peer_id,
+                latency_ms: sync_conn.latency_ms,
+                bandwidth_mbps: sync_conn.bandwidth_mbps,
+                packet_loss_rate: sync_conn.packet_loss_rate,
+                id: sync_conn.id,
+                local_addr: sync_conn.local_addr,
+                remote_addr: sync_conn.remote_addr,
+                state: match sync_conn.state {
+                  "Connected" => Connected
+                  "Connecting" => Connecting
+                  "Init" => Init
+                  "Failed" => Failed
+                  _ => Disconnected
+                },
+                last_seen: sync_conn.last_seen,
+                quality: sync_conn.quality,
+                relay: sync_conn.relay,
+                metadata: sync_conn.metadata,
+                latency_history: sync_conn.latency_history,
+                packets_sent: sync_conn.packets_sent,
+                packets_lost: sync_conn.packets_lost,
+                bytes_sent: sync_conn.bytes_sent,
+                bytes_received: sync_conn.bytes_received,
+                last_ping_time: sync_conn.last_ping_time,
+                nat_type: sync_conn.nat_type,
+              })
+            }
+
             // If the peer is not me
             if peer_id != id {
               // Update Routing Table
@@ -1145,7 +1274,7 @@ async fn handle_incoming_message(
                 } else {
                   sync_conn.protocol + "://" + remote_addr
                 }
-                let _conn = handle_new_connection(
+                let (_conn, _is_new, _is_new_peer) = handle_new_connection(
                   peer_id,
                   local_addr,
                   safe_remote_addr,

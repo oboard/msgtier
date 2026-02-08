@@ -13,7 +13,7 @@ fn ScriptOutput::to_msgpack(self : ScriptOutput) -> @msgpack.Value {
 }
 
 ///|
-pub async fn execute_script_handler(content : String) -> ScriptOutput? {
+async fn execute_script_handler(content : String) -> ScriptOutput? {
   match global_config.val {
     Some({ scripts: Some(scripts), .. }) =>
       Some(process_script_execution(content, scripts))

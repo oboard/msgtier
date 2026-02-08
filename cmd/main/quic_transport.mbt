@@ -4,7 +4,7 @@ pub struct QuicTransport {
 }
 
 ///|
-pub fn QuicTransport::new(addr_str : String) -> QuicTransport raise {
+fn QuicTransport::new(addr_str : String) -> QuicTransport raise {
   let endpoint = @quic.Endpoint::new(addr_str)
   { endpoint, }
 }

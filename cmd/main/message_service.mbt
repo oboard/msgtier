@@ -1,5 +1,5 @@
 ///|
-pub fn get_identity_info() -> (Bytes, String) {
+fn get_identity_info() -> (Bytes, String) {
   let our_public_key = get_public_key()
   let our_secret_hash = match global_config.val {
     Some(config) => hash_secret(config.secret)
@@ -9,7 +9,7 @@ pub fn get_identity_info() -> (Bytes, String) {
 }
 
 ///|
-pub fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
+fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
   match global_config.val {
     Some(config) => {
       let addrs : Array[NetworkAddress] = []
@@ -28,7 +28,7 @@ pub fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
 }
 
 ///|
-pub fn create_sync_message(peer_id : String, local_addr : String) -> Message {
+fn create_sync_message(peer_id : String, local_addr : String) -> Message {
   // Create a message that includes all current connections of this node
   let all_peers = get_global_peer_manager().get_all_peers()
   let all_conns = get_global_connection_manager().get_all_connections()
@@ -65,7 +65,7 @@ pub fn create_sync_message(peer_id : String, local_addr : String) -> Message {
           bytes_received: conn.bytes_received,
           last_ping_time: conn.last_ping_time,
           version: peer.version,
-          nat_type: conn.nat_type
+          nat_type: conn.nat_type,
         }
         connections_data.push(sync_conn.to_msgpack())
       }
@@ -103,7 +103,7 @@ pub fn create_sync_message(peer_id : String, local_addr : String) -> Message {
             bytes_received: 0,
             last_ping_time: None,
             version: peer.version,
-            nat_type:Unknown
+            nat_type: Unknown,
           }
           connections_data.push(sync_conn.to_msgpack())
         }
@@ -122,7 +122,7 @@ pub fn create_sync_message(peer_id : String, local_addr : String) -> Message {
 }
 
 ///|
-pub async fn send_message(
+async fn send_message(
   transport : &Transport,
   peer : String,
   msg : Message,
@@ -150,7 +150,7 @@ pub async fn send_message(
 }
 
 ///|
-pub async fn broadcast_sync(
+async fn broadcast_sync(
   transport : &Transport,
   peer_id : String,
   local_addr : String,
@@ -173,12 +173,12 @@ pub async fn broadcast_sync(
 }
 
 ///|
-pub fn create_hello_message(
+fn create_hello_message(
   peer_id : String,
   local_addr : String,
   relay : Int,
   peers? : Array[NetworkAddress],
-  session_id? : String
+  session_id? : String,
 ) -> Message {
   let (public_key, secret_hash) = get_identity_info()
   let peers_opt = match peers {
@@ -201,7 +201,7 @@ pub fn create_hello_message(
 ///|
 // Try sending to both primary and fallback addresses (UDP fire-and-forget)
 // We send to both because UDP doesn't guarantee delivery anyway
-pub async fn send_message_with_fallback(
+async fn send_message_with_fallback(
   transport : &Transport,
   primary_addr : String,
   fallback_addr : String,

@@ -12,10 +12,10 @@ pub struct RequestTracker {
 }
 
 ///|
-pub let global_request_tracker : RequestTracker = { pending: {} }
+let global_request_tracker : RequestTracker = { pending: {} }
 
 ///|
-pub fn add_pending_request(id : String) -> Unit {
+fn add_pending_request(id : String) -> Unit {
   // Cleanup old requests if map gets too large (simple garbage collection)
   if global_request_tracker.pending.length() > 100 {
     let now = @env.now()
@@ -39,7 +39,7 @@ pub fn add_pending_request(id : String) -> Unit {
 }
 
 ///|
-pub fn resolve_request(
+fn resolve_request(
   id : String,
   headers : Map[String, String],
   response : Bytes,
@@ -55,7 +55,7 @@ pub fn resolve_request(
 }
 
 ///|
-pub async fn wait_for_response(
+async fn wait_for_response(
   id : String,
   timeout_ms : Int,
 ) -> (Bytes, Map[String, String])? {

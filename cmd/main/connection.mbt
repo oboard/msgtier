@@ -96,7 +96,6 @@ fn Connection::new(
 fn analyze_nat_type(local_addr : String, remote_addr : String) -> NatType {
   let local_ip = extract_host(local_addr)
   let remote_ip = extract_host(remote_addr)
-
   if is_loopback(local_ip) && is_loopback(remote_ip) {
     return NoNAT
   }
@@ -105,13 +104,12 @@ fn analyze_nat_type(local_addr : String, remote_addr : String) -> NatType {
   if !is_private(local_ip) && !is_loopback(local_ip) {
     return NoNAT
   }
-
   if is_private(local_ip) {
     // Local Private, Remote Public -> Behind NAT
     if !is_private(remote_ip) && !is_loopback(remote_ip) {
       return PortRestricted // Assume typical NAT behavior
     }
-    
+
     // Both private
     if is_private(remote_ip) {
       if is_same_subnet(local_ip, remote_ip) {
@@ -121,7 +119,6 @@ fn analyze_nat_type(local_addr : String, remote_addr : String) -> NatType {
       }
     }
   }
-
   Unknown
 }
 
@@ -129,25 +126,26 @@ fn analyze_nat_type(local_addr : String, remote_addr : String) -> NatType {
 fn extract_host(addr : String) -> String {
   let s = if addr.contains("://") {
     let parts = addr.split("://").to_array()
-    if parts.length() > 1 { parts[1].to_string() } else { addr }
+    if parts.length() > 1 {
+      parts[1].to_string()
+    } else {
+      addr
+    }
   } else {
     addr
   }
-  
   if s.has_prefix("[") {
     let mut end_idx = -1
     let mut i = 0
     for c in s {
-      if c == ']' { 
+      if c == ']' {
         end_idx = i
         break
       }
       i = i + 1
     }
     if end_idx != -1 {
-      try {
-        s[1:end_idx].to_string()
-      } catch {
+      s[1:end_idx].to_string() catch {
         _ => s
       }
     } else {
@@ -156,7 +154,9 @@ fn extract_host(addr : String) -> String {
   } else {
     let mut colons = 0
     for c in s {
-      if c == ':' { colons = colons + 1 }
+      if c == ':' {
+        colons = colons + 1
+      }
     }
     if colons > 1 {
       s // IPv6 without brackets
@@ -171,13 +171,20 @@ fn extract_host(addr : String) -> String {
 
 ///|
 fn is_loopback(ip : String) -> Bool {
-  ip == "localhost" || ip.has_prefix("127.") || ip == "::1" || ip == "0:0:0:0:0:0:0:1"
+  ip == "localhost" ||
+  ip.has_prefix("127.") ||
+  ip == "::1" ||
+  ip == "0:0:0:0:0:0:0:1"
 }
 
 ///|
 fn is_private(ip : String) -> Bool {
-  if ip.has_prefix("10.") { return true }
-  if ip.has_prefix("192.168.") { return true }
+  if ip.has_prefix("10.") {
+    return true
+  }
+  if ip.has_prefix("192.168.") {
+    return true
+  }
   if ip.has_prefix("172.") {
     let parts = ip.split(".").to_array()
     if parts.length() > 1 {
@@ -188,7 +195,9 @@ fn is_private(ip : String) -> Bool {
     }
   }
   // IPv6 ULA (Unique Local Address) fc00::/7
-  if ip.has_prefix("fc") || ip.has_prefix("fd") { return true }
+  if ip.has_prefix("fc") || ip.has_prefix("fd") {
+    return true
+  }
   false
 }
 
@@ -196,7 +205,9 @@ fn is_private(ip : String) -> Bool {
 fn parse_int_simple(s : String) -> Int? {
   let mut res = 0
   for c in s {
-    if c < '0' || c > '9' { return None }
+    if c < '0' || c > '9' {
+      return None
+    }
     res = res * 10 + (c.to_int() - '0'.to_int())
   }
   Some(res)

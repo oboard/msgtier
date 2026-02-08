@@ -11,7 +11,7 @@ let global_known_peers : Ref[Map[String, UInt64]] = Ref::new({})
 
 ///|
 /// Add a peer address to the known peers list
-pub fn add_known_peer(peer_addr : String) -> Unit {
+fn add_known_peer(peer_addr : String) -> Unit {
   if @url.Url::parse(peer_addr) is Some(url) {
     if url.hostname() == "0.0.0.0" {
       url.set_hostname("127.0.0.1")
@@ -30,7 +30,7 @@ pub fn add_known_peer(peer_addr : String) -> Unit {
 
 ///|
 /// Get all known peer addresses
-pub fn get_all_known_peers() -> Array[String] {
+fn get_all_known_peers() -> Array[String] {
   global_known_peers.val.keys().to_array()
 }
 
@@ -42,7 +42,7 @@ let global_hello_times : Ref[Map[String, UInt64]] = Ref::new({})
 ///|
 /// Check if we should re-broadcast hello for this peer (debounce check)
 /// Only re-broadcast once per 5 second period
-pub fn should_rebroadcast_hello(peer_id : String) -> Bool {
+fn should_rebroadcast_hello(peer_id : String) -> Bool {
   let times = global_hello_times.val
   let now = @env.now()
   match times.get(peer_id) {
@@ -53,7 +53,7 @@ pub fn should_rebroadcast_hello(peer_id : String) -> Bool {
 
 ///|
 /// Record that we processed a hello from this peer
-pub fn record_hello_time(peer_id : String) -> Unit {
+fn record_hello_time(peer_id : String) -> Unit {
   let times = global_hello_times.val
   times[peer_id] = @env.now()
 }
@@ -68,7 +68,7 @@ let global_relay_paths : Ref[Map[String, (String, String)]] = Ref::new({})
 
 ///|
 /// Record a relay path: when peer B advertises peer C's address, relay through B to reach C
-pub fn set_relay_path(
+fn set_relay_path(
   discovered_address : String,
   peer_id : String,
   relay_via_peer_id : String,
@@ -86,16 +86,14 @@ pub fn set_relay_path(
 
 ///|
 /// Get the relay path for a discovered address
-pub fn get_relay_path(address : String) -> (String, String)? {
+fn get_relay_path(address : String) -> (String, String)? {
   let paths = global_relay_paths.val
   paths.get(address)
 }
 
 ///|
 /// Update global peer manager state
-pub fn update_global_peer_manager(
-  fn_update : (PeerManager) -> PeerManager,
-) -> Unit {
+fn update_global_peer_manager(fn_update : (PeerManager) -> PeerManager) -> Unit {
   let current = global_peer_manager.val
   let updated = fn_update(current)
   global_peer_manager.val = updated
@@ -103,7 +101,7 @@ pub fn update_global_peer_manager(
 
 ///|
 /// Get current global peer manager
-pub fn get_global_peer_manager() -> PeerManager {
+fn get_global_peer_manager() -> PeerManager {
   global_peer_manager.val
 }
 
@@ -115,7 +113,7 @@ let global_connection_manager : Ref[ConnectionManager] = Ref::new(
 
 ///|
 /// Update global connection manager state
-pub fn update_global_connection_manager(
+fn update_global_connection_manager(
   fn_update : (ConnectionManager) -> ConnectionManager,
 ) -> Unit {
   let current = global_connection_manager.val
@@ -125,6 +123,6 @@ pub fn update_global_connection_manager(
 
 ///|
 /// Get current global connection manager
-pub fn get_global_connection_manager() -> ConnectionManager {
+fn get_global_connection_manager() -> ConnectionManager {
   global_connection_manager.val
 }

@@ -18,5 +18,5 @@ struct PeerConnectionInfo {
   last_ping_time : UInt64?
   bandwidth_mbps : Double
   packet_loss_rate : Int
-  nat_type: NatType
+  nat_type : NatType
 } derive(Show, ToJson)

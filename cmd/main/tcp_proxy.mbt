@@ -38,7 +38,7 @@ let global_active_proxy_conns : Map[StringView, @socket.Tcp] = {}
 let global_proxy_conn_sources : Map[StringView, StringView] = {}
 
 ///|
-pub fn add_active_proxy_conn(
+fn add_active_proxy_conn(
   conn_id : StringView,
   conn : @socket.Tcp,
   source_peer : StringView,
@@ -48,7 +48,7 @@ pub fn add_active_proxy_conn(
 }
 
 ///|
-pub fn remove_active_proxy_conn(conn_id : StringView) -> Unit {
+fn remove_active_proxy_conn(conn_id : StringView) -> Unit {
   global_active_proxy_conns.remove(conn_id)
   global_proxy_conn_sources.remove(conn_id)
 }
@@ -59,20 +59,17 @@ pub fn remove_active_proxy_conn(conn_id : StringView) -> Unit {
 let global_listener_proxy_conns : Map[StringView, @socket.Tcp] = {}
 
 ///|
-pub fn add_listener_proxy_conn(
-  conn_id : StringView,
-  conn : @socket.Tcp,
-) -> Unit {
+fn add_listener_proxy_conn(conn_id : StringView, conn : @socket.Tcp) -> Unit {
   global_listener_proxy_conns[conn_id] = conn
 }
 
 ///|
-pub fn remove_listener_proxy_conn(conn_id : StringView) -> Unit {
+fn remove_listener_proxy_conn(conn_id : StringView) -> Unit {
   global_listener_proxy_conns.remove(conn_id)
 }
 
 ///|
-pub async fn write_to_proxy_conn(
+async fn write_to_proxy_conn(
   conn_id : StringView,
   data : Bytes,
 ) -> Unit noraise {
@@ -98,7 +95,7 @@ pub async fn write_to_proxy_conn(
 }
 
 ///|
-pub fn close_proxy_conn(conn_id : StringView) -> Unit {
+fn close_proxy_conn(conn_id : StringView) -> Unit {
   match global_active_proxy_conns.get(conn_id) {
     Some(conn) => {
       conn.close()
@@ -236,7 +233,7 @@ async fn start_tcp_proxy(
 }
 
 ///|
-pub fn init_tcp_proxies(root : @async.TaskGroup[Unit], config : Config) -> Unit {
+fn init_tcp_proxies(root : @async.TaskGroup[Unit], config : Config) -> Unit {
   match config.port {
     Some(ports) => {
       println("Initializing TCP proxies...")
@@ -294,7 +291,7 @@ pub fn init_tcp_proxies(root : @async.TaskGroup[Unit], config : Config) -> Unit 
 }
 
 ///|
-pub async fn handle_proxy_message(
+async fn handle_proxy_message(
   root : @async.TaskGroup[Unit],
   local_id : String,
   local_addr : String,
