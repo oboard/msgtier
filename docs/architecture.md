@@ -6,18 +6,18 @@
 - **welcome** - Response with known peer list and public key for discovery
 - **ping** - Health check heartbeat
 - **pong** - Heartbeat response
-- **data** - User message (triggers script execution, can be encrypted)
+- **data** - User message (always encrypted binary payload, triggers script execution)
 - **relay** - Forward message through intermediate peer
 - **punch** - NAT traversal request
 
 ## End-to-End Encryption
 
-MsgTier implements X25519 Elliptic Curve Diffie-Hellman (ECDH) key exchange with symmetric encryption:
+MsgTier implements X25519 Elliptic Curve Diffie-Hellman (ECDH) key exchange with symmetric encryption. **All data messages are encrypted**, including those sent to self (loopback).
 
-1. **Key Generation** - Each node generates an X25519 key pair on startup (fast ECC)
+1. **Key Generation** - Each node generates an X25519 key pair on startup
 2. **Key Exchange** - Public keys are exchanged during the hello/welcome handshake
-3. **Shared Secret** - Both peers compute the same shared secret via ECDH
-4. **Encryption** - Messages are symmetrically encrypted using the shared secret
+3. **Shared Secret** - Peers compute shared secrets via ECDH (including a self-shared secret for loopback)
+4. **Encryption** - All data payloads are symmetrically encrypted using the shared secret
 
 **Encryption Flow:**
 ```
@@ -32,12 +32,14 @@ Sender                          Receiver
    │     secret via X25519 ECDH    │
    │                               │
    │  3. Encrypt with shared secret│
+   │     (Force Binary MsgPack)    │
+   ├──────────────────────────────►│
    │                               │
    │  4. Decrypt with shared secret│
    │                               │
 ```
 
-Messages are automatically encrypted when sending via the `add_encrypted_pending_message()` function. If a peer's shared secret is not available, messages fall back to unencrypted transmission with a warning.
+Messages are automatically encrypted. If a peer's shared secret is not available, transmission falls back to unencrypted with a warning (but for `data` messages, we strive for encryption).
 
 ## Peer Discovery
 
@@ -86,8 +88,8 @@ Messages flow through the system in the following sequence:
          │ {target: "peer_id", body: "message"}
          ▼
 ┌──────────────────────────┐
-│  HTTP Handler            │  Queue message for later processing
-│  (add_pending_message)   │
+│  HTTP Handler            │  1. Check if Loopback (target == self) -> Direct Queue
+│  (add_pending_message)   │  2. Else -> Encrypt & Queue for Remote
 └────────┬─────────────────┘
          │
          ▼
@@ -98,16 +100,16 @@ Messages flow through the system in the following sequence:
          │
          ▼
 ┌──────────────────────────┐
-│  Transport Send          │  Send message via appropriate transport (UDP/TCP/WS)
-│  (via active connection) │
+│  Transport Layer         │  Send message via UDP/TCP/WS to remote address
+│  (via active connection) │  OR Handle Loopback internally
 └────────┬─────────────────┘
          │
          ▼
 ┌──────────────────────────┐
 │  Target Node             │  Receive and process message
-│  (Transport Handler)     │
+│  (Listener)              │
 └────────┬─────────────────┘
-         │ Parse message type
+         │ Decrypt & Parse
          ▼
    ┌─────────────────────────────────────┐
    │  Is kind == "data"?                 │
@@ -119,14 +121,21 @@ Messages flow through the system in the following sequence:
       ┌─────────────┐       ┌──────────────┐
       │  Execute    │       │  Message     │
       │  Script     │       │  Logged Only │
-      └─────────────┘       └──────────────┘
+      └─────┬───────┘       └──────────────┘
+            │
+            ▼
+      ┌─────────────┐
+      │ Send        │
+      │ Response    │
+      └─────────────┘
 ```
 
 **Key Features:**
-- **Asynchronous Processing**: HTTP handler doesn't block; messages queued immediately
-- **Best Connection Selection**: Automatically picks active connection with best quality
-- **Script Matching**: Message body matched against configured script names (case-sensitive)
-- **Platform-Specific Execution**: Scripts run via platform-specific shells (Windows: cmd.exe, Unix: sh)
+- **Asynchronous Processing**: HTTP handler waits for response (with timeout) but processing is async.
+- **Unified Encryption**: All data messages are encrypted, even to self.
+- **Best Connection Selection**: Automatically picks active connection with best quality.
+- **Script Matching**: Message body matched against configured script names (case-sensitive).
+- **Platform-Specific Execution**: Scripts run via platform-specific shells (Windows: cmd.exe, Unix: sh).
 
 ## How It Works
 
@@ -169,11 +178,12 @@ The heartbeat background task:
 ### 5. Message Sending
 
 When HTTP POST /send is received:
-- Message is queued to `pending_messages`
-- Pending message processor (100ms interval) retrieves the queue
-- For each queued message: finds best active connection to target peer
-- Sends message via appropriate transport to remote address
-- Clears processed messages from queue
+- **Encryption**: Payload is encrypted using the shared secret for the target (or self)
+- **Queuing**: Encrypted message is added to `pending_messages`
+- **Processing**: Background task (100ms interval) retrieves the queue
+- **Routing**: Finds best active connection to target peer (or uses Loopback)
+- **Transmission**: Sends message via appropriate transport (UDP/TCP/WS)
+- **Cleanup**: Clears processed messages from queue
 
 ### 6. Message Reception and Script Execution
 

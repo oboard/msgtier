@@ -148,9 +148,16 @@ The request body is the message data (typically a script name).
 **Success Response (200 OK):**
 ```json
 {
-  "status": "queued",
-  "target": "2",
-  "data": "chrome"
+  "status": "ok",
+  "output": "Script output here..."
+}
+```
+
+**Timeout Response (504):**
+```json
+{
+  "error": "Request timed out",
+  "target": "2"
 }
 ```
 
