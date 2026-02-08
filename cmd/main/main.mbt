@@ -18,6 +18,7 @@ async fn main {
 
         // Store config globally for access by listeners
         global_config.val = Some(config)
+        set_log_level_from_config(config)
 
         // Initialize known peers from config
         for peer_url in config.peers {
@@ -33,7 +34,7 @@ async fn main {
               let _ : @async.Task[Unit] = root.spawn(fn() {
                 for {
                   try {
-                    println("Attempting to listen on \{listener}")
+                    log_info("Attempting to listen on \{listener}")
                     let transport = match scheme {
                       "tcp" => (TcpTransport::new(host) : &Transport)
                       "udp" => (UdpTransport::new(host) : &Transport)
@@ -41,11 +42,11 @@ async fn main {
                       "quic" => (QuicTransport::new(host) : &Transport)
                       _ => abort("Unknown protocol: \{scheme}")
                     }
-                    println("Successfully bound to \{listener}")
+                    log_info("Successfully bound to \{listener}")
                     start_listener_service(root, transport, id)
                   } catch {
                     e =>
-                      println(
+                      log_warn(
                         "Failed to start listener on \{listener}: \{e}. Retrying in 5s...",
                       )
                   }
@@ -54,12 +55,12 @@ async fn main {
               })
 
             }
-            None => println("Invalid listener URL: \{listener}")
+            None => log_warn("Invalid listener URL: \{listener}")
           }
         }
         if config.web_api is Some(addr) {
           let _ : @async.Task[Unit] = root.spawn(fn() {
-            println("HTTP API listening on http://\{addr}")
+            log_info("HTTP API listening on http://\{addr}")
             start_http_service(addr, config)
           })
 

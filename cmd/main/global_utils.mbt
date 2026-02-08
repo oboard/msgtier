@@ -5,6 +5,86 @@
 let global_peer_manager : Ref[PeerManager] = Ref::new(PeerManager::new())
 
 ///|
+enum LogLevel {
+  Debug
+  Info
+  Warn
+  Error
+} derive(Show, Eq)
+
+///|
+let global_log_level : Ref[LogLevel] = Ref::new(Info)
+
+///|
+fn log_level_value(level : LogLevel) -> Int {
+  match level {
+    Debug => 0
+    Info => 1
+    Warn => 2
+    Error => 3
+  }
+}
+
+///|
+fn parse_log_level(level_str : String) -> LogLevel? {
+  match level_str {
+    "debug" | "DEBUG" | "Debug" => Some(Debug)
+    "info" | "INFO" | "Info" => Some(Info)
+    "warn" | "WARN" | "Warn" | "warning" | "WARNING" | "Warning" => Some(Warn)
+    "error" | "ERROR" | "Error" => Some(Error)
+    _ => None
+  }
+}
+
+///|
+fn set_log_level(level : LogLevel) -> Unit {
+  global_log_level.val = level
+}
+
+///|
+fn set_log_level_from_config(config : Config) -> Unit {
+  match config.metadata {
+    Some(meta) =>
+      match meta.get("log_level") {
+        Some(level_str) =>
+          match parse_log_level(level_str) {
+            Some(level) => set_log_level(level)
+            None => ()
+          }
+        None => ()
+      }
+    None => ()
+  }
+}
+
+///|
+fn log_with_level(level : LogLevel, msg : String) -> Unit {
+  if log_level_value(level) >= log_level_value(global_log_level.val) {
+    println(msg)
+  }
+}
+
+///|
+fn log_debug(msg : String) -> Unit {
+  log_with_level(Debug, msg)
+}
+
+///|
+fn log_info(msg : String) -> Unit {
+  log_with_level(Info, msg)
+}
+
+///|
+fn log_warn(msg : String) -> Unit {
+  log_with_level(Warn, msg)
+}
+
+///|
+fn log_error(msg : String) -> Unit {
+  log_with_level(Error, msg)
+}
+
+///|
 /// Global list of all known peer addresses (configured + discovered)
 /// Used for active connection attempts
 let global_known_peers : Ref[Map[String, UInt64]] = Ref::new({})

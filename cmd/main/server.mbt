@@ -11,7 +11,7 @@ fn handle_new_connection(
   relay_depth? : Int = 1,
   session_id? : String,
 ) -> (Connection, Bool, Bool) {
-  println(
+  log_debug(
     "DEBUG: handle_new_connection peer=\{peer_id} local=\{local_addr} remote=\{remote_addr} protocol=\{protocol} relay=\{relay_depth} session=\{session_id}",
   )
   // Get the actual peer ID (from peer_info if available, otherwise from peer_id parameter)
@@ -30,7 +30,7 @@ fn handle_new_connection(
       protocol,
       session_id?,
     )
-    println(
+    log_debug(
       "DEBUG: handle_new_connection self skip peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
     )
     return (dummy_conn, false, false)
@@ -80,7 +80,7 @@ fn handle_new_connection(
     if existing_conn.local_addr == local_addr &&
       existing_conn.remote_addr == remote_addr {
       // Connection already exists, return it with is_new=false
-      println(
+      log_debug(
         "DEBUG: handle_new_connection reuse peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
       )
       return (existing_conn, false, is_new_peer)
@@ -95,7 +95,7 @@ fn handle_new_connection(
     for existing_conn in existing_conns {
       if existing_conn.protocol == "tcp" &&
         existing_conn.local_addr == local_addr {
-        println(
+        log_debug(
           "DEBUG: handle_new_connection tcp reuse peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
         )
         return (existing_conn, false, is_new_peer)
@@ -135,7 +135,7 @@ fn handle_new_connection(
     c.local_addr == local_addr && c.remote_addr == remote_addr
   })
   let conn = if filtered.is_empty() { conns[0] } else { filtered[0] }
-  println(
+  log_debug(
     "DEBUG: handle_new_connection added peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
   )
   (conn, true, is_new_peer)
@@ -153,7 +153,7 @@ async fn handle_reconnects(
   local_addr : String,
   peer_id : String,
 ) -> Unit {
-  println(
+  log_debug(
     "DEBUG: handle_reconnects start protocol=\{transport.protocol()} local=\{local_addr} id=\{peer_id}",
   )
   let our_addresses = get_our_addresses(local_addr)
@@ -203,7 +203,7 @@ async fn handle_reconnects(
       if !peer_addr.has_prefix(transport.protocol() + "://") {
         continue
       }
-      println(
+      log_debug(
         "DEBUG: reconnect hello protocol=\{transport.protocol()} from=\{local_addr} to=\{peer_addr}",
       )
       // // Check if we already have an active connection to this peer address
@@ -223,7 +223,7 @@ async fn handle_reconnects(
 ///|
 async fn handle_pending_messages(transport : &Transport) -> Unit {
   let protocol_prefix = transport.protocol() + "://"
-  println(
+  log_debug(
     "DEBUG: handle_pending_messages start protocol=\{transport.protocol()} prefix=\{protocol_prefix}",
   )
   for {
@@ -239,7 +239,7 @@ async fn handle_pending_messages(transport : &Transport) -> Unit {
     if pending.is_empty() {
       continue
     }
-    println(
+    log_debug(
       "DEBUG: pending batch protocol=\{transport.protocol()} count=\{pending.length()}",
     )
 
@@ -253,7 +253,7 @@ async fn handle_pending_messages(transport : &Transport) -> Unit {
           "PendingMessage: direct addr=\{pending_msg.target} id=\{msg.id}",
         )
         let success = send_message(transport, pending_msg.target, msg)
-        println(
+        log_debug(
           "DEBUG: pending send protocol=\{transport.protocol()} addr=\{pending_msg.target} id=\{msg.id} ok=\{success}",
         )
         if success {
@@ -266,7 +266,7 @@ async fn handle_pending_messages(transport : &Transport) -> Unit {
         }
         let target_connections = cm.get_peer_connections(target_peer_id)
         if target_connections.is_empty() {
-          println(
+          log_debug(
             "DEBUG: pending no connections protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.msg.id}",
           )
         }
@@ -280,7 +280,7 @@ async fn handle_pending_messages(transport : &Transport) -> Unit {
           // Address target: send directly on this transport
           println("PendingMessage: direct addr=\{target_addr} id=\{msg.id}")
           let success = send_message(transport, target_addr, msg)
-          println(
+          log_debug(
             "DEBUG: pending send protocol=\{transport.protocol()} addr=\{target_addr} id=\{msg.id} ok=\{success}",
           )
           if success {
@@ -289,7 +289,7 @@ async fn handle_pending_messages(transport : &Transport) -> Unit {
         }
       }
       if sent {
-        println(
+        log_debug(
           "DEBUG: pending remove id=\{pending_msg.msg.id} protocol=\{transport.protocol()}",
         )
         remove_pending_message(pending_msg)
@@ -441,14 +441,14 @@ async fn handle_heartbeat(
   from : String,
 ) -> Unit {
   let heartbeat_interval = 3000 // 3 seconds
-  println(
+  log_debug(
     "DEBUG: handle_heartbeat start protocol=\{transport.protocol()} local=\{local_addr} from=\{from}",
   )
   for {
     @async.sleep(heartbeat_interval)
     let current_time = @env.now()
     let all_peers = get_global_peer_manager().get_all_peers()
-    println(
+    log_debug(
       "DEBUG: heartbeat tick protocol=\{transport.protocol()} peers=\{all_peers.length()}",
     )
     for peer in all_peers {
@@ -457,7 +457,7 @@ async fn handle_heartbeat(
         peer_id,
       )
       if peer_conns.is_empty() {
-        println(
+        log_debug(
           "DEBUG: heartbeat peer no conns peer=\{peer_id} protocol=\{transport.protocol()}",
         )
       }
@@ -485,7 +485,7 @@ async fn handle_heartbeat(
         })
         if conn.protocol == transport.protocol() {
           let ok = send_message(transport, conn.remote_addr, ping_msg)
-          println(
+          log_debug(
             "DEBUG: ping send protocol=\{transport.protocol()} peer=\{peer_id} addr=\{conn.remote_addr} ok=\{ok}",
           )
         }
@@ -497,7 +497,7 @@ async fn handle_heartbeat(
             manager.remove_connection(conn.id)
           })
           // Broadcast update because a connection became inactive
-          println(
+          log_debug(
             "DEBUG: heartbeat timeout broadcast protocol=\{transport.protocol()} peer=\{peer_id}",
           )
           ignore(broadcast_sync(from, local_addr))
@@ -511,11 +511,13 @@ async fn handle_heartbeat(
 fn broadcast_sync(my_id : String, local_addr : String) -> Unit {
   let update_msg = create_sync_message(my_id, local_addr)
   let all_peers = get_global_peer_manager().get_all_peers()
-  println(
+  log_debug(
     "DEBUG: broadcast_sync from=\{my_id} local=\{local_addr} peers=\{all_peers.length()}",
   )
   for peer in all_peers {
-    println("DEBUG: broadcast_sync enqueue to=\{peer.id} msg=\{update_msg.id}")
+    log_debug(
+      "DEBUG: broadcast_sync enqueue to=\{peer.id} msg=\{update_msg.id}",
+    )
     ignore(add_pending_message(peer.id, update_msg))
   }
 }
@@ -523,12 +525,12 @@ fn broadcast_sync(my_id : String, local_addr : String) -> Unit {
 ///|
 async fn handle_periodic_updates(my_id : String, local_addr : String) -> Unit {
   let update_interval = 10000 // 10 seconds
-  println(
+  log_debug(
     "DEBUG: handle_periodic_updates start id=\{my_id} local=\{local_addr}",
   )
   for {
     @async.sleep(update_interval)
-    println("DEBUG: periodic_updates tick id=\{my_id}")
+    log_debug("DEBUG: periodic_updates tick id=\{my_id}")
     broadcast_sync(my_id, local_addr)
   }
 }
@@ -545,14 +547,14 @@ async fn handle_incoming_message(
   let msgpack_value = @msgpack.decode(bytes) catch {
     e => {
       let error_msg = e.to_string()
-      println(
+      log_debug(
         "DEBUG: Msgpack decode error - \{error_msg}, sender: \{sender_addr}, bytes: \{bytes.length()}",
       )
       // Log first 20 bytes for debugging
       if bytes.length() > 0 {
         let preview_len = bytes.length().min(20)
         let preview = bytes[:preview_len]
-        println(
+        log_debug(
           "DEBUG: Message preview (first \{preview_len} bytes): \{bytes_to_hex(preview.to_bytes())}",
         )
       }
@@ -561,7 +563,7 @@ async fn handle_incoming_message(
   }
   let msg : Message = Message::from_msgpack(msgpack_value) catch {
     _ => {
-      println(
+      log_warn(
         "Failed to decode message: \{msgpack_value.to_json().stringify()}",
       )
       return
@@ -573,7 +575,7 @@ async fn handle_incoming_message(
   }
   // Logger
   println("[\{msg.kind}]\t\{msg.from}(\{sender_addr})")
-  println(
+  log_debug(
     "DEBUG: incoming protocol=\{transport.protocol()} local=\{local_addr} sender=\{sender_addr} kind=\{msg.kind} id=\{msg.id}",
   )
   // Handle the connection - always create/update connection for any message
@@ -689,7 +691,7 @@ async fn handle_incoming_message(
       None => ""
     },
   )
-  println(
+  log_debug(
     "DEBUG: connection handled peer=\{msg.from} local=\{local_addr} remote=\{effective_addr} protocol=\{transport.protocol()} new=\{is_new_connection}",
   )
   // let now = @env.now()
@@ -713,7 +715,7 @@ async fn handle_incoming_message(
 
   // Only broadcast connection update if this is a NEW connection
   if is_new_connection {
-    println(
+    log_debug(
       "DEBUG: new connection broadcast_sync peer=\{msg.from} local=\{local_addr}",
     )
     broadcast_sync(id, local_addr)
@@ -957,14 +959,14 @@ async fn handle_incoming_message(
         session_id?=msg.session_id,
       )
       let ok = send_message(transport, sender_addr, reply)
-      println(
+      log_debug(
         "DEBUG: pong send protocol=\{transport.protocol()} to=\{sender_addr} ok=\{ok}",
       )
     }
     { kind: "pong", .. } => {
       // Heartbeat response received - mark connection as healthy
       let peer_id = msg.from
-      println(
+      log_debug(
         "DEBUG: pong recv protocol=\{transport.protocol()} from=\{sender_addr} peer=\{peer_id}",
       )
       let peer_conns = get_global_connection_manager().get_peer_connections(
@@ -1092,18 +1094,18 @@ async fn handle_incoming_message(
       }
     }
     { kind: "data", data: Binary(raw_data), encrypted, .. } => {
-      println(
+      log_debug(
         "DEBUG: Processing data message from \{msg.from}, encrypted=\{encrypted}",
       )
       // Decrypt data if encrypted
       let data_content = if encrypted {
         match decrypt_from_peer(msg.from, raw_data) {
           Some(decrypted) => {
-            println("DEBUG: Decrypted message from \{msg.from}")
+            log_debug("DEBUG: Decrypted message from \{msg.from}")
             decrypted
           }
           None => {
-            println(
+            log_error(
               "Failed to decrypt message from \{msg.from}, raw=\{raw_data}",
             )
             raw_data
@@ -1115,11 +1117,11 @@ async fn handle_incoming_message(
 
       // Check if this is a ProxyMessage
       let is_proxy_msg = try {
-        println("DEBUG: Attempting to decode ProxyMessage")
+        log_debug("DEBUG: Attempting to decode ProxyMessage")
         let val = @msgpack.decode(data_content)
         match ProxyMessage::from_msgpack(val) {
           Some(proxy_msg) => {
-            println("DEBUG: Spawning handle_proxy_message op=\{proxy_msg.op}")
+            log_debug("DEBUG: Spawning handle_proxy_message op=\{proxy_msg.op}")
             ignore(
               root.spawn(fn() {
                 handle_proxy_message(root, id, local_addr, msg.from, proxy_msg)
@@ -1128,13 +1130,13 @@ async fn handle_incoming_message(
             true
           }
           None => {
-            println("DEBUG: Not a ProxyMessage (decode success but mismatch)")
+            log_debug("DEBUG: Not a ProxyMessage (decode success but mismatch)")
             false
           }
         }
       } catch {
         _ => {
-          println("DEBUG: Not a ProxyMessage (decode failed)")
+          log_debug("DEBUG: Not a ProxyMessage (decode failed)")
           false
         }
       }
@@ -1328,7 +1330,7 @@ async fn start_listener_service(
   my_id : String,
 ) -> Unit {
   let local_addr = transport.protocol() + "://" + transport.local_addr()
-  println(
+  log_debug(
     "DEBUG: start_listener_service protocol=\{transport.protocol()} local=\{local_addr} id=\{my_id}",
   )
 

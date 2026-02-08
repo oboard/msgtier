@@ -49,6 +49,10 @@ pub impl @json.FromJson for Connection
 type ConnectionManager
 pub impl Show for ConnectionManager
 
+type LogLevel
+pub impl Eq for LogLevel
+pub impl Show for LogLevel
+
 type Message
 pub impl Eq for Message
 pub impl Show for Message
