@@ -30,23 +30,23 @@ fn log_with_level(level : LogLevel, msg : String) -> Unit {
 }
 
 ///|
-fn log_debug(msg : String) -> Unit {
-  log_with_level(Debug, msg)
+fn log_debug(msg : &Show) -> Unit {
+  log_with_level(Debug, msg.to_string())
 }
 
 ///|
-fn log_info(msg : String) -> Unit {
-  log_with_level(Info, msg)
+fn log_info(msg : &Show) -> Unit {
+  log_with_level(Info, msg.to_string())
 }
 
 ///|
-fn log_warn(msg : String) -> Unit {
-  log_with_level(Warn, msg)
+fn log_warn(msg : &Show) -> Unit {
+  log_with_level(Warn, msg.to_string())
 }
 
 ///|
-fn log_error(msg : String) -> Unit {
-  log_with_level(Error, msg)
+fn log_error(msg : &Show) -> Unit {
+  log_with_level(Error, msg.to_string())
 }
 
 ///|

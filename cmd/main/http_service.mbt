@@ -13,7 +13,7 @@ async fn handle_http_request(
     (Get, "/api/download") => download_handler(conn)
     (Post, "/api/send") => {
       // Extract target from headers
-      let target = match request.headers.get("target") {
+      let target_id = match request.headers.get("target") {
         Some(t) => t
         None => {
           conn
@@ -30,19 +30,22 @@ async fn handle_http_request(
       let body_str = body.read_all().text()
       let config = get_config()
       // Get current node ID and local address
-      let peer_id = config.id
+      let my_id = config.id
       let addrs = config.listeners
       let local_addr = if addrs.is_empty() { "127.0.0.1:0" } else { addrs[0] }
 
       // Prepare data payload (plain string for self, encrypted binary for others)
-      let is_self = target == peer_id
+      let is_self = target_id == my_id
       let (data_val, is_encrypted) = if is_self {
         (@msgpack.string(body_str), false)
       } else {
         // Encrypt for target peer
         (
           @msgpack.binary(
-            encrypt_for_peer(target, @msgpack.encode(@msgpack.string(body_str))),
+            encrypt_for_peer(
+              target_id,
+              @msgpack.encode(@msgpack.string(body_str)),
+            ),
           ),
           true,
         )
@@ -51,34 +54,34 @@ async fn handle_http_request(
       // Create data message to send with body as data
       let msg = Message::new(
         kind="data",
-        source_id=peer_id,
-        source_addr=local_addr,
+        source_id=my_id,
         relay=1,
         version=VERSION,
-        target~,
+        target_id~,
         data=data_val,
         encrypted=is_encrypted,
       )
 
       // Print to stdout for debugging
-      log_debug("HTTP /send: Queuing message id=\{msg.id} to \{target}")
-      log_debug("  From: \{peer_id}")
+      log_debug("HTTP /send: Queuing message id=\{msg.id} to \{target_id}")
+      log_debug("  From: \{my_id}")
       log_debug("  Local: \{local_addr}")
       log_debug("  Data: \{body_str}")
       log_debug("  Encrypted: \{is_encrypted}")
       log_debug("  Self: \{is_self}")
-
-      // Add to pending message queue
-      add_pending_message(target, msg)
-      log_debug(
-        "HTTP /send: Added pending message id=\{msg.id} target=\{target}",
+      log_info(
+        "HTTP /send: Added pending message id=\{msg.id} target=\{target_id}",
       )
 
       // Check if target peer exists or is self
-      let target_peer = get_global_peer_manager().get_peer(target)
-      let is_self = target == peer_id
+      let target_peer = get_global_peer_manager().get_peer(target_id)
+      let is_self = target_id == my_id
       match (target_peer, is_self) {
         (Some(_), _) | (None, true) => {
+
+          // Add to pending message queue
+          add_pending_message(msg)
+
           // Register request to track response
           add_pending_request(msg.id)
           log_debug("HTTP /send: Registered request id=\{msg.id}")
@@ -97,7 +100,7 @@ async fn handle_http_request(
                 "Content-Type": "application/json",
               })
               ..write(
-                { "error": "Request timed out", "target": target }
+                { "error": "Request timed out", "target": target_id }
                 .to_json()
                 .stringify(),
               )
@@ -110,7 +113,7 @@ async fn handle_http_request(
             "Content-Type": "application/json",
           })
           ..write(
-            { "error": "Target peer not found", "target": target }
+            { "error": "Target peer not found", "target": target_id }
             .to_json()
             .stringify(),
           )

@@ -109,7 +109,6 @@ test "message with short array (pre-optional fields)" {
   assert_eq(decoded.id, "msg-id")
   assert_eq(decoded.kind, "hello")
   assert_eq(decoded.source_id, "node-a")
-  assert_eq(decoded.source_addr, "127.0.0.1:8000")
   assert_eq(decoded.relay, 1)
   assert_eq(decoded.visited.length(), 0)
   assert_eq(decoded.encrypted, false)

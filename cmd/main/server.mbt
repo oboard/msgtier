@@ -150,12 +150,6 @@ fn handle_new_connection(
 }
 
 ///|
-fn get_best_connection_for_peer(peer_id : String) -> Connection? {
-  // Use the intelligent connection selection that prefers direct connections
-  get_global_connection_manager().get_best_direct_connection(peer_id)
-}
-
-///|
 async fn handle_reconnects(
   transport : &Transport,
   local_addr : String,
@@ -240,10 +234,7 @@ async fn handle_pending_messages(transport : &Transport) -> Unit {
     // Only take messages we can handle:
     // 1. Specific protocol match (e.g. tcp://...)
     // 2. No protocol (peer ID) - we try to route these
-    let pending = take_pending_messages(pm => {
-      let t = pm.target
-      t.has_prefix(protocol_prefix) || !t.contains("://")
-    })
+    let pending = take_pending_messages(_ => true)
     if pending.is_empty() {
       continue
     }
@@ -255,189 +246,40 @@ async fn handle_pending_messages(transport : &Transport) -> Unit {
     for pending_msg in pending {
       let cm = get_global_connection_manager()
       let mut sent = false
-      if pending_msg.target.has_prefix(protocol_prefix) {
-        let msg = pending_msg.msg
+      let target_peer_id = match pending_msg.target_id {
+        Some(target_id) => target_id
+        None => ""
+      }
+      let target_connections = cm.get_peer_connections(target_peer_id)
+      if target_connections.is_empty() {
         log_debug(
-          "PendingMessage: direct addr=\{pending_msg.target} id=\{msg.id}",
+          "DEBUG: pending no connections protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.id}",
         )
-        let success = send_message(transport, pending_msg.target, msg)
+        return
+      }
+      for target_connection in target_connections {
+        if target_connection.protocol != transport.protocol() {
+          continue
+        }
+        let target_addr = target_connection.remote_addr
+        let msg = pending_msg
+
+        // Address target: send directly on this transport
+        log_debug("PendingMessage: direct addr=\{target_addr} id=\{msg.id}")
+        let success = send_message(transport, target_addr, msg)
         log_debug(
-          "DEBUG: pending send protocol=\{transport.protocol()} addr=\{pending_msg.target} id=\{msg.id} ok=\{success}",
+          "DEBUG: pending send protocol=\{transport.protocol()} addr=\{target_addr} id=\{msg.id} ok=\{success}",
         )
         if success {
           sent = true
         }
-      } else {
-        let target_peer_id = match pending_msg.msg.target_id {
-          Some(target_id) => target_id
-          None => pending_msg.target
-        }
-        let target_connections = cm.get_peer_connections(target_peer_id)
-        if target_connections.is_empty() {
-          log_debug(
-            "DEBUG: pending no connections protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.msg.id}",
-          )
-        }
-        for target_connection in target_connections {
-          if target_connection.protocol != transport.protocol() {
-            continue
-          }
-          let target_addr = target_connection.remote_addr
-          let msg = pending_msg.msg
-
-          // Address target: send directly on this transport
-          log_debug("PendingMessage: direct addr=\{target_addr} id=\{msg.id}")
-          let success = send_message(transport, target_addr, msg)
-          log_debug(
-            "DEBUG: pending send protocol=\{transport.protocol()} addr=\{target_addr} id=\{msg.id} ok=\{success}",
-          )
-          if success {
-            sent = true
-          }
-        }
       }
       if sent {
         log_debug(
-          "DEBUG: pending remove id=\{pending_msg.msg.id} protocol=\{transport.protocol()}",
+          "DEBUG: pending remove id=\{pending_msg.id} protocol=\{transport.protocol()}",
         )
         remove_pending_message(pending_msg)
       }
-      // // Check if message is for self
-      // if target == peer_id {
-      //   // Handle message to self directly
-      //   // Extract content from message data
-      //   let content_opt = match msg.data {
-      //     String(s) => Some(s)
-      //     Binary(raw) =>
-      //       // Try to decrypt if encrypted (though we prefer String for self)
-      //       if msg.encrypted {
-      //         match decrypt_from_peer(peer_id, raw) {
-      //           Some(d) => Some(@utf8.decode(d))
-      //           None => None
-      //         }
-      //       } else {
-      //         Some(@utf8.decode(raw))
-      //       }
-      //     _ => None
-      //   }
-      //   match content_opt {
-      //     Some(content) =>
-      //       match execute_script_handler(content) {
-      //         Some(output) =>
-      //           resolve_request(
-      //             msg.id,
-      //             { "code": output.exit_code.to_string() },
-      //             @utf8.encode(output.output),
-      //           )
-      //         None =>
-      //           println("PendingMessage: self-config-missing id=\{msg.id}")
-      //       }
-      //     None => println("PendingMessage: self-no-data id=\{msg.id}")
-      //   }
-      // } else {
-      //   // Try to find and send to remote peer
-      //   let target_peer = get_global_peer_manager().get_peer(target)
-
-      //   // Strategy:
-      //   // 1. Try direct connection
-      //   // 2. Try routed connection (via next_hop)
-      //   // 3. Fallback to broadcast/relay (optional, maybe keep for robustness)
-
-      //   // 1. Direct connection
-      //   let target_conns = get_global_connection_manager().get_active_connections(
-      //     target,
-      //   )
-      //   let mut handled = false
-      //   if !target_conns.is_empty() {
-      //     // Find compatible connection
-      //     let mut compatible_conn = None
-      //     for conn in target_conns {
-      //       if conn.protocol == transport.protocol() {
-      //         compatible_conn = Some(conn)
-      //         break
-      //       }
-      //     }
-      //     match compatible_conn {
-      //       Some(conn) => {
-      //         ignore(send_message(transport, conn.remote_addr, msg))
-      //         println(
-      //           "Sent data to \{target} directly via \{conn.remote_addr}",
-      //         )
-      //         handled = true
-      //       }
-      //       None => {
-      //         // Re-queue for other transports
-      //         add_pending_message(target, msg)
-      //         handled = true
-      //       }
-      //     }
-      //   }
-      //   if handled {
-      //     println("PendingMessage: sent/queued id=\{msg.id} target=\{target}")
-      //     continue
-      //   }
-
-      //   // 2. Routed connection
-      //   match get_global_peer_manager().get_route(target) {
-      //     Some(route) => {
-      //       let next_hop = route.next_hop
-      //       let next_hop_conns = get_global_connection_manager().get_active_connections(
-      //         next_hop,
-      //       )
-      //       if !next_hop_conns.is_empty() {
-      //         let next_hop_addr = next_hop_conns[0].remote_addr
-      //         // We keep target set in the message so next hop knows where to forward
-      //         let routed_msg = Message::{ ..msg, target: Some(target) }
-      //         ignore(send_message(transport, next_hop_addr, routed_msg))
-      //         println(
-      //           "Sent data to \{target} via route \{next_hop} (\{next_hop_addr})",
-      //         )
-      //         println("PendingMessage: routed id=\{msg.id} target=\{target}")
-      //         continue
-      //       } else {
-      //         println(
-      //           "Route to \{target} via \{next_hop} exists but next hop is not connected",
-      //         )
-      //       }
-      //     }
-      //     None => ()
-      //   }
-
-      //   // 3. Fallback: Relay through all connected peers (Flood/Gossip)
-      //   // Only do this if we haven't sent it yet
-      //   match target_peer {
-      //     Some(_) => {
-      //       println("No route to \{target}, trying flood relay")
-      //       let all_peers = get_global_peer_manager().get_all_peers()
-      //       for relay_peer in all_peers {
-      //         let relay_conns = get_global_connection_manager().get_active_connections(
-      //           relay_peer.id,
-      //         )
-      //         if !relay_conns.is_empty() && relay_peer.id != target {
-      //           let relayed_msg = Message::new(
-      //             kind=msg.kind,
-      //             from=msg.from,
-      //             addr=msg.addr,
-      //             relay=msg.relay + 1,
-      //             target~,
-      //             data=msg.data,
-      //             version?=msg.version,
-      //             public_key?=msg.public_key,
-      //             secret_hash?=msg.secret_hash,
-      //             encrypted=msg.encrypted,
-      //           )
-      //           let relay_addr = relay_conns[0].remote_addr
-      //           ignore(send_message(transport, relay_addr, relayed_msg))
-      //           println(
-      //             "PendingMessage: relayed id=\{msg.id} target=\{target} via=\{relay_addr}",
-      //           )
-      //         }
-      //       }
-      //     }
-      //     None => println("Target peer \{target} not found")
-      //   }
-      // }
-
     }
   }
 }
@@ -526,7 +368,7 @@ fn broadcast_sync(my_id : String, local_addr : String) -> Unit {
     log_debug(
       "DEBUG: broadcast_sync enqueue to=\{peer.id} msg=\{update_msg.id}",
     )
-    ignore(add_pending_message(peer.id, update_msg))
+    ignore(add_pending_message(update_msg))
   }
 }
 
@@ -588,12 +430,13 @@ async fn handle_incoming_message(
   )
   // Handle the connection - always create/update connection for any message
   // Determine connectable address from hello message
-  let connectable_addr = if msg.kind == "hello" && !msg.source_addr.is_empty() {
+  let connectable_addr = if msg.kind == "hello" &&
+    msg.source_addr is Some(source_addr) {
     // Ensure address has protocol
-    let addr_str = if msg.source_addr.contains("://") {
-      msg.source_addr
+    let addr_str = if source_addr.contains("://") {
+      source_addr
     } else {
-      transport.protocol() + "://" + msg.source_addr
+      transport.protocol() + "://" + source_addr
     }
     match @url.Url::parse(addr_str) {
       Some(url) => {
@@ -813,21 +656,11 @@ async fn handle_incoming_message(
     let known_peers = get_all_known_peers()
     for peer_addr in known_peers {
       if peer_addr != sender_addr && !peer_addr.has_prefix("0.0.0.0:") {
-        let broadcast_msg = Message::new(
-          id=msg.id,
-          kind=msg.kind,
-          source_id=msg.source_id,
-          source_addr=msg.source_addr,
-          relay=msg.relay + 1,
-          visited=updated_visited, // Keep visited list to track path
-          target?=msg.target_id,
-          data=msg.data,
-          version?=msg.version,
-          public_key?=msg.public_key,
-          secret_hash?=msg.secret_hash,
-          encrypted=msg.encrypted,
-          broadcast=true,
-        )
+        let broadcast_msg = Message::{
+          ..msg,
+          relay: msg.relay + 1,
+          visited: updated_visited,
+        }
         ignore(send_message(transport, peer_addr, broadcast_msg))
         // println("[broadcast]\t\{msg.from}(\{sender_addr}) -> \{peer_addr}")
       }
@@ -875,7 +708,7 @@ async fn handle_incoming_message(
             id=msg.source_id,
             version=VERSION,
             public_key~,
-            addresses=[msg.source_addr],
+            addresses=if msg.source_addr is Some(addr) { [addr] } else { [] },
             metadata={},
           )
           update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
@@ -995,52 +828,6 @@ async fn handle_incoming_message(
         }
       }
     }
-    { kind: "punch_request", target_id: Some(target), .. } => {
-      let punch_to_target = Message::new(
-        kind="punch",
-        source_id=id,
-        source_addr=local_addr,
-        relay=2,
-        target=sender_addr,
-      )
-      let punch_to_sender = Message::new(
-        kind="punch",
-        source_id=id,
-        source_addr=local_addr,
-        relay=2,
-        target~,
-      )
-      add_pending_message(target, punch_to_target)
-      // sender_addr is an IP/port, so we can send directly or use pending
-      // using pending is safer for consistency
-      ignore(send_message(transport, sender_addr, punch_to_sender))
-    }
-    { kind: "punch", target_id: Some(target), .. } => {
-      let ack_to_target = Message::new(
-        kind="punch_ack",
-        source_id=id,
-        source_addr=local_addr,
-      )
-      let ack_to_sender = Message::new(
-        kind="punch_ack",
-        source_id=id,
-        source_addr=local_addr,
-      )
-      add_pending_message(target, ack_to_target)
-      ignore(send_message(transport, sender_addr, ack_to_sender))
-    }
-    { kind: "relay", target_id: Some(target), data, .. } => {
-      let forward = Message::new(
-        kind="data",
-        source_id=msg.source_id,
-        source_addr=msg.source_addr,
-        relay=2,
-        data~,
-        target~,
-        encrypted=true, // Ensure relay messages preserve encryption flag if originally encrypted
-      )
-      add_pending_message(target, forward)
-    }
     // Proxy handlers moved to kind="data" with ProxyMessage
     { kind: "send", target_id: Some(target), data, .. } => {
       // When sending new data, encrypt it for the target
@@ -1051,167 +838,18 @@ async fn handle_incoming_message(
       let direct = Message::new(
         kind="data",
         source_id=msg.source_id,
-        source_addr=msg.source_addr,
+        source_addr?=msg.source_addr,
         data=encrypted_data,
-        target~,
+        target_id=target,
         encrypted=true,
       )
-      add_pending_message(target, direct)
-      // Find best relay peer
-      let all_peers = get_global_peer_manager().get_all_peers()
-      let mut best_relay : Connection? = None
-      for peer in all_peers {
-        let peer_id = peer.id
-        if peer_id != target && peer_id != sender_addr && peer_id != local_addr {
-          match get_best_connection_for_peer(peer_id) {
-            Some(conn) => {
-              best_relay = Some(conn)
-              break
-            }
-            None => ()
-          }
-        }
-      }
-      match best_relay {
-        Some(relay_conn) => {
-          let request = Message::new(
-            kind="punch_request",
-            source_id=id,
-            source_addr=local_addr,
-            relay=2,
-            target~,
-          )
-          let relay = Message::new(
-            kind="relay",
-            source_id=msg.source_id,
-            source_addr=msg.source_addr,
-            relay=2,
-            target~,
-            data~,
-          )
-          ignore(send_message(transport, relay_conn.remote_addr, request))
-          ignore(send_message(transport, relay_conn.remote_addr, relay))
-        }
-        None => ()
-      }
+      add_pending_message(direct)
     }
-    { kind: "data", data: Binary(raw_data), encrypted, .. } => {
-      log_debug(
-        "DEBUG: Processing data message from \{msg.source_id}, encrypted=\{encrypted}",
-      )
-      // Decrypt data if encrypted
-      let data_content = if encrypted {
-        match decrypt_from_peer(msg.source_id, raw_data) {
-          Some(decrypted) => {
-            log_debug("DEBUG: Decrypted message from \{msg.source_id}")
-            decrypted
-          }
-          None => {
-            log_error(
-              "Failed to decrypt message from \{msg.source_id}, raw=\{raw_data}",
-            )
-            raw_data
-          }
-        }
-      } else {
-        raw_data
-      }
-
-      // Check if this is a ProxyMessage
-      let is_proxy_msg = try {
-        log_debug("DEBUG: Attempting to decode ProxyMessage")
-        let val = @msgpack.decode(data_content)
-        match ProxyMessage::from_msgpack(val) {
-          Some(proxy_msg) => {
-            log_debug("DEBUG: Spawning handle_proxy_message op=\{proxy_msg.op}")
-            ignore(
-              root.spawn(fn() {
-                handle_proxy_message(
-                  root,
-                  id,
-                  local_addr,
-                  msg.source_id,
-                  proxy_msg,
-                )
-              }),
-            )
-            true
-          }
-          None => {
-            log_debug("DEBUG: Not a ProxyMessage (decode success but mismatch)")
-            false
-          }
-        }
-      } catch {
-        _ => {
-          log_debug("DEBUG: Not a ProxyMessage (decode failed)")
-          false
-        }
-      }
-      if !is_proxy_msg {
-        // Execute scripts with received data and send back output
-        root.spawn_bg(fn() {
-          let content_str = @utf8.decode(data_content)
-          match execute_script_handler(content_str) {
-            Some(output) => {
-              // Send response back to sender with script outputs
-              let response_msg = Message::new(
-                kind="data_response",
-                source_id=id,
-                source_addr=local_addr,
-                relay=1,
-                data=output.to_msgpack(),
-                payload=msg.id,
-              )
-              // Add pending message instead of direct send
-              add_pending_message(msg.source_id, response_msg)
-              log_info(
-                "DataResponse: queued id=\{response_msg.id} correlation=\{msg.id} to=\{msg.source_id}",
-              )
-            }
-            None =>
-              log_warn("No scripts configured, received data: \{data_content}")
-          }
-        })
-      }
-    }
+    { kind: "data", data, .. } =>
+      handle_data_message(root, id, local_addr, msg, data)
     { kind: "data_response", data: response_data, payload: correlation_id, .. } => {
-      // Handle response from script execution
-      log_info("Received script response from \{msg.source_id}:")
-      log_debug(response_data.to_string().unwrap_or("error"))
-
-      // If this is a response to a pending request, resolve it
-      match correlation_id {
-        Some(id) => {
-          log_debug(
-            "DataResponse: resolve correlation=\{id} from=\{msg.source_id}",
-          )
-          // Try to convert response to JSON string
-          match response_data {
-            Array(arr) => {
-              let strings = []
-              for v in arr {
-                if v is String(s) {
-                  strings.push(s)
-                }
-              }
-              resolve_request(
-                id,
-                {},
-                @utf8.encode(strings.to_json().stringify()),
-              )
-            }
-            _ =>
-              resolve_request(
-                id,
-                {},
-                @utf8.encode(response_data.to_string().unwrap_or("error")),
-              )
-          }
-        }
-        None =>
-          log_warn("DataResponse: missing correlation from=\{msg.source_id}")
-      }
+      let merged = { ..msg, kind: "data", payload: correlation_id }
+      handle_data_message(root, id, local_addr, merged, response_data)
     }
     { kind: "sync", data: Array(conn_entries), .. } => {
       // Handle connection update from peer

@@ -3,7 +3,7 @@ struct Message {
   id : String
   kind : String
   source_id : String
-  source_addr : String
+  source_addr : String?
   relay : Int // Relay depth: 1=direct, 2=relayed once, 3+=relayed multiple times
   visited : Array[String] // Track visited node IDs to prevent routing loops (DFS path tracking)
   version : String?
@@ -23,13 +23,13 @@ fn Message::new(
   id? : String,
   kind~ : String,
   source_id~ : String,
-  source_addr~ : String,
+  source_addr? : String,
   relay? : Int = 1,
   visited? : Array[String] = [],
   version? : String,
   peers? : Array[NetworkAddress],
   payload? : String,
-  target? : String,
+  target_id? : String,
   data? : @msgpack.Value = @msgpack.nil(),
   public_key? : Bytes,
   secret_hash? : String,
@@ -51,7 +51,7 @@ fn Message::new(
     version,
     peers,
     payload,
-    target_id: target,
+    target_id: target_id,
     data,
     public_key,
     secret_hash,
@@ -73,7 +73,10 @@ fn Message::to_msgpack(self : Message) -> Bytes {
     @msgpack.string(self.id),
     @msgpack.string(self.kind),
     @msgpack.string(self.source_id),
-    @msgpack.string(self.source_addr),
+    match self.source_addr {
+      Some(addr) => @msgpack.string(addr)
+      None => @msgpack.nil()
+    },
     @msgpack.int(self.relay),
     @msgpack.array(visited_array),
     @msgpack.bool(self.encrypted), // Always set encrypted field (might be true if message is encrypted)
@@ -142,7 +145,8 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         _ => fail("Invalid or missing from at position 2")
       }
       let source_addr = match arr[3] {
-        String(v) => v
+        String(v) => Some(v)
+        Nil => None
         _ => fail("Invalid or missing addr at position 3")
       }
 

@@ -66,7 +66,7 @@ async fn main {
         }
 
         // Initialize TCP proxies
-        init_tcp_proxies(root, config) |> ignore
+        // init_tcp_proxies(root, config) |> ignore
 
         // 等待所有任务完成
         // for task in tasks {

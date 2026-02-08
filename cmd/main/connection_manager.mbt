@@ -108,34 +108,6 @@ fn ConnectionManager::update_connection_relay(
 }
 
 ///|
-fn ConnectionManager::get_best_direct_connection(
-  self : ConnectionManager,
-  peer_id : String,
-) -> Connection? {
-  let active_conns = self.get_peer_connections(peer_id)
-  if active_conns.is_empty() {
-    None
-  } else {
-    // Prefer direct connections (relay = 1)
-    let direct = active_conns.filter(fn(c) { c.relay == 1 })
-    if !direct.is_empty() {
-      Some(direct[0])
-    } else {
-      // Fallback to any active connection, preferring lower relay depth
-      Some(
-        active_conns.fold(init=active_conns[0], fn(best, conn) {
-          if conn.relay < best.relay {
-            conn
-          } else {
-            best
-          }
-        }),
-      )
-    }
-  }
-}
-
-///|
 fn ConnectionManager::update_connection_last_seen(
   self : ConnectionManager,
   conn_id : String,
