@@ -35,20 +35,19 @@ async fn handle_http_request(
       let local_addr = if addrs.is_empty() { "127.0.0.1:0" } else { addrs[0] }
 
       // Prepare data payload (plain string for self, encrypted binary for others)
-      let is_self = target_id == my_id
+      let is_self = target_id.trim() == my_id
       let (data_val, is_encrypted) = if is_self {
+        log_debug(
+          "HTTP /send: Self-message detected, sending unencrypted binary",
+        )
         (@msgpack.string(body_str), false)
       } else {
         // Encrypt for target peer
-        (
-          @msgpack.binary(
-            encrypt_for_peer(
-              target_id,
-              @msgpack.encode(@msgpack.string(body_str)),
-            ),
-          ),
-          true,
+        let data = encrypt_for_peer(
+          target_id,
+          @msgpack.encode(@msgpack.string(body_str)),
         )
+        (@msgpack.binary(data), true)
       }
 
       // Create data message to send with body as data
@@ -58,7 +57,7 @@ async fn handle_http_request(
         relay=1,
         version=VERSION,
         target_id~,
-        data=data_val,
+        body=data_val,
         encrypted=is_encrypted,
       )
 
@@ -67,7 +66,6 @@ async fn handle_http_request(
       log_debug("  From: \{my_id}")
       log_debug("  Local: \{local_addr}")
       log_debug("  Data: \{body_str}")
-      log_debug("  Encrypted: \{is_encrypted}")
       log_debug("  Self: \{is_self}")
       log_info(
         "HTTP /send: Added pending message id=\{msg.id} target=\{target_id}",

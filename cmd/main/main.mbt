@@ -19,6 +19,9 @@ async fn main {
         log_debug(config.to_json().stringify(indent=2))
         let id = config.id
 
+        // Initialize shared secret with self for loopback encryption
+        compute_and_store_shared_secret(id, get_public_key())
+
         // Initialize known peers from config
         for peer_url in config.peers {
           add_known_peer(peer_url)

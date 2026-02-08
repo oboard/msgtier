@@ -223,8 +223,13 @@ async fn handle_reconnects(
 }
 
 ///|
-async fn handle_pending_messages(transport : &Transport) -> Unit {
+async fn handle_pending_messages(
+  root : @async.TaskGroup[Unit],
+  transport : &Transport,
+  my_id : String,
+) -> Unit {
   let protocol_prefix = transport.protocol() + "://"
+  let local_addr = transport.protocol() + "://" + transport.local_addr()
   log_debug(
     "DEBUG: handle_pending_messages start protocol=\{transport.protocol()} prefix=\{protocol_prefix}",
   )
@@ -234,7 +239,7 @@ async fn handle_pending_messages(transport : &Transport) -> Unit {
     // Only take messages we can handle:
     // 1. Specific protocol match (e.g. tcp://...)
     // 2. No protocol (peer ID) - we try to route these
-    let pending = take_pending_messages(_ => true)
+    let pending = take_pending_messages(fn(_) { true })
     if pending.is_empty() {
       continue
     }
@@ -250,12 +255,34 @@ async fn handle_pending_messages(transport : &Transport) -> Unit {
         Some(target_id) => target_id
         None => ""
       }
+
+      // Handle loopback (send to self)
+      if target_peer_id == my_id {
+        // Attempt to remove message atomically (returns true if we removed it)
+        // This prevents multiple transports from handling the same local message
+        if remove_pending_message(pending_msg) {
+          log_info(
+            "PendingMessage: handling local loopback id=\{pending_msg.id}",
+          )
+          // Use spawn_bg to avoid blocking the pending loop
+          root.spawn_bg(fn() {
+            handle_data_message(
+              root,
+              my_id,
+              local_addr,
+              pending_msg,
+              pending_msg.body,
+            )
+          })
+        }
+        continue
+      }
       let target_connections = cm.get_peer_connections(target_peer_id)
       if target_connections.is_empty() {
         log_debug(
           "DEBUG: pending no connections protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.id}",
         )
-        return
+        continue
       }
       for target_connection in target_connections {
         if target_connection.protocol != transport.protocol() {
@@ -278,7 +305,15 @@ async fn handle_pending_messages(transport : &Transport) -> Unit {
         log_debug(
           "DEBUG: pending remove id=\{pending_msg.id} protocol=\{transport.protocol()}",
         )
-        remove_pending_message(pending_msg)
+        remove_pending_message(pending_msg) |> ignore
+      } else if target_connections.length() > 0 {
+        // If we have connections but failed to send on this specific transport,
+        // check if we should keep it pending or if another transport might handle it.
+        // For now, we only remove if successfully sent.
+        // However, to avoid infinite loops if a specific transport is down but others exist,
+        // we might need more complex logic.
+        // But since 'pending' loop runs on all transports, if one succeeds, it will be removed.
+        ()
       }
     }
   }
@@ -829,29 +864,29 @@ async fn handle_incoming_message(
       }
     }
     // Proxy handlers moved to kind="data" with ProxyMessage
-    { kind: "send", target_id: Some(target), data, .. } => {
+    { kind: "send", target_id: Some(target), body, .. } => {
       // When sending new data, encrypt it for the target
-      let encrypted_data = match data {
+      let encrypted_data = match body {
         Binary(raw) => @msgpack.binary(encrypt_for_peer(target, raw))
-        _ => data // Should be binary
+        _ => body // Should be binary
       }
       let direct = Message::new(
         kind="data",
         source_id=msg.source_id,
         source_addr?=msg.source_addr,
-        data=encrypted_data,
+        body=encrypted_data,
         target_id=target,
         encrypted=true,
       )
       add_pending_message(direct)
     }
-    { kind: "data", data, .. } =>
-      handle_data_message(root, id, local_addr, msg, data)
-    { kind: "data_response", data: response_data, payload: correlation_id, .. } => {
+    { kind: "data", body, .. } =>
+      handle_data_message(root, id, local_addr, msg, body)
+    { kind: "data_response", body: response_data, payload: correlation_id, .. } => {
       let merged = { ..msg, kind: "data", payload: correlation_id }
       handle_data_message(root, id, local_addr, merged, response_data)
     }
-    { kind: "sync", data: Array(conn_entries), .. } => {
+    { kind: "sync", body: Array(conn_entries), .. } => {
       // Handle connection update from peer
       // Collect direct neighbors of the sender to update their connections list
       let sender_connections : Array[PeerConnectionInfo] = []
@@ -988,7 +1023,7 @@ async fn start_listener_service(
   // Start heartbeat/health check background task
   root.spawn_bg(() => handle_heartbeat(transport, local_addr, my_id))
   // Start pending message sender background task
-  root.spawn_bg(() => handle_pending_messages(transport))
+  root.spawn_bg(() => handle_pending_messages(root, transport, my_id))
   // Start periodic connection update task
   root.spawn_bg(() => handle_periodic_updates(my_id, local_addr))
 

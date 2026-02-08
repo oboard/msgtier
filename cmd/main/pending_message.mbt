@@ -24,6 +24,9 @@ fn take_pending_messages(predicate : (Message) -> Bool) -> Array[Message] {
 }
 
 ///|
-fn remove_pending_message(message : Message) -> Unit {
+fn remove_pending_message(message : Message) -> Bool {
+  let len_before = global_pending_messages.length()
   global_pending_messages.retain(msg => msg != message)
+  let len_after = global_pending_messages.length()
+  len_before != len_after
 }

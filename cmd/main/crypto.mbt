@@ -4,7 +4,7 @@ let global_keypair : Ref[(Bytes, Bytes)?] = Ref::new(None)
 
 ///|
 /// Shared secrets with peers: peer_id -> shared_secret
-let global_shared_secrets : Ref[Map[String, Bytes]] = Ref::new({})
+let global_shared_secrets :Map[String, Bytes] = {}
 
 ///|
 /// Initialize the X25519 key pair for this node
@@ -39,13 +39,13 @@ fn compute_and_store_shared_secret(
 ) -> Unit {
   let priv_key = get_private_key()
   let shared = @x25519.compute_shared_secret(priv_key, peer_public_key)
-  global_shared_secrets.val[peer_id] = shared
+  global_shared_secrets[peer_id] = shared
 }
 
 ///|
 /// Get shared secret for a peer
 fn get_shared_secret(peer_id : String) -> Bytes? {
-  global_shared_secrets.val.get(peer_id)
+  global_shared_secrets.get(peer_id)
 }
 
 ///|
@@ -59,8 +59,8 @@ fn encrypt_for_peer(peer_id : String, data : Bytes) -> Bytes {
 
 ///|
 /// Decrypt data from a peer using shared secret
-fn decrypt_from_peer(peer_id : String, encrypted : Bytes) -> Bytes? {
-  match get_shared_secret(peer_id) {
+fn decrypt_from_peer(source_id : String, encrypted : Bytes) -> Bytes? {
+  match get_shared_secret(source_id) {
     Some(shared) => @x25519.decrypt(shared, encrypted)
     None =>
       // println("No shared secret with peer \{peer_id}")

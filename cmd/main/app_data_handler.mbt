@@ -9,63 +9,113 @@ fn handle_data_message(
   match msg.payload {
     Some(correlation_id) => {
       log_info("Received data response from \{msg.source_id}:")
-      log_debug(data_value.to_string().unwrap_or("error"))
-      handle_data_response(correlation_id, data_value, msg.source_id)
-    }
-    None =>
-      match data_value {
-        Binary(raw_data) => {
-          log_debug(
-            "DEBUG: Processing data message from \{msg.source_id}, encrypted=\{msg.encrypted}",
-          )
-          let data_content = if msg.encrypted {
-            match decrypt_from_peer(msg.source_id, raw_data) {
-              Some(decrypted) => {
-                log_debug("DEBUG: Decrypted message from \{msg.source_id}")
-                decrypted
-              }
+      let final_data = match data_value {
+        Binary(raw) => {
+          let payload_bytes = if msg.encrypted {
+            match decrypt_from_peer(msg.source_id, raw) {
+              Some(decrypted) => decrypted
               None => {
-                log_error(
-                  "Failed to decrypt message from \{msg.source_id}, raw=\{raw_data}",
-                )
-                raw_data
+                log_error("Failed to decrypt response from \{msg.source_id}")
+                b""
               }
             }
           } else {
-            raw_data
+            raw
           }
-          root.spawn_bg(fn() {
-            let content_str = @utf8.decode(data_content) catch {
+          if payload_bytes.length() > 0 {
+            @msgpack.decode(payload_bytes) catch {
               _ => {
-                log_warn("UTF8 decode Malformed")
-                return
+                log_warn("Failed to decode response bytes")
+                data_value
               }
             }
-            match execute_script_handler(content_str) {
-              Some(output) => {
-                let response_msg = Message::new(
-                  kind="data",
-                  source_id=id,
-                  source_addr=local_addr,
-                  relay=1,
-                  data=output.to_msgpack(),
-                  payload=msg.id,
-                )
-                add_pending_message(response_msg)
-                log_info(
-                  "DataResponse: queued id=\{response_msg.id} correlation=\{msg.id} to=\{msg.source_id}",
-                )
-              }
-              None =>
-                log_warn(
-                  "No scripts configured, received data: \{data_content}",
-                )
-            }
-          })
+          } else {
+            data_value
+          }
         }
-        _ =>
-          log_warn("Data message without binary payload from \{msg.source_id}")
+        _ => data_value
       }
+      log_debug(final_data.to_string().unwrap_or("error"))
+      handle_data_response(correlation_id, final_data, msg.source_id)
+    }
+    None => {
+      // Extract raw binary data or use String directly
+
+      log_debug(
+        "DEBUG: Processing data message from \{msg.source_id}, encrypted=\{msg.encrypted}",
+      )
+      let data_content = if msg.encrypted && data_value is Binary(raw_data) {
+        @msgpack.decode(
+          match decrypt_from_peer(msg.source_id, raw_data) {
+            Some(decrypted) => {
+              log_debug("DEBUG: Decrypted message from \{msg.source_id}")
+              decrypted
+            }
+            None => {
+              log_error(
+                "Failed to decrypt message from \{msg.source_id}, raw length=\{raw_data.length()}",
+              )
+              raw_data
+            }
+          },
+        ) catch {
+          _ => @msgpack.nil()
+        }
+      } else {
+        data_value
+      }
+      root.spawn_bg(fn() {
+        let content_str = if data_content is String(content) {
+          content
+        } else {
+          ""
+        }
+        // Trim whitespace from content string to avoid empty script names
+        let content_str = content_str.trim().to_string()
+        match execute_script_handler(content_str) {
+          Some(output) => {
+            let response_data_raw = output.to_msgpack()
+            let (response_data, is_encrypted) = match
+              get_shared_secret(msg.source_id) {
+              Some(_) =>
+                (
+                  @msgpack.binary(
+                    encrypt_for_peer(
+                      msg.source_id,
+                      @msgpack.encode(response_data_raw),
+                    ),
+                  ),
+                  true,
+                )
+              None => {
+                log_warn(
+                  "No shared secret for \{msg.source_id}, sending unencrypted binary",
+                )
+                (@msgpack.binary(@msgpack.encode(response_data_raw)), false)
+              }
+            }
+            let response_msg = Message::new(
+              kind="data",
+              source_id=id,
+              source_addr=local_addr,
+              target_id=msg.source_id,
+              relay=1,
+              body=response_data,
+              encrypted=is_encrypted,
+              payload=msg.payload.unwrap_or(msg.id), // Use payload (correlation_id) if available, otherwise fallback to msg.id
+            )
+            add_pending_message(response_msg)
+            log_info(
+              "DataResponse: queued id=\{response_msg.id} correlation=\{msg.id} to=\{msg.source_id} encrypted=\{is_encrypted}",
+            )
+          }
+          None =>
+            log_warn(
+              "No scripts configured or script not found, received data: \{content_str}",
+            )
+        }
+      })
+    }
   }
 }
 
@@ -91,6 +141,14 @@ fn handle_data_response(
         {},
         @utf8.encode(strings.to_json().stringify()),
       )
+    }
+    Map(m) => {
+      // Try to extract "output" from ScriptOutput map
+      let output = match m.get("output") {
+        Some(String(s)) => s
+        _ => response_data.to_string().unwrap_or("error")
+      }
+      resolve_request(correlation_id, {}, @utf8.encode(output))
     }
     _ =>
       resolve_request(

@@ -10,7 +10,7 @@ struct Message {
   peers : Array[NetworkAddress]?
   payload : String?
   target_id : String? // If set, send to this peer; if unset, broadcast
-  data : @msgpack.Value
+  body : @msgpack.Value
   public_key : Bytes? // X25519 public key for E2E encryption (sent in hello/welcome)
   secret_hash : String? // Hash of network secret for authentication
   encrypted : Bool // Whether the data field is encrypted
@@ -30,7 +30,7 @@ fn Message::new(
   peers? : Array[NetworkAddress],
   payload? : String,
   target_id? : String,
-  data? : @msgpack.Value = @msgpack.nil(),
+  body? : @msgpack.Value = @msgpack.nil(),
   public_key? : Bytes,
   secret_hash? : String,
   encrypted? : Bool = false,
@@ -51,8 +51,8 @@ fn Message::new(
     version,
     peers,
     payload,
-    target_id: target_id,
-    data,
+    target_id,
+    body: body,
     public_key,
     secret_hash,
     encrypted,
@@ -100,7 +100,7 @@ fn Message::to_msgpack(self : Message) -> Bytes {
       Some(t) => @msgpack.string(t)
       None => @msgpack.nil()
     },
-    self.data,
+    self.body,
     match self.peers {
       Some(peers) => {
         let peers_array : Array[@msgpack.Value] = []
@@ -231,13 +231,13 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
       } else {
         None
       }
-      let data_pos = target_pos + 1
-      let data = if arr.length() > data_pos {
-        arr[data_pos]
+      let body_pos = target_pos + 1
+      let body = if arr.length() > body_pos {
+        arr[body_pos]
       } else {
         @msgpack.nil()
       }
-      let peers_pos = data_pos + 1
+      let peers_pos = body_pos + 1
       let peers = if arr.length() > peers_pos {
         match arr[peers_pos] {
           Array(peers_arr) => {
@@ -288,7 +288,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         peers,
         payload,
         target_id,
-        data,
+        body: body,
         public_key,
         secret_hash,
         encrypted,

@@ -96,7 +96,7 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
     source_addr=local_addr,
     relay=1,
     broadcast=true,
-    data=@msgpack.array(connections_data),
+    body=@msgpack.array(connections_data),
   )
 }
 
