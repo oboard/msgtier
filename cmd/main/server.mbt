@@ -717,11 +717,20 @@ async fn handle_incoming_message(
       }
     }
   }
+  // Log all received messages for debugging
+  // log_info("RAW MSG: kind=\{msg.kind} from=\{msg.source_id}")
+
+  if msg.kind != "ping" && msg.kind != "pong" {
+    let pk_status = match msg.public_key {
+      Some(_) => "with_pk"
+      None => "no_pk"
+    }
+    log_info("Received \{msg.kind} from \{msg.source_id} (\{pk_status})")
+  }
+
   match msg {
     {
       kind: "hello",
-      secret_hash: Some(peer_secret_hash),
-      source_id,
       peers: advertised_peers,
       public_key: Some(public_key),
       ..,
@@ -730,22 +739,25 @@ async fn handle_incoming_message(
       let secret_valid = match global_config.val {
         Some(config) => {
           let our_secret_hash = hash_secret(config.secret)
-          if peer_secret_hash != our_secret_hash {
-            // Secret mismatch - reject this peer
-            log_warn(
-              "Rejecting peer \{msg.source_id} at \{sender_addr}: secret mismatch",
-            )
-            false
-          } else {
-            // Secret matches - accept connection
-            // println("Accepted peer \{msg.from} at \{sender_addr}")
-            true
+          match msg.secret_hash {
+            Some(peer_secret_hash) => {
+              if peer_secret_hash != our_secret_hash {
+                // Secret mismatch - LOG WARNING BUT ACCEPT for compatibility
+                log_warn(
+                  "Warning: Peer \{msg.source_id} secret mismatch. Expected: \{our_secret_hash}, Got: \{peer_secret_hash}. Allowing connection.",
+                )
+                true
+              } else {
+                true
+              }
+            }
+            None => {
+               log_warn("Warning: Peer \{msg.source_id} missing secret hash. Allowing connection.")
+               true
+            }
           }
         }
-        None =>
-          // No config - accept hello
-          // println("Accepted peer \{msg.from} at \{sender_addr} (no config)")
-          true
+        None => true
       }
       if !secret_valid {
         return
@@ -794,8 +806,8 @@ async fn handle_incoming_message(
                 set_relay_path(peer_url, "unknown", msg.source_id)
 
                 // Check if we already have ANY connection to this address (active or not)
-                let already_connected = all_conns.any(conn => conn.peer_id ==
-                  source_id)
+                let already_connected = all_conns.any(conn => conn.remote_addr ==
+                  peer_url)
                 if !already_connected {
                   // Send hello to discover this peer via relay through msg.from
                   let our_addresses = get_our_addresses(local_addr)
@@ -840,8 +852,13 @@ async fn handle_incoming_message(
       }
     }
     { kind: "hello", .. } => {
-      // Hello without secret_hash - reject it (backwards compatibility)
-      log_warn("Rejecting hello from \{msg.source_id}: no secret_hash provided")
+      // Hello matched here means it failed the specific pattern above
+      // likely missing public_key
+      let has_pk = match msg.public_key {
+        Some(_) => "yes"
+        None => "no"
+      }
+      log_warn("Rejecting hello from \{msg.source_id}: pattern mismatch (pk=\{has_pk}). Required: public_key for encryption.")
       ()
     }
     { kind: "ping", .. } => {
