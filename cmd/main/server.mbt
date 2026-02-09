@@ -252,12 +252,29 @@ async fn handle_pending_messages(
 
     // Process each pending message
     for entry in pending {
-      let pending_msg = entry.msg
+      let mut pending_msg = entry.msg
       let cm = get_global_connection_manager()
       let mut sent = false
-      let target_peer_ids = match pending_msg.target_id {
-        Some(target_id) => [target_id]
-        None => get_global_peer_manager().get_all_peers().map(p => p.id)
+      if !pending_msg.broadcast {
+        match pending_msg.target_id {
+          Some(target_id) =>
+            if !can_direct_connect(target_id) {
+              log_debug(
+                "Switching to broadcast for message \{pending_msg.id} to \{target_id}",
+              )
+              set_pending_message_broadcast(pending_msg.id, true)
+              pending_msg = { ..pending_msg, broadcast: true }
+            }
+          None => ()
+        }
+      }
+      let target_peer_ids = if pending_msg.broadcast {
+        get_global_peer_manager().get_all_peers().map(p => p.id)
+      } else {
+        match pending_msg.target_id {
+          Some(target_id) => [target_id]
+          None => get_global_peer_manager().get_all_peers().map(p => p.id)
+        }
       }
       for target_peer_id in target_peer_ids {
         // Handle loopback (send to self)
@@ -294,7 +311,11 @@ async fn handle_pending_messages(
             continue
           }
           // Skip if already sent via this protocol
-          if entry.sent_protocols.contains(target_connection.protocol) {
+          let already_sent = match entry.sent_targets.get(target_peer_id) {
+            Some(m) => m.contains(target_connection.protocol)
+            None => false
+          }
+          if already_sent {
             continue
           }
           let target_addr = target_connection.remote_addr
@@ -322,6 +343,7 @@ async fn handle_pending_messages(
           )
           mark_pending_message_sent(
             pending_msg.id,
+            target_peer_id,
             transport.protocol(),
             required_protocols,
           )
@@ -419,11 +441,12 @@ async fn handle_heartbeat(
 fn broadcast_sync(my_id : String, local_addr : String) -> Unit {
   let now = @env.now()
   if now - last_sync_broadcast_time.val < 1000 {
-    log_debug("DEBUG: broadcast_sync throttled (last was \{now - last_sync_broadcast_time.val}ms ago)")
+    log_debug(
+      "DEBUG: broadcast_sync throttled (last was \{now - last_sync_broadcast_time.val}ms ago)",
+    )
     return
   }
   last_sync_broadcast_time.val = now
-
   let update_msg = create_sync_message(my_id, local_addr)
   let all_peers = get_global_peer_manager().get_all_peers()
   log_debug(
@@ -649,76 +672,7 @@ async fn handle_incoming_message(
       // Message is for us, continue to process
     } else {
       // Message is for someone else, forward it
-      // Check if this node has already processed this message (prevent loops using DFS path tracking)
-      let already_visited = msg.visited.any(peer_id => peer_id == id)
-      if !already_visited {
-        let updated_visited = msg.visited
-        updated_visited.push(id)
-        let relay_msg = Message::{
-          ..msg,
-          relay: msg.relay + 1,
-          visited: updated_visited,
-        }
-
-        // Use routing table to forward
-        let mut forwarded = false
-
-        // 1. Direct connection check
-        let target_conns = get_global_connection_manager().get_peer_connections(
-          target_peer_id,
-        )
-        if !target_conns.is_empty() {
-          for conn in target_conns {
-            ignore(send_message(transport, conn.remote_addr, relay_msg))
-          }
-          forwarded = true
-          let path_str = relay_msg.visited.join(" -> ")
-          log_debug(
-            "Forwarded to \{target_peer_id} directly, path: \{path_str}",
-          )
-        }
-
-        // 2. Routing table check
-        if !forwarded {
-          match get_global_peer_manager().get_route(target_peer_id) {
-            Some(route) => {
-              let next_hop = route.next_hop
-              let next_hop_conns = get_global_connection_manager().get_peer_connections(
-                next_hop,
-              )
-              if !next_hop_conns.is_empty() {
-                let next_hop_addr = next_hop_conns[0].remote_addr
-                ignore(send_message(transport, next_hop_addr, relay_msg))
-                forwarded = true
-                let path_str = relay_msg.visited.join(" -> ")
-                log_debug(
-                  "Forwarded to \{target_peer_id} via \{next_hop}, path: \{path_str}",
-                )
-              }
-            }
-            None => ()
-          }
-        }
-
-        // 3. Fallback to broadcast/flood if no route (optional, but good for discovery)
-        if !forwarded {
-          // ... existing flood logic?
-          // Maybe better to just drop if no route to avoid network storm
-          // But for now, let's just log failure
-          log_warn(
-            "Failed to route message to \{target_peer_id}: no route found",
-          )
-        }
-
-        // Stop processing locally (since it was forwarded or dropped)
-        return
-      } else {
-        let path_str = msg.visited.join(" -> ")
-        log_warn(
-          "Dropping message from \{msg.source_id} to \{target_peer_id}: already visited this node (loop detected), path: \{path_str}",
-        )
-        return
-      }
+      relay_message(transport, id, msg, target_peer_id)
     }
   }
 
@@ -762,7 +716,7 @@ async fn handle_incoming_message(
         Some(config) => {
           let our_secret_hash = hash_secret(config.secret)
           match msg.secret_hash {
-            Some(peer_secret_hash) => {
+            Some(peer_secret_hash) =>
               if peer_secret_hash == our_secret_hash {
                 secret_matched = true
                 true
@@ -772,7 +726,6 @@ async fn handle_incoming_message(
                 )
                 true
               }
-            }
             None => {
               log_warn(
                 "Warning: Peer \{msg.source_id} missing secret hash. Allowing connection.",

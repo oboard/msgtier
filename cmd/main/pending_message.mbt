@@ -1,7 +1,7 @@
 ///|
 pub struct PendingEntry {
-  msg : Message
-  sent_protocols : Map[String, Bool]
+  mut msg : Message
+  sent_targets : Map[String, Map[String, Bool]] // PeerID -> Protocol -> Sent
 }
 
 ///|
@@ -10,7 +10,7 @@ let global_pending_messages : Array[PendingEntry] = []
 ///|
 fn add_pending_message(msg : Message) -> Unit {
   let messages = global_pending_messages
-  messages.push({ msg, sent_protocols: {} })
+  messages.push({ msg, sent_targets: {} })
 }
 
 ///|
@@ -39,17 +39,23 @@ fn take_pending_messages(predicate : (Message) -> Bool) -> Array[PendingEntry] {
 
 ///|
 fn remove_pending_message(message : Message) -> Bool {
+  remove_pending_message_by_id(message.id)
+}
+
+///|
+fn remove_pending_message_by_id(id : String) -> Bool {
   let len_before = global_pending_messages.length()
-  global_pending_messages.retain(entry => entry.msg.id != message.id)
+  global_pending_messages.retain(entry => entry.msg.id != id)
   let len_after = global_pending_messages.length()
   len_before != len_after
 }
 
 ///|
-/// Marks a message as sent via a specific protocol.
+/// Marks a message as sent via a specific protocol to a specific peer.
 /// Returns true if the message has been sent via all required protocols and was removed.
 fn mark_pending_message_sent(
   msg_id : String,
+  peer_id : String,
   protocol : String,
   required_protocols : Array[String],
 ) -> Bool {
@@ -57,10 +63,23 @@ fn mark_pending_message_sent(
   for i = 0; i < messages.length(); i = i + 1 {
     let entry = messages[i]
     if entry.msg.id == msg_id {
-      entry.sent_protocols[protocol] = true
+      let target_protocols = match entry.sent_targets.get(peer_id) {
+        Some(m) => m
+        None => {
+          let m = {}
+          entry.sent_targets[peer_id] = m
+          m
+        }
+      }
+      target_protocols[protocol] = true
+
+      // If broadcast, do not remove (rely on TTL to keep sending to other peers)
+      if entry.msg.broadcast {
+        return false
+      }
       let mut all_sent = true
       for req in required_protocols {
-        if !entry.sent_protocols.contains(req) {
+        if !target_protocols.contains(req) {
           all_sent = false
           break
         }
@@ -78,4 +97,15 @@ fn mark_pending_message_sent(
 ///|
 pub fn clear_pending_messages() -> Unit {
   global_pending_messages.clear()
+}
+
+///|
+pub fn set_pending_message_broadcast(id : String, broadcast : Bool) -> Unit {
+  let messages = global_pending_messages
+  for i = 0; i < messages.length(); i = i + 1 {
+    if messages[i].msg.id == id {
+      messages[i].msg = { ..messages[i].msg, broadcast, }
+      break
+    }
+  }
 }

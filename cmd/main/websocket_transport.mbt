@@ -44,16 +44,15 @@ impl Transport for WebSocketTransport with send(self, target, data) {
       // Get or create connection
       let mut wrapper_opt = self.connections.get(target_key)
       let mut created = false
-
       if wrapper_opt is None {
         try {
           // Connect if not connected
           let url = "ws://" + target_key
           let ws = @websocket.connect(url)
-          let wrapper = WebSocketConnWrapper::{ 
-            conn: ws, 
+          let wrapper = WebSocketConnWrapper::{
+            conn: ws,
             sending: { val: false },
-            broken: { val: false }
+            broken: { val: false },
           }
           self.connections[target_key] = wrapper
           wrapper_opt = Some(wrapper)
@@ -62,7 +61,6 @@ impl Transport for WebSocketTransport with send(self, target, data) {
           _ => () // Will be handled by next iteration or return false
         }
       }
-
       match wrapper_opt {
         Some(wrapper) => {
           // Start reader if new connection
@@ -109,12 +107,11 @@ impl Transport for WebSocketTransport with send(self, target, data) {
 
           // Check if connection broke while we were waiting
           if wrapper.broken.val {
-             self.connections.remove(target_key)
-             self.reader_started.remove(target_key)
-             // Continue to retry loop to create new connection
-             continue 
+            self.connections.remove(target_key)
+            self.reader_started.remove(target_key)
+            // Continue to retry loop to create new connection
+            continue
           }
-
           wrapper.sending.val = true
           try {
             wrapper.conn.send_binary(data)
@@ -130,10 +127,7 @@ impl Transport for WebSocketTransport with send(self, target, data) {
             }
           }
         }
-        None =>
-          if i == 1 {
-            return false
-          }
+        None => if i == 1 { return false }
       }
     } catch {
       _ => {
@@ -159,10 +153,10 @@ impl Transport for WebSocketTransport with listen(
     let client_addr = conn.client_addr().to_string()
     try {
       let ws = @websocket.from_http_server(request, conn)
-      let wrapper = WebSocketConnWrapper::{ 
-        conn: ws, 
+      let wrapper = WebSocketConnWrapper::{
+        conn: ws,
         sending: { val: false },
-        broken: { val: false }
+        broken: { val: false },
       }
       self.connections[client_addr] = wrapper
       self.reader_started[client_addr] = true

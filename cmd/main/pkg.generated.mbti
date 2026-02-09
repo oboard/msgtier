@@ -9,7 +9,13 @@ import {
 }
 
 // Values
+pub fn can_direct_connect(String) -> Bool
+
 pub fn clear_pending_messages() -> Unit
+
+pub async fn relay_message(&Transport, String, Message, String) -> Unit noraise
+
+pub fn set_pending_message_broadcast(String, Bool) -> Unit
 
 // Errors
 type AddressParseError
@@ -94,8 +100,8 @@ pub impl ToJson for PeerNodeStatus
 pub impl @json.FromJson for PeerNodeStatus
 
 pub struct PendingEntry {
-  msg : Message
-  sent_protocols : Map[String, Bool]
+  mut msg : Message
+  sent_targets : Map[String, Map[String, Bool]]
 }
 
 type PendingRequest

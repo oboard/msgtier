@@ -27,6 +27,8 @@ fn handle_data_message(
 ) -> Unit {
   match msg.payload {
     Some(correlation_id) => {
+      // If we receive a response, we can stop broadcasting/retrying the original request
+      remove_pending_message_by_id(correlation_id) |> ignore
       if check_and_mark_processed(msg.id, msg.timestamp) {
         log_warn("Duplicate or expired response \{msg.id} ignored")
         return
