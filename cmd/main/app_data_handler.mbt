@@ -38,12 +38,13 @@ fn handle_data_message(
             // Check if we have a shared secret first
             match get_shared_secret(msg.source_id) {
               None => {
-                log_error("Received encrypted message from \{msg.source_id} but no shared secret found. Dropping.")
+                log_error(
+                  "Received encrypted message from \{msg.source_id} but no shared secret found. Dropping.",
+                )
                 return
               }
               Some(_) => ()
             }
-
             match decrypt_from_peer(msg.source_id, raw) {
               Some(decrypted) => {
                 log_debug(
@@ -52,7 +53,9 @@ fn handle_data_message(
                 // Debug: print first few bytes
                 if decrypted.length() > 0 {
                   // Simplified logging to avoid string replace issues
-                  log_debug("DEBUG: Decrypted bytes length: \{decrypted.length()}")
+                  log_debug(
+                    "DEBUG: Decrypted bytes length: \{decrypted.length()}",
+                  )
                   let mut s = ""
                   for i = 0; i < decrypted.length(); i = i + 1 {
                     s = s + decrypted[i].to_int().to_string() + " "
@@ -174,8 +177,9 @@ fn handle_data_message(
         }
         // Trim whitespace from content string to avoid empty script names
         let content_str = content_str.trim().to_string()
-        log_info("DEBUG: Handling data message. Encrypted=\{msg.encrypted}, Content='\{content_str}'")
-        
+        log_info(
+          "DEBUG: Handling data message. Encrypted=\{msg.encrypted}, Content='\{content_str}'",
+        )
         match execute_script_handler(content_str) {
           Some(output) => {
             let response_data_raw = output.to_msgpack()

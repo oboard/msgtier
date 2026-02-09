@@ -727,20 +727,14 @@ async fn handle_incoming_message(
     }
     log_info("Received \{msg.kind} from \{msg.source_id} (\{pk_status})")
   }
-
   match msg {
-    {
-      kind: "hello",
-      peers: advertised_peers,
-      public_key: Some(public_key),
-      ..,
-    } => {
+    { kind: "hello", peers: advertised_peers, public_key: Some(public_key), .. } => {
       // Validate secret
       let secret_valid = match global_config.val {
         Some(config) => {
           let our_secret_hash = hash_secret(config.secret)
           match msg.secret_hash {
-            Some(peer_secret_hash) => {
+            Some(peer_secret_hash) =>
               if peer_secret_hash != our_secret_hash {
                 // Secret mismatch - LOG WARNING BUT ACCEPT for compatibility
                 log_warn(
@@ -750,10 +744,11 @@ async fn handle_incoming_message(
               } else {
                 true
               }
-            }
             None => {
-               log_warn("Warning: Peer \{msg.source_id} missing secret hash. Allowing connection.")
-               true
+              log_warn(
+                "Warning: Peer \{msg.source_id} missing secret hash. Allowing connection.",
+              )
+              true
             }
           }
         }
@@ -858,7 +853,9 @@ async fn handle_incoming_message(
         Some(_) => "yes"
         None => "no"
       }
-      log_warn("Rejecting hello from \{msg.source_id}: pattern mismatch (pk=\{has_pk}). Required: public_key for encryption.")
+      log_warn(
+        "Rejecting hello from \{msg.source_id}: pattern mismatch (pk=\{has_pk}). Required: public_key for encryption.",
+      )
       ()
     }
     { kind: "ping", .. } => {

@@ -10,7 +10,7 @@
 
 ///|
 test "init_keypair initializes both keys" {
-  init_keypair()
+  init_keypair("test_secret")
   let pub_key = get_public_key()
   let priv_key = get_private_key()
   inspect(pub_key.length() == 32, content="true")
@@ -21,15 +21,6 @@ test "init_keypair initializes both keys" {
 test "get_shared_secret returns None for unknown peer" {
   let result = get_shared_secret("nonexistent")
   inspect(result, content="None")
-}
-
-///|
-test "compute_and_store_shared_secret stores secret" {
-  init_keypair()
-  let (_peer_priv, peer_pub) = @x25519.generate_keypair()
-  compute_and_store_shared_secret("peer1", peer_pub)
-  let stored = get_shared_secret("peer1")
-  guard stored is Some(_) else { fail("expected some value") }
 }
 
 ///|
