@@ -73,6 +73,12 @@ fn PeerManager::get_all_peers(self : PeerManager) -> Array[PeerNode] {
 }
 
 ///|
+fn PeerManager::remove_peer(self : PeerManager, peer_id : String) -> PeerManager {
+  self.peers.remove(peer_id)
+  self
+}
+
+///|
 fn PeerManager::update_route(
   self : PeerManager,
   target_peer_id : String,

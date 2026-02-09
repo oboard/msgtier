@@ -1,5 +1,5 @@
 ///|
-const CONNECTION_TIMEOUT_MS : UInt64 = 30000 // 30 seconds timeout
+const CONNECTION_TIMEOUT_MS : UInt64 = 15000 // 15 seconds timeout
 
 ///|
 let last_sync_broadcast_time : Ref[UInt64] = Ref::new(0)
@@ -459,6 +459,22 @@ async fn handle_heartbeat(
           log_debug(
             "DEBUG: heartbeat timeout broadcast protocol=\{transport.protocol()} peer=\{peer_id}",
           )
+          needs_broadcast = true
+        }
+      }
+
+      // Check if peer has any active connections left
+      let remaining_conns = get_global_connection_manager().get_peer_connections(
+        peer_id,
+      )
+      if remaining_conns.is_empty() {
+        // Double check if we should remove the peer
+        // Only remove if it's not our own ID (though get_all_peers shouldn't include self usually)
+        if peer_id != from {
+          log_warn("Peer \{peer_id} has no active connections, removing peer.")
+          update_global_peer_manager(fn(manager) {
+            manager.remove_peer(peer_id)
+          })
           needs_broadcast = true
         }
       }
