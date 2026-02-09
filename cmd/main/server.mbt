@@ -728,22 +728,24 @@ async fn handle_incoming_message(
     log_info("Received \{msg.kind} from \{msg.source_id} (\{pk_status})")
   }
   match msg {
-    { kind: "hello", peers: advertised_peers, public_key: Some(public_key), .. } => {
-      // Validate secret
+    { kind: "hello", peers: advertised_peers, .. } => {
+      // Logic for hello with optional public_key and secret validation
+      let mut secret_matched = false
       let secret_valid = match global_config.val {
         Some(config) => {
           let our_secret_hash = hash_secret(config.secret)
           match msg.secret_hash {
-            Some(peer_secret_hash) =>
-              if peer_secret_hash != our_secret_hash {
-                // Secret mismatch - LOG WARNING BUT ACCEPT for compatibility
+            Some(peer_secret_hash) => {
+              if peer_secret_hash == our_secret_hash {
+                secret_matched = true
+                true
+              } else {
                 log_warn(
                   "Warning: Peer \{msg.source_id} secret mismatch. Expected: \{our_secret_hash}, Got: \{peer_secret_hash}. Allowing connection.",
                 )
                 true
-              } else {
-                true
               }
+            }
             None => {
               log_warn(
                 "Warning: Peer \{msg.source_id} missing secret hash. Allowing connection.",
@@ -758,6 +760,25 @@ async fn handle_incoming_message(
         return
       }
 
+      // Determine effective public key
+      let effective_pk_opt = match msg.public_key {
+        Some(pk) => Some(pk)
+        None =>
+          if secret_matched {
+            match global_keypair.val {
+              Some((_, pk)) => {
+                log_warn(
+                  "Warning: Peer \{msg.source_id} missing PK but secret matched. Using our PK as fallback.",
+                )
+                Some(pk)
+              }
+              None => None
+            }
+          } else {
+            None
+          }
+      }
+
       // Ensure peer exists in manager before learning address
       match get_global_peer_manager().get_peer(msg.source_id) {
         None => {
@@ -765,21 +786,40 @@ async fn handle_incoming_message(
           let peer_node = PeerNode::new(
             id=msg.source_id,
             version=VERSION,
-            public_key~,
+            public_key=effective_pk_opt.unwrap_or(b""),
             addresses=if msg.source_addr is Some(addr) { [addr] } else { [] },
             metadata={},
           )
           update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
         }
-        Some(_) => () // Peer exists
+        Some(existing) =>
+          // Update public key if we found one and existing has none/empty
+          if existing.public_key.length() == 0 &&
+            effective_pk_opt.unwrap_or(b"").length() > 0 {
+            let updated_peer = {
+              ..existing,
+              public_key: effective_pk_opt.unwrap_or(b""),
+            }
+            update_global_peer_manager(fn(manager) {
+              manager.add_peer(updated_peer)
+            })
+          }
       }
 
       // Always compute and store shared secret when receiving hello
       // This ensures we have the latest shared secret if peer restarted
-      log_debug(
-        "DEBUG: Received Public Key from \{msg.source_id}: \{bytes_to_hex(public_key)}",
-      )
-      compute_and_store_shared_secret(msg.source_id, public_key)
+      match effective_pk_opt {
+        Some(pk) => {
+          log_debug(
+            "DEBUG: Received/Derived Public Key from \{msg.source_id}: \{bytes_to_hex(pk)}",
+          )
+          compute_and_store_shared_secret(msg.source_id, pk)
+        }
+        None =>
+          log_warn(
+            "Cannot compute shared secret for \{msg.source_id}: No Public Key available",
+          )
+      }
 
       // Discover peers from advertised peer addresses in hello
       // Instead of waiting for welcome, process advertised peers directly
@@ -845,18 +885,6 @@ async fn handle_incoming_message(
           }
         }
       }
-    }
-    { kind: "hello", .. } => {
-      // Hello matched here means it failed the specific pattern above
-      // likely missing public_key
-      let has_pk = match msg.public_key {
-        Some(_) => "yes"
-        None => "no"
-      }
-      log_warn(
-        "Rejecting hello from \{msg.source_id}: pattern mismatch (pk=\{has_pk}). Required: public_key for encryption.",
-      )
-      ()
     }
     { kind: "ping", .. } => {
       let reply = Message::new(
