@@ -2,6 +2,9 @@
 const CONNECTION_TIMEOUT_MS : UInt64 = 30000 // 30 seconds timeout
 
 ///|
+let last_sync_broadcast_time : Ref[UInt64] = Ref::new(0)
+
+///|
 fn handle_new_connection(
   peer_id : String,
   local_addr : String,
@@ -349,6 +352,7 @@ async fn handle_heartbeat(
     @async.sleep(heartbeat_interval)
     let current_time = @env.now()
     let all_peers = get_global_peer_manager().get_all_peers()
+    let mut needs_broadcast = false
     log_debug(
       "DEBUG: heartbeat tick protocol=\{transport.protocol()} peers=\{all_peers.length()}",
     )
@@ -401,15 +405,25 @@ async fn handle_heartbeat(
           log_debug(
             "DEBUG: heartbeat timeout broadcast protocol=\{transport.protocol()} peer=\{peer_id}",
           )
-          ignore(broadcast_sync(from, local_addr))
+          needs_broadcast = true
         }
       }
+    }
+    if needs_broadcast {
+      ignore(broadcast_sync(from, local_addr))
     }
   }
 }
 
 ///|
 fn broadcast_sync(my_id : String, local_addr : String) -> Unit {
+  let now = @env.now()
+  if now - last_sync_broadcast_time.val < 1000 {
+    log_debug("DEBUG: broadcast_sync throttled (last was \{now - last_sync_broadcast_time.val}ms ago)")
+    return
+  }
+  last_sync_broadcast_time.val = now
+
   let update_msg = create_sync_message(my_id, local_addr)
   let all_peers = get_global_peer_manager().get_all_peers()
   log_debug(
@@ -608,12 +622,25 @@ async fn handle_incoming_message(
     manager.update_connection_last_seen(conn.id, timestamp)
   })
 
-  // Only broadcast connection update if this is a NEW connection
-  if is_new_connection {
-    log_debug(
-      "DEBUG: new connection broadcast_sync peer=\{msg.source_id} local=\{local_addr}",
+  // Only broadcast connection update if this is a NEW connection established via Hello
+  // This prevents sync storms where sync messages on ephemeral connections trigger more syncs
+  if is_new_connection && msg.kind == "hello" {
+    // Check if we already have other connections to this peer
+    let peer_conns = get_global_connection_manager().get_peer_connections(
+      msg.source_id,
     )
-    broadcast_sync(id, local_addr)
+    // Only broadcast if this is the FIRST connection (count == 1)
+    // If we already have connections (count > 1), we don't need to spam the network
+    if peer_conns.length() == 1 {
+      log_debug(
+        "DEBUG: new connection broadcast_sync peer=\{msg.source_id} local=\{local_addr}",
+      )
+      broadcast_sync(id, local_addr)
+    } else {
+      log_debug(
+        "DEBUG: secondary connection established peer=\{msg.source_id} count=\{peer_conns.length()} - skipping broadcast_sync",
+      )
+    }
   }
 
   // Handle message relaying: if target is set and we're not the target, forward it
