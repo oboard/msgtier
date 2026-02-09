@@ -74,7 +74,7 @@ pub async fn relay_message(
           let next_hop_conns = get_global_connection_manager().get_peer_connections(
             next_hop,
           )
-          
+
           // Find a connection to next_hop that matches the current transport protocol
           let mut next_hop_conn_opt = None
           for conn in next_hop_conns {
@@ -83,7 +83,6 @@ pub async fn relay_message(
               break
             }
           }
-
           match next_hop_conn_opt {
             Some(conn) => {
               let next_hop_addr = conn.remote_addr
@@ -94,10 +93,11 @@ pub async fn relay_message(
                 "Forwarded to \{target_peer_id} via \{next_hop}, path: \{path_str}",
               )
             }
-            None => {
+            None =>
               // If no connection matches current transport, we can't relay via this transport
-              log_debug("Cannot relay to \{target_peer_id} via \{next_hop}: no matching transport \{transport.protocol()}")
-            }
+              log_debug(
+                "Cannot relay to \{target_peer_id} via \{next_hop}: no matching transport \{transport.protocol()}",
+              )
           }
         }
         None => ()

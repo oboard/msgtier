@@ -303,26 +303,30 @@ async fn handle_pending_messages(
           // Check if we have a route for this peer
           match get_global_peer_manager().get_route(target_peer_id) {
             Some(route) => {
-               // Try to relay
-               log_debug("DEBUG: pending relay to=\{target_peer_id} via=\{route.next_hop}")
-               // Relay message handles finding connection to next_hop for current transport
-               let relayed = relay_message(transport, my_id, pending_msg, target_peer_id)
-               if relayed {
-                 sent = true
-                 // Mark as sent for this protocol
-                 mark_pending_message_sent(
-                    pending_msg.id,
-                    target_peer_id,
-                    transport.protocol(),
-                    [transport.protocol()], // Just this protocol
-                 ) |> ignore
-               }
+              // Try to relay
+              log_debug(
+                "DEBUG: pending relay to=\{target_peer_id} via=\{route.next_hop}",
+              )
+              // Relay message handles finding connection to next_hop for current transport
+              let relayed = relay_message(
+                transport, my_id, pending_msg, target_peer_id,
+              )
+              if relayed {
+                sent = true
+                // Mark as sent for this protocol
+                mark_pending_message_sent(
+                  pending_msg.id,
+                  target_peer_id,
+                  transport.protocol(),
+                  [transport.protocol()], // Just this protocol
+                )
+                |> ignore
+              }
             }
-            None => {
+            None =>
               log_debug(
                 "DEBUG: pending no connections and no route protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.id}",
               )
-            }
           }
           continue
         }
@@ -440,22 +444,23 @@ async fn handle_heartbeat(
         // Try to ping via relay if route exists
         match get_global_peer_manager().get_route(peer_id) {
           Some(route) => {
-             log_debug("DEBUG: heartbeat ping via relay to=\{peer_id} next_hop=\{route.next_hop}")
-             let ping_msg = Message::new(
-                kind="ping",
-                source_id=from,
-                source_addr=local_addr,
-                version=VERSION,
-                // No session_id for routed ping
-             )
-             // Use relay_message to forward
-             ignore(relay_message(transport, from, ping_msg, peer_id))
+            log_debug(
+              "DEBUG: heartbeat ping via relay to=\{peer_id} next_hop=\{route.next_hop}",
+            )
+            let ping_msg = Message::new(
+              kind="ping",
+              source_id=from,
+              source_addr=local_addr,
+              version=VERSION,
+              // No session_id for routed ping
+            )
+            // Use relay_message to forward
+            ignore(relay_message(transport, from, ping_msg, peer_id))
           }
-          None => {
-             log_debug(
+          None =>
+            log_debug(
               "DEBUG: heartbeat peer no conns peer=\{peer_id} protocol=\{transport.protocol()}",
             )
-          }
         }
       }
       // Send ping to all connections of this peer
@@ -511,14 +516,14 @@ async fn handle_heartbeat(
           Some(_) => true
           None => false
         }
-        
+
         // Double check if we should remove the peer
         // Only remove if it's not our own ID (though get_all_peers shouldn't include self usually)
         // AND if we don't have a route (or maybe we should timeout route too?)
         // Currently we rely on sync messages to refresh routes.
         // If we haven't received sync from this peer (via relay) for a while, the route might be stale?
         // Route struct has timestamp.
-        
+
         // Let's check route timeout if it exists
         let route_expired = match get_global_peer_manager().get_route(peer_id) {
           Some(route) => {
@@ -528,9 +533,10 @@ async fn handle_heartbeat(
           }
           None => true // No route, effectively expired/non-existent
         }
-
         if peer_id != from && route_expired {
-          log_warn("Peer \{peer_id} has no active connections and route expired/missing, removing peer.")
+          log_warn(
+            "Peer \{peer_id} has no active connections and route expired/missing, removing peer.",
+          )
           update_global_peer_manager(fn(manager) {
             manager.remove_peer(peer_id)
           })
@@ -1082,7 +1088,6 @@ async fn handle_incoming_message(
             let peer_id = conn.peer_id
             let remote_addr = conn.remote_addr
             let relay_depth = conn.relay
-            let pk : Bytes = [] // conn.public_key removed
 
             // If relay_depth is 1, it's a direct neighbor of the sender
             if relay_depth == 1 && peer_id != msg.source_id {
@@ -1123,11 +1128,6 @@ async fn handle_incoming_message(
                 add_known_peer(remote_addr)
               }
 
-              // Also compute shared secret if we have the PK
-              if pk.length() > 0 {
-                compute_and_store_shared_secret(peer_id, pk)
-              }
-
               // Ensure peer exists in manager (even if only known via route)
               match get_global_peer_manager().get_peer(peer_id) {
                 None => {
@@ -1140,7 +1140,7 @@ async fn handle_incoming_message(
                   let peer_node = PeerNode::new(
                     id=peer_id,
                     version=conn.version,
-                    public_key=pk,
+                    public_key=[],
                     addresses~,
                     metadata={},
                   )

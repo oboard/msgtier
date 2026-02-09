@@ -46,7 +46,9 @@ fn compute_and_store_shared_secret(
   peer_public_key : Bytes,
 ) -> Unit {
   if peer_public_key.length() == 0 {
-    log_warn("Attempted to compute shared secret with empty public key for \{peer_id}")
+    log_warn(
+      "Attempted to compute shared secret with empty public key for \{peer_id}",
+    )
     return
   }
   let priv_key = get_private_key()

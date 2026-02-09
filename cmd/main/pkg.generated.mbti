@@ -13,7 +13,7 @@ pub fn can_direct_connect(String) -> Bool
 
 pub fn clear_pending_messages() -> Unit
 
-pub async fn relay_message(&Transport, String, Message, String) -> Unit noraise
+pub async fn relay_message(&Transport, String, Message, String) -> Bool noraise
 
 pub fn set_pending_message_broadcast(String, Bool) -> Unit
 
