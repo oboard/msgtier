@@ -24,7 +24,7 @@ def test():
     
     # Pre-build to avoid lock conflicts during startup
     print("Pre-building project...")
-    subprocess.run(["moon", "build", "cmd/main", "--debug"], check=True)
+    # subprocess.run(["moon", "build", "cmd/main", "--debug"], check=True)
     
     p1 = None
     p2 = None
