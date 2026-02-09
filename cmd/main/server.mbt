@@ -305,11 +305,46 @@ async fn handle_pending_messages(
           )
           continue
         }
-        for target_connection in target_connections {
-          if target_connection.protocol != transport.protocol() {
-            // log_debug("DEBUG: pending skip protocol mismatch conn=\{target_connection.protocol} transport=\{transport.protocol()} id=\{pending_msg.id}")
+
+        // For sync messages, we want to limit to ONE connection total across all protocols if possible
+        if pending_msg.kind == "sync" {
+          // Check if ANY protocol has sent to this peer
+          let sent_map = match entry.sent_targets.get(target_peer_id) {
+            Some(m) => m
+            None => {}
+          }
+          // If the map is not empty, it means we have already sent this message via some protocol
+          // So we skip sending it again to reduce traffic
+          let already_sent_any = match sent_map.iter().head() {
+            Some(_) => true
+            None => false
+          }
+          if already_sent_any {
             continue
           }
+        }
+
+        let mut connections_candidate = []
+        for c in target_connections {
+          if c.protocol == transport.protocol() {
+            connections_candidate.push(c)
+          }
+        }
+
+        if pending_msg.kind == "sync" && connections_candidate.length() > 1 {
+          // Pick the one with least bytes_sent (most idle)
+          let mut best = connections_candidate[0]
+          for i = 1; i < connections_candidate.length(); i = i + 1 {
+            if connections_candidate[i].bytes_sent < best.bytes_sent {
+              best = connections_candidate[i]
+            }
+          }
+          connections_candidate = [best]
+        }
+
+        for target_connection in connections_candidate {
+          // Protocol check is already done in filtering
+
           // Skip if already sent via this protocol
           let already_sent = match entry.sent_targets.get(target_peer_id) {
             Some(m) => m.contains(target_connection.protocol)

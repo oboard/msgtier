@@ -10,6 +10,13 @@ let global_pending_messages : Array[PendingEntry] = []
 ///|
 fn add_pending_message(msg : Message) -> Unit {
   let messages = global_pending_messages
+  // Optimization: If adding a "sync" message, remove any existing "sync" messages
+  // destined for the same target (or broadcast). The new sync contains the latest state.
+  if msg.kind == "sync" {
+    messages.retain(fn(entry) {
+      entry.msg.kind != "sync" || entry.msg.target_id != msg.target_id
+    })
+  }
   messages.push({ msg, sent_targets: {} })
 }
 
