@@ -20,14 +20,14 @@ pub async fn relay_message(
   my_id : String,
   msg : Message,
   target_peer_id : String,
-) -> Unit noraise {
+) -> Bool noraise {
   // Check for timeout
   let now = @env.now()
   if now > msg.timestamp && now - msg.timestamp > message_timeout_ms {
     log_warn(
       "Message \{msg.id} timed out during relay (age: \{now - msg.timestamp}ms), dropped",
     )
-    return
+    return false
   }
 
   // Check if this node has already processed this message (prevent loops using DFS path tracking)
@@ -48,13 +48,22 @@ pub async fn relay_message(
     let target_conns = get_global_connection_manager().get_peer_connections(
       target_peer_id,
     )
+    let mut direct_sent = false
     if !target_conns.is_empty() {
       for conn in target_conns {
-        ignore(send_message(transport, conn.remote_addr, relay_msg))
+        // Only send via the current transport
+        if conn.protocol == transport.protocol() {
+          let ok = send_message(transport, conn.remote_addr, relay_msg)
+          if ok {
+            direct_sent = true
+          }
+        }
       }
-      forwarded = true
-      let path_str = relay_msg.visited.join(" -> ")
-      log_debug("Forwarded to \{target_peer_id} directly, path: \{path_str}")
+      if direct_sent {
+        forwarded = true
+        let path_str = relay_msg.visited.join(" -> ")
+        log_debug("Forwarded to \{target_peer_id} directly, path: \{path_str}")
+      }
     }
 
     // 2. Routing table check
@@ -65,14 +74,30 @@ pub async fn relay_message(
           let next_hop_conns = get_global_connection_manager().get_peer_connections(
             next_hop,
           )
-          if !next_hop_conns.is_empty() {
-            let next_hop_addr = next_hop_conns[0].remote_addr
-            ignore(send_message(transport, next_hop_addr, relay_msg))
-            forwarded = true
-            let path_str = relay_msg.visited.join(" -> ")
-            log_debug(
-              "Forwarded to \{target_peer_id} via \{next_hop}, path: \{path_str}",
-            )
+          
+          // Find a connection to next_hop that matches the current transport protocol
+          let mut next_hop_conn_opt = None
+          for conn in next_hop_conns {
+            if conn.protocol == transport.protocol() {
+              next_hop_conn_opt = Some(conn)
+              break
+            }
+          }
+
+          match next_hop_conn_opt {
+            Some(conn) => {
+              let next_hop_addr = conn.remote_addr
+              ignore(send_message(transport, next_hop_addr, relay_msg))
+              forwarded = true
+              let path_str = relay_msg.visited.join(" -> ")
+              log_debug(
+                "Forwarded to \{target_peer_id} via \{next_hop}, path: \{path_str}",
+              )
+            }
+            None => {
+              // If no connection matches current transport, we can't relay via this transport
+              log_debug("Cannot relay to \{target_peer_id} via \{next_hop}: no matching transport \{transport.protocol()}")
+            }
           }
         }
         None => ()
@@ -81,5 +106,8 @@ pub async fn relay_message(
     if !forwarded {
       log_warn("Failed to route message to \{target_peer_id}: no route found")
     }
+    forwarded
+  } else {
+    false
   }
 }

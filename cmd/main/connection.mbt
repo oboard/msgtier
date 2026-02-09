@@ -7,7 +7,7 @@ struct Connection {
   remote_addr : String
   protocol : String // "tcp", "udp", etc.
   peer_id : String
-  public_key : Bytes // Public key of the peer
+  // public_key : Bytes // Public key of the peer (Moved to PeerNode)
   last_seen : UInt64 // timestamp
   quality : Int // connection quality metric (0-100)
   relay : Int // 1 = direct, 2+ = relayed through N-1 peers
@@ -68,7 +68,7 @@ fn Connection::new(
     remote_addr,
     protocol,
     peer_id,
-    public_key: [],
+    // public_key: [],
     last_seen: @env.now(),
     quality: 0,
     relay: 1,
@@ -272,7 +272,7 @@ fn Connection::to_msgpack(self : Connection) -> @msgpack.Value {
     @msgpack.string(self.peer_id),
     @msgpack.string(self.remote_addr),
     @msgpack.int(self.relay),
-    @msgpack.binary(self.public_key),
+    // @msgpack.binary(self.public_key), // Removed
     match self.latency_ms {
       Some(l) => @msgpack.int(l)
       None => @msgpack.nil()
@@ -316,7 +316,7 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         String(peer_id),
         String(remote_addr),
         Int(relay),
-        Binary(public_key),
+        // Binary(public_key),
         latency_val,
         Float(bandwidth_mbps),
         Int(packet_loss_rate),
@@ -376,7 +376,7 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         peer_id,
         remote_addr,
         relay,
-        public_key,
+        // public_key,
         latency_ms,
         bandwidth_mbps,
         packet_loss_rate,

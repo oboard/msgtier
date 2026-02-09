@@ -43,7 +43,6 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
       let packet_loss_rate = conn.calculate_packet_loss()
       let updated_conn = Connection::{
         ..conn,
-        public_key: peer.public_key,
         bandwidth_mbps,
         packet_loss_rate,
         version: peer.version,
@@ -66,7 +65,6 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
             remote_addr: "routed",
             protocol: "",
             peer_id,
-            public_key: peer.public_key,
             last_seen: route.timestamp,
             quality: 0,
             relay: route.hops,

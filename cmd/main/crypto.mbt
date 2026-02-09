@@ -45,6 +45,10 @@ fn compute_and_store_shared_secret(
   peer_id : String,
   peer_public_key : Bytes,
 ) -> Unit {
+  if peer_public_key.length() == 0 {
+    log_warn("Attempted to compute shared secret with empty public key for \{peer_id}")
+    return
+  }
   let priv_key = get_private_key()
   let shared = @x25519.compute_shared_secret(priv_key, peer_public_key)
   global_shared_secrets[peer_id] = shared
@@ -56,7 +60,21 @@ fn compute_and_store_shared_secret(
 ///|
 /// Get shared secret for a peer
 fn get_shared_secret(peer_id : String) -> Bytes? {
-  global_shared_secrets.get(peer_id)
+  match global_shared_secrets.get(peer_id) {
+    Some(s) => Some(s)
+    None =>
+      // Fallback: try to compute from PeerManager
+      match get_global_peer_manager().get_peer(peer_id) {
+        Some(peer) =>
+          if peer.public_key.length() > 0 {
+            compute_and_store_shared_secret(peer_id, peer.public_key)
+            global_shared_secrets.get(peer_id)
+          } else {
+            None
+          }
+        None => None
+      }
+  }
 }
 
 ///|
