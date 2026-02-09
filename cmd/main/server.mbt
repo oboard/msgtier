@@ -323,14 +323,12 @@ async fn handle_pending_messages(
             continue
           }
         }
-
         let mut connections_candidate = []
         for c in target_connections {
           if c.protocol == transport.protocol() {
             connections_candidate.push(c)
           }
         }
-
         if pending_msg.kind == "sync" && connections_candidate.length() > 1 {
           // Pick the one with least bytes_sent (most idle)
           let mut best = connections_candidate[0]
@@ -341,7 +339,6 @@ async fn handle_pending_messages(
           }
           connections_candidate = [best]
         }
-
         for target_connection in connections_candidate {
           // Protocol check is already done in filtering
 
@@ -960,8 +957,40 @@ async fn handle_incoming_message(
       )
       add_pending_message(direct)
     }
-    { kind: "data", body, .. } =>
+    { kind: "data", body, .. } => {
+      // Check for missing shared secret on encrypted message
+      if msg.encrypted {
+        match get_shared_secret(msg.source_id) {
+          None => {
+            log_warn(
+              "Received encrypted data from \{msg.source_id} but no shared secret. Sending hello to trigger handshake.",
+            )
+            match msg.source_addr {
+              Some(addr) => {
+                // Ensure address has protocol
+                let target_addr = if addr.contains("://") {
+                  addr
+                } else {
+                  transport.protocol() + "://" + addr
+                }
+                let our_addresses = get_our_addresses(local_addr)
+                let hello_msg = create_hello_message(
+                  id,
+                  local_addr,
+                  1,
+                  peers=our_addresses,
+                )
+                ignore(send_message(transport, target_addr, hello_msg))
+              }
+              None => ()
+            }
+            return
+          }
+          Some(_) => ()
+        }
+      }
       handle_data_message(root, id, local_addr, msg, body)
+    }
     { kind: "data_response", body: response_data, payload: correlation_id, .. } => {
       let merged = { ..msg, kind: "data", payload: correlation_id }
       handle_data_message(root, id, local_addr, merged, response_data)

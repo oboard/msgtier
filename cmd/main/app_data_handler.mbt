@@ -126,6 +126,16 @@ fn handle_data_message(
         _ => log_debug("DEBUG: Received data_value Other")
       }
       let data_content = if msg.encrypted && data_value is Binary(raw_data) {
+        // Check if we have a shared secret first
+        match get_shared_secret(msg.source_id) {
+          None => {
+            log_error(
+              "Received encrypted message from \{msg.source_id} but no shared secret found. Dropping.",
+            )
+            return
+          }
+          Some(_) => ()
+        }
         let decrypted_bytes = match decrypt_from_peer(msg.source_id, raw_data) {
           Some(decrypted) => {
             log_debug(
@@ -147,7 +157,7 @@ fn handle_data_message(
             log_error(
               "Failed to decrypt message from \{msg.source_id}, raw length=\{raw_data.length()}",
             )
-            b""
+            return
           }
         }
         if decrypted_bytes.length() > 0 {
