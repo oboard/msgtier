@@ -9,11 +9,15 @@ import {
 }
 
 // Values
+pub fn bytes_to_hex(Bytes) -> String
+
 pub fn can_direct_connect(String) -> Bool
 
 pub fn clear_pending_messages() -> Unit
 
 pub fn get_global_foreign_network_manager() -> ForeignNetworkManager
+
+pub fn hash_secret(String) -> Bytes
 
 pub async fn relay_message(&Transport, String, Message, String) -> Bool noraise
 

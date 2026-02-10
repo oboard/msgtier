@@ -601,14 +601,6 @@ async fn handle_incoming_message(
       log_debug(
         "DEBUG: Msgpack decode error - \{error_msg}, sender: \{sender_addr}, bytes: \{bytes.length()}",
       )
-      // Log first 20 bytes for debugging
-      if bytes.length() > 0 {
-        let preview_len = bytes.length().min(20)
-        let preview = bytes[:preview_len]
-        log_debug(
-          "DEBUG: Message preview (first \{preview_len} bytes): \{bytes_to_hex(preview.to_bytes())}",
-        )
-      }
       return
     }
   }
@@ -724,7 +716,7 @@ async fn handle_incoming_message(
   // msg.relay already indicates how many hops the message took to reach us
   let relay_depth_to_use = msg.relay
   let effective_addr = sender_addr
-  let (conn, is_new_connection, _is_new_peer) = handle_new_connection(
+  let (conn, is_new_connection, is_new_peer) = handle_new_connection(
     msg.source_id,
     local_addr,
     effective_addr,
@@ -745,6 +737,30 @@ async fn handle_incoming_message(
   // Store peer's public key if provided and compute shared secret (only if not already stored)
   if msg.public_key is Some(pk) {
     compute_and_store_shared_secret(msg.source_id, pk)
+  }
+
+  // Reply to hello if it's a new connection or new peer (key update), to ensure bidirectional key exchange.
+  // This handles the case where a peer restarts (sends hello, we update), or a peer requests handshake (sends hello with new session).
+  if (is_new_connection || is_new_peer) && msg.kind == "hello" {
+    let our_addresses = get_our_addresses(local_addr)
+    let hello_msg = create_hello_message(
+      id,
+      local_addr,
+      1,
+      peers=our_addresses,
+      session_id=conn.session_id.unwrap_or(""),
+    )
+    let target_addr = effective_addr
+    let target_addr_full = if target_addr.contains("://") {
+      target_addr
+    } else {
+      transport.protocol() + "://" + target_addr
+    }
+    // Don't log here to avoid spam, debug log is enough
+    log_debug(
+      "DEBUG: Replying hello to \{target_addr_full} (new_conn=\{is_new_connection}, new_peer=\{is_new_peer})",
+    )
+    ignore(send_message(transport, target_addr_full, hello_msg))
   }
 
   // Track bytes received
@@ -827,7 +843,7 @@ async fn handle_incoming_message(
       let mut secret_matched = false
       let secret_valid = match global_config.val {
         Some(config) => {
-          let our_secret_hash = hash_secret(config.secret)
+          let our_secret_hash = bytes_to_hex(hash_secret(config.secret))
           match msg.secret_hash {
             Some(peer_secret_hash) =>
               if peer_secret_hash == our_secret_hash {
@@ -885,7 +901,7 @@ async fn handle_incoming_message(
           )
           update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
         }
-        Some(existing) => {
+        Some(existing) =>
           // Update public key if provided and different
           match effective_pk_opt {
             Some(new_pk) =>
@@ -904,11 +920,12 @@ async fn handle_incoming_message(
                   update_global_peer_manager(fn(manager) {
                     manager.add_peer(updated_peer)
                   })
+                  // Clear shared secret to force re-computation with new key
+                  clear_shared_secret(msg.source_id)
                 }
               }
             None => ()
           }
-        }
       }
 
       // Always compute and store shared secret when receiving hello
@@ -1068,11 +1085,15 @@ async fn handle_incoming_message(
                   transport.protocol() + "://" + addr
                 }
                 let our_addresses = get_our_addresses(local_addr)
+                // Generate a temporary session ID to force a new connection event on the peer
+                // This ensures the peer replies with their hello message (and public key)
+                let trigger_session_id = "recovery-" + @env.now().to_string()
                 let hello_msg = create_hello_message(
                   id,
                   local_addr,
                   1,
                   peers=our_addresses,
+                  session_id=trigger_session_id,
                 )
                 ignore(send_message(transport, target_addr, hello_msg))
               }
@@ -1206,9 +1227,23 @@ async fn handle_incoming_message(
                 Some(_) => {
                   // Update Public Key if we have a better one
                   if pk_bytes.length() > 0 {
+                    // Check if key changed
+                    let needs_clear_secret = match
+                      get_global_peer_manager().get_peer(peer_id) {
+                      Some(existing_peer) =>
+                        existing_peer.public_key.length() > 0 &&
+                        existing_peer.public_key != pk_bytes
+                      None => false
+                    }
                     update_global_peer_manager(fn(manager) {
                       manager.update_peer_public_key(peer_id, pk_bytes)
                     })
+                    if needs_clear_secret {
+                      log_info(
+                        "Updating public key for peer \{peer_id} via sync (key changed)",
+                      )
+                      clear_shared_secret(peer_id)
+                    }
                   }
                   // If we have a valid address, add it
                   if remote_addr != "routed" &&

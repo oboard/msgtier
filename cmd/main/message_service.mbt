@@ -2,7 +2,7 @@
 fn get_identity_info() -> (Bytes, String) {
   let our_public_key = get_public_key()
   let our_secret_hash = match global_config.val {
-    Some(config) => hash_secret(config.secret)
+    Some(config) => bytes_to_hex(hash_secret(config.secret))
     None => abort("No config found")
   }
   (our_public_key, our_secret_hash)

@@ -3,6 +3,30 @@
 let global_keypair : Ref[(Bytes, Bytes)?] = Ref::new(None)
 
 ///|
+pub fn bytes_to_hex(bytes : Bytes) -> String {
+  let len = bytes.length()
+  let sb = StringBuilder::new(size_hint=len * 2)
+  let hex_chars = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+  ]
+  for i = 0; i < len; i = i + 1 {
+    let b = bytes[i].to_int()
+    let h1 = (b >> 4) & 0xF
+    let h2 = b & 0xF
+    sb.write_char(hex_chars[h1])
+    sb.write_char(hex_chars[h2])
+  }
+  sb.to_string()
+}
+
+///|
+pub fn hash_secret(secret : String) -> Bytes {
+  let secret_bytes = @utf8.encode(secret)
+  let hash = @crypto.sha256(secret_bytes)
+  Bytes::from_array(hash)
+}
+
+///|
 /// Shared secrets with peers: peer_id -> shared_secret
 let global_shared_secrets : Map[String, Bytes] = {}
 
@@ -40,6 +64,13 @@ fn get_private_key() -> Bytes {
 }
 
 ///|
+/// Clear stored shared secret for a peer (force re-computation)
+fn clear_shared_secret(peer_id : String) -> Unit {
+  global_shared_secrets.remove(peer_id)
+  log_debug("DEBUG: Cleared shared secret for \{peer_id}")
+}
+
+///|
 /// Compute and store shared secret with a peer
 fn compute_and_store_shared_secret(
   peer_id : String,
@@ -54,9 +85,7 @@ fn compute_and_store_shared_secret(
   let priv_key = get_private_key()
   let shared = @x25519.compute_shared_secret(priv_key, peer_public_key)
   global_shared_secrets[peer_id] = shared
-  log_debug(
-    "DEBUG: Computed shared secret for \{peer_id}: \{bytes_to_hex(shared)}",
-  )
+  log_debug("DEBUG: Computed shared secret for \{peer_id}: \{(shared)}")
 }
 
 ///|
@@ -84,9 +113,7 @@ fn get_shared_secret(peer_id : String) -> Bytes? {
 fn encrypt_for_peer(peer_id : String, data : Bytes) -> Bytes {
   match get_shared_secret(peer_id) {
     Some(shared) => {
-      log_debug(
-        "DEBUG: Encrypting for \{peer_id} with secret \{bytes_to_hex(shared)}...",
-      )
+      log_debug("DEBUG: Encrypting for \{peer_id} with secret \{(shared)}...")
       @x25519.encrypt(shared, data)
     }
     None => []
@@ -97,81 +124,20 @@ fn encrypt_for_peer(peer_id : String, data : Bytes) -> Bytes {
 /// Decrypt data from a peer using shared secret
 fn decrypt_from_peer(peer_id : String, encrypted : Bytes) -> Bytes? {
   match get_shared_secret(peer_id) {
-    Some(shared) => {
-      log_debug(
-        "DEBUG: Decrypting from \{peer_id} with secret \{bytes_to_hex(shared)}...",
-      )
-      @x25519.decrypt(shared, encrypted)
-    }
+    Some(shared) =>
+      match @x25519.decrypt(shared, encrypted) {
+        Some(decrypted) => Some(decrypted)
+        None => {
+          log_warn(
+            "Decryption failed for peer \{peer_id} (shared secret mismatch?)",
+          )
+          // If decryption fails, maybe the secret is stale?
+          // We could try to clear it here, but that might lead to loops if not careful.
+          // For now, let's just return None.
+          // Optional: clear_shared_secret(peer_id) // risky?
+          None
+        }
+      }
     None => None
-  }
-}
-
-///|
-/// Convert bytes to hex string
-fn bytes_to_hex(data : Bytes) -> String {
-  let hex_chars = "0123456789abcdef"
-  let mut result = ""
-  for i = 0; i < data.length(); i = i + 1 {
-    let byte = data.at(i).to_int()
-    result = result +
-      String::from_array([
-        hex_chars[(byte >> 4) & 0xF].unsafe_to_char(),
-        hex_chars[byte & 0xF].unsafe_to_char(),
-      ])
-  }
-  result
-}
-
-///|
-// /// Convert hex string to bytes
-// fn hex_to_bytes(hex : String) -> Bytes {
-//   let len = hex.length() / 2
-//   let arr = FixedArray::make(len, b'\x00')
-//   for i = 0; i < len; i = i + 1 {
-//     let high = hex_char_to_int_from_uint16(hex[i * 2])
-//     let low = hex_char_to_int_from_uint16(hex[i * 2 + 1])
-//     arr[i] = ((high << 4) | low).to_byte()
-//   }
-//   Bytes::from_array(arr)
-// }
-
-// ///|
-// /// Convert a hex character (as UInt16) to its integer value
-// fn hex_char_to_int_from_uint16(c : UInt16) -> Int {
-//   let code = c.to_int()
-//   if code >= 48 && code <= 57 {
-//     code - 48
-//   } else if code >= 65 && code <= 70 {
-//     code - 55
-//   } else if code >= 97 && code <= 102 {
-//     code - 87
-//   } else {
-//     0
-//   }
-// }
-
-///|
-/// Hash a network secret for authentication in hello messages
-/// Uses the public key curve to consistently hash the secret
-fn hash_secret(secret : String) -> String {
-  // Simple deterministic hash: take first 32 bytes of secret, pad if needed
-  let secret_bytes = @utf8.encode(secret)
-  let len = secret_bytes.length()
-  if len >= 32 {
-    // Use first 32 bytes - create array from bytes view
-    let arr = secret_bytes[:32].to_array()
-    let padded = FixedArray::make(32, b'\x00')
-    for i = 0; i < 32; i = i + 1 {
-      padded[i] = arr[i]
-    }
-    bytes_to_hex(Bytes::from_array(padded))
-  } else {
-    // Pad with zeros to 32 bytes
-    let padded = FixedArray::make(32, b'\x00')
-    for i = 0; i < len; i = i + 1 {
-      padded[i] = secret_bytes.at(i)
-    }
-    bytes_to_hex(Bytes::from_array(padded))
   }
 }

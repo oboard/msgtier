@@ -47,7 +47,8 @@ test "hash_secret produces different hashes for different secrets" {
 
 ///|
 test "hash_secret produces 64 character hex string" {
-  let hash = hash_secret("any_secret")
+  let hash_bytes = hash_secret("any_secret")
+  let hash = bytes_to_hex(hash_bytes)
   inspect(hash.length(), content="64")
   // Should be valid hex characters
   for c in hash {
@@ -58,8 +59,12 @@ test "hash_secret produces 64 character hex string" {
 
 ///|
 test "hash_secret handles short secrets by padding" {
-  let short_hash = hash_secret("short")
-  let long_hash = hash_secret("short_with_more_data_here_to_make_it_longer")
+  let short_hash_bytes = hash_secret("short")
+  let long_hash_bytes = hash_secret(
+    "short_with_more_data_here_to_make_it_longer",
+  )
+  let short_hash = bytes_to_hex(short_hash_bytes)
+  let long_hash = bytes_to_hex(long_hash_bytes)
   // Both should produce valid 64-char hex strings
   inspect(short_hash.length(), content="64")
   inspect(long_hash.length(), content="64")
@@ -67,7 +72,8 @@ test "hash_secret handles short secrets by padding" {
 
 ///|
 test "hash_secret handles empty secret" {
-  let hash = hash_secret("")
+  let hash_bytes = hash_secret("")
+  let hash = bytes_to_hex(hash_bytes)
   inspect(hash.length(), content="64")
 }
 
