@@ -38,6 +38,9 @@ curl http://localhost:9000/config
     "udp://127.0.0.1:6668",
     "ws://127.0.0.1:6669"
   ],
+  "relay_network_whitelist": "*",
+  "relay_all_peer_rpc": true,
+  "foreign_relay_bps_limit": 1048576,
   "web_api": "127.0.0.1:9000",
   "scripts": {
     "chrome": "open /Applications/Google\\ Chrome.app",

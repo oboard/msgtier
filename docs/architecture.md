@@ -65,6 +65,16 @@ Result:
 - All nodes can communicate with each other
 ```
 
+## Foreign Network Relay
+
+When a direct P2P connection or intra-network route cannot be established, MsgTier supports **Foreign Network Relay**. This allows messages to be forwarded across different networks via public nodes.
+
+1.  **Packet Wrapping**: The original message is wrapped in a `ForeignNetworkPacket`, preserving the destination network and peer ID.
+2.  **Public Node Fallback**: If the `PeerManager` finds no route in its routing table, it searches for a connected "public node" (non-private IP).
+3.  **Forwarding**: The wrapped packet is sent to the public node, which acts as a gateway/relay.
+4.  **Unwrapping**: The receiving node unwraps the packet and attempts to deliver it to the final destination (either directly or by relaying further).
+5.  **Rate Limiting**: To prevent abuse, foreign relays are subject to bandwidth limits configured via `foreign_relay_bps_limit`.
+
 ## Health Monitoring
 
 The system implements continuous connection health monitoring:
@@ -95,7 +105,8 @@ Messages flow through the system in the following sequence:
          ▼
 ┌──────────────────────────┐
 │  Pending Message         │  Background task processes queue every 100ms
-│  Processor (100ms loop)  │  Find best active connection to target
+│  Processor (100ms loop)  │  Route via direct conn, intra-network relay,
+│                          │  or public node (foreign relay)
 └────────┬─────────────────┘
          │
          ▼
@@ -181,7 +192,7 @@ When HTTP POST /send is received:
 - **Encryption**: Payload is encrypted using the shared secret for the target (or self)
 - **Queuing**: Encrypted message is added to `pending_messages`
 - **Processing**: Background task (100ms interval) retrieves the queue
-- **Routing**: Finds best active connection to target peer (or uses Loopback)
+- **Routing**: Finds best active connection, internal route, or public relay fallback
 - **Transmission**: Sends message via appropriate transport (UDP/TCP/WS)
 - **Cleanup**: Clears processed messages from queue
 

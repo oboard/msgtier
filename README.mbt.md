@@ -6,7 +6,8 @@ MsgTier is a lightweight, decentralized P2P messaging network written in **MoonB
 
 ✨ **Auto-Discovery** - Nodes automatically discover peers through the network
 🔐 **End-to-End Encryption** - X25519 ECDH key exchange with symmetric encryption
-🔄 **Message Relay** - Messages are automatically relayed through intermediate peers
+🔄 **Message Relay** - Messages are automatically relayed through intermediate peers (Intra-network)
+🌍 **Foreign Network Relay** - Cross-network relay via public nodes when direct routes fail
 💓 **Health Checks** - Continuous heartbeat monitoring with automatic failure detection
 🔌 **Script Execution** - Execute custom scripts on message receipt
 🌐 **Multi-Transport** - Support for UDP, TCP, and WebSocket protocols
@@ -32,6 +33,9 @@ Create a `node.json` config file:
     "udp://127.0.0.1:6669",
     "ws://127.0.0.1:6670"
   ],
+  "relay_network_whitelist": "*",
+  "relay_all_peer_rpc": true,
+  "foreign_relay_bps_limit": 1048576,
   "web_api": "127.0.0.1:9000",
   "scripts": {
     "chrome": "open /Applications/Google\\ Chrome.app",

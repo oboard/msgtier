@@ -45,6 +45,9 @@ Create a `node.json` configuration file for each node:
 | `secret` | String | Shared secret key (reserved for future use) |
 | `listeners` | Array | Addresses to listen on. Supported protocols: `udp://`, `tcp://`, `ws://`. Use 0.0.0.0 to bind all interfaces |
 | `peers` | Array | Initial peer addresses to connect to. Supported protocols: `udp://`, `tcp://`, `ws://` |
+| `relay_network_whitelist` | String | Comma-separated list of allowed target networks for relay (default: "*") |
+| `relay_all_peer_rpc` | Boolean | Whether to relay RPC messages even if not in whitelist (default: true) |
+| `foreign_relay_bps_limit` | Number | Bandwidth limit (bytes/sec) for foreign network relay (default: 0 = unlimited) |
 | `web_api` | String | HTTP server address (optional) |
 | `scripts` | Object | Named scripts that can be triggered via messages |
 
