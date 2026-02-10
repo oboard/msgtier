@@ -19,7 +19,7 @@ pub fn get_global_foreign_network_manager() -> ForeignNetworkManager
 
 pub fn hash_secret(String) -> Bytes
 
-pub async fn relay_message(&Transport, String, Message, String) -> Bool noraise
+pub async fn relay_message(&Transport, String, Message, String, allow_queueing? : Bool) -> Bool noraise
 
 pub fn set_pending_message_broadcast(String, Bool) -> Unit
 

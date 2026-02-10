@@ -20,6 +20,7 @@ pub async fn relay_message(
   my_id : String,
   msg : Message,
   target_peer_id : String,
+  allow_queueing? : Bool = false,
 ) -> Bool noraise {
   // Check for timeout
   let now = @env.now()
@@ -64,6 +65,13 @@ pub async fn relay_message(
         forwarded = true
         let path_str = relay_msg.visited.join(" -> ")
         log_debug("Forwarded to \{target_peer_id} directly, path: \{path_str}")
+      } else if allow_queueing {
+        // We have direct connections but not on this transport. Queue it.
+        add_pending_message(relay_msg)
+        forwarded = true
+        log_debug(
+          "Queued relay message \{msg.id} for direct delivery via other protocol",
+        )
       }
     }
 
@@ -103,6 +111,13 @@ pub async fn relay_message(
               log_debug(
                 "Cannot relay to \{target_peer_id} via \{next_hop}: no matching transport \{transport.protocol()}. Available: \{available_protocols.to_string()}",
               )
+              if allow_queueing {
+                add_pending_message(relay_msg)
+                forwarded = true
+                log_debug(
+                  "Queued relay message \{msg.id} for cross-protocol delivery via \{next_hop}",
+                )
+              }
             }
           }
         }
@@ -111,6 +126,7 @@ pub async fn relay_message(
           // Try to find a public node to forward to (Foreign Network Relay)
           let all_conns = get_global_connection_manager().get_all_connections()
           let mut public_relay_found = false
+          let mut public_relay_other_protocol_found = false
           for conn in all_conns {
             // Skip sender and visited
             let is_visited = msg.visited.any(fn(pid) { pid == conn.peer_id })
@@ -134,13 +150,23 @@ pub async fn relay_message(
                 public_relay_found = true
                 forwarded = true
                 break
+              } else {
+                public_relay_other_protocol_found = true
               }
             }
           }
           if !public_relay_found {
-            log_debug(
-              "No route and no public relay found for \{target_peer_id}",
-            )
+            if allow_queueing && public_relay_other_protocol_found {
+              add_pending_message(relay_msg)
+              forwarded = true
+              log_debug(
+                "Queued relay message \{msg.id} for foreign relay via other protocol",
+              )
+            } else {
+              log_debug(
+                "No route and no public relay found for \{target_peer_id}",
+              )
+            }
           }
         }
       }

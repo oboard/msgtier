@@ -90,11 +90,23 @@ fn handle_new_connection(
   for existing_conn in existing_conns {
     if existing_conn.local_addr == local_addr &&
       existing_conn.remote_addr == remote_addr {
-      // Connection already exists, return it with is_new=false
-      log_debug(
-        "DEBUG: handle_new_connection reuse peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
-      )
-      return (existing_conn, false, is_new_peer)
+      // Check if session ID matches (if provided and not empty)
+      // If session ID changed, we should treat it as a new connection (overwrite)
+      let session_match = match session_id {
+        Some(sid) => existing_conn.session_id is Some(old_sid) && sid == old_sid
+        None => true
+      }
+      if session_match {
+        // Connection already exists, return it with is_new=false
+        log_debug(
+          "DEBUG: handle_new_connection reuse peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
+        )
+        return (existing_conn, false, is_new_peer)
+      } else {
+        log_debug(
+          "DEBUG: handle_new_connection session mismatch peer=\{actual_peer_id} new=\{session_id} old=\{existing_conn.session_id}",
+        )
+      }
     }
   }
 
@@ -332,21 +344,13 @@ async fn handle_pending_messages(
         }
 
         // For sync messages, we want to limit to ONE connection total across all protocols if possible
-        if pending_msg.kind == "sync" {
+        if pending_msg.kind == "sync" &&
+          entry.sent_targets.get(target_peer_id) is Some(m) &&
+          !m.is_empty() {
           // Check if ANY protocol has sent to this peer
-          let sent_map = match entry.sent_targets.get(target_peer_id) {
-            Some(m) => m
-            None => {}
-          }
           // If the map is not empty, it means we have already sent this message via some protocol
           // So we skip sending it again to reduce traffic
-          let already_sent_any = match sent_map.iter().head() {
-            Some(_) => true
-            None => false
-          }
-          if already_sent_any {
-            continue
-          }
+          continue
         }
         let mut connections_candidate = []
         for c in target_connections {
@@ -368,11 +372,8 @@ async fn handle_pending_messages(
           // Protocol check is already done in filtering
 
           // Skip if already sent via this protocol
-          let already_sent = match entry.sent_targets.get(target_peer_id) {
-            Some(m) => m.contains(target_connection.protocol)
-            None => false
-          }
-          if already_sent {
+          if entry.sent_targets.get(target_peer_id) is Some(m) &&
+            m.contains(target_connection.protocol) {
             continue
           }
           let target_addr = target_connection.remote_addr
@@ -801,7 +802,9 @@ async fn handle_incoming_message(
       // Message is for us, continue to process
     } else {
       // Message is for someone else, forward it
-      ignore(relay_message(transport, id, msg, target_peer_id))
+      ignore(
+        relay_message(transport, id, msg, target_peer_id, allow_queueing=true),
+      )
     }
   }
 
