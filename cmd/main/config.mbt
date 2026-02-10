@@ -9,6 +9,9 @@ struct Config {
   metadata : Map[String, String]?
   log : LogLevel?
   port : Map[String, String]?
+  relay_network_whitelist : Array[String]?
+  relay_all_peer_rpc : Bool?
+  foreign_relay_bps_limit : Int?
 } derive(Show, ToJson, FromJson)
 
 ///|

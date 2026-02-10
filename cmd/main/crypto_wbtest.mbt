@@ -75,8 +75,8 @@ test "hash_secret handles empty secret" {
 test "pk_persistence_fallback" {
   // 0. Initialize global config (needed for log_debug)
   global_config.val = Some({
-    id: "test_node_local_pk_test",
-    secret: "test_secret",
+    id: "test_node",
+    secret: "secret",
     peers: [],
     listeners: [],
     scripts: None,
@@ -84,6 +84,9 @@ test "pk_persistence_fallback" {
     metadata: None,
     log: None,
     port: None,
+    relay_network_whitelist: None,
+    relay_all_peer_rpc: None,
+    foreign_relay_bps_limit: None,
   })
 
   // 1. Initialize local keypair (needed for ECDH)

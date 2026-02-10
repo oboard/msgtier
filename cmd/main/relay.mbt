@@ -106,11 +106,49 @@ pub async fn relay_message(
             }
           }
         }
-        None => ()
+        None => {
+          // No route found in routing table.
+          // Try to find a public node to forward to (Foreign Network Relay)
+          let all_conns = get_global_connection_manager().get_all_connections()
+          let mut public_relay_found = false
+          for conn in all_conns {
+            // Skip sender and visited
+            let is_visited = msg.visited.any(fn(pid) { pid == conn.peer_id })
+            if conn.peer_id == msg.source_id || is_visited {
+              continue
+            }
+
+            // Check if public (heuristic: remote address is not private/loopback)
+            let host = extract_host(conn.remote_addr)
+            if !is_private(host) && !is_loopback(host) {
+              // Found a public peer, try to relay to it
+              if conn.protocol == transport.protocol() {
+                // Check Foreign Relay BPS Limit
+                let _mgr = get_global_foreign_network_manager()
+                // TODO: Implement actual rate limiting logic using mgr.relay_bps_limit
+
+                ignore(send_message(transport, conn.remote_addr, relay_msg))
+                log_debug(
+                  "Forwarded to public relay \{conn.peer_id} (fallback for \{target_peer_id})",
+                )
+                public_relay_found = true
+                forwarded = true
+                break
+              }
+            }
+          }
+          if !public_relay_found {
+            log_debug(
+              "No route and no public relay found for \{target_peer_id}",
+            )
+          }
+        }
       }
     }
     if !forwarded {
-      log_warn("Failed to route message to \{target_peer_id}: no route found or next hop unreachable")
+      log_warn(
+        "Failed to route message to \{target_peer_id}: no route found or next hop unreachable",
+      )
     }
     forwarded
   } else {

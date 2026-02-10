@@ -1125,8 +1125,9 @@ async fn handle_incoming_message(
             let peer_id = conn.peer_id
             let remote_addr = conn.remote_addr
             let relay_depth = conn.relay
-            
-            log_debug("DEBUG: sync entry peer=\{peer_id} addr=\{remote_addr} relay=\{relay_depth} source=\{msg.source_id}")
+            log_debug(
+              "DEBUG: sync entry peer=\{peer_id} addr=\{remote_addr} relay=\{relay_depth} source=\{msg.source_id}",
+            )
 
             // If relay_depth is 1, it's a direct neighbor of the sender
             if relay_depth == 1 && peer_id != msg.source_id {
@@ -1158,7 +1159,9 @@ async fn handle_incoming_message(
               // We learned that 'peer_id' is reachable via 'msg.from' with hops = relay_depth + 1
               // (Since relay_depth is the distance from msg.from to peer_id)
               let new_hops = relay_depth + 1
-              log_debug("DEBUG: update_route target=\{peer_id} via=\{msg.source_id} hops=\{new_hops}")
+              log_debug(
+                "DEBUG: update_route target=\{peer_id} via=\{msg.source_id} hops=\{new_hops}",
+              )
               update_global_peer_manager(fn(manager) {
                 manager.update_route(peer_id, msg.source_id, new_hops)
               })

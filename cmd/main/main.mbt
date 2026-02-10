@@ -31,6 +31,9 @@ async fn main {
           add_known_peer(peer_url)
         }
 
+        // Initialize ForeignNetworkManager
+        init_foreign_network_manager(config)
+
         // Don't pre-create peers - they will be created when hello messages arrive
         for listener in config.listeners {
           match @url.Url::parse(listener) {

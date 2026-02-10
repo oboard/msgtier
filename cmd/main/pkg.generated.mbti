@@ -13,6 +13,8 @@ pub fn can_direct_connect(String) -> Bool
 
 pub fn clear_pending_messages() -> Unit
 
+pub fn get_global_foreign_network_manager() -> ForeignNetworkManager
+
 pub async fn relay_message(&Transport, String, Message, String) -> Bool noraise
 
 pub fn set_pending_message_broadcast(String, Bool) -> Unit
@@ -55,6 +57,16 @@ pub impl @json.FromJson for Connection
 
 type ConnectionManager
 pub impl Show for ConnectionManager
+
+type ForeignNetworkManager
+pub fn ForeignNetworkManager::unwrap_packet(Self, ForeignNetworkPacket) -> (String, String, Bytes)
+pub fn ForeignNetworkManager::wrap_packet(Self, String, String, Bytes) -> ForeignNetworkPacket
+pub impl Show for ForeignNetworkManager
+
+type ForeignNetworkPacket
+pub impl Show for ForeignNetworkPacket
+pub impl ToJson for ForeignNetworkPacket
+pub impl @json.FromJson for ForeignNetworkPacket
 
 type LogLevel
 pub impl Eq for LogLevel
