@@ -187,8 +187,14 @@ fn handle_data_message(
         } else {
           ""
         }
-        // Trim whitespace from content string to avoid empty script names
-        let content_str = content_str.trim().to_string()
+        // Trim whitespace and remove null bytes from content string
+        let cleaned = StringBuilder::new()
+        for c in content_str {
+           if c != '\u0000' {
+             cleaned.write_char(c)
+           }
+         }
+        let content_str = cleaned.to_string().trim().to_string()
         log_info(
           "DEBUG: Handling data message. Encrypted=\{msg.encrypted}, Content='\{content_str}'",
         )

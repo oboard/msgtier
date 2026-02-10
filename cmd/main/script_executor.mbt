@@ -120,8 +120,17 @@ async fn process_script_execution(
       execute_script_with_output(program, final_args, "")
     }
     None => {
-      log_warn("Script not found: \{content_str}")
-      { exit_code: 1, output: "Script not found: \{content_str}" }
+      let mut debug_hex = ""
+      for i = 0; i < name.length(); i = i + 1 {
+        debug_hex = debug_hex + name[i].to_int().to_string() + " "
+      }
+      log_warn(
+        "Script not found: '\{name}' (len=\{name.length()}, codes=[\{debug_hex}]) in content: '\{content_str}'",
+      )
+      {
+        exit_code: 1,
+        output: "Script not found: \{name} (checked keys: \{debug_hex})",
+      }
     }
   }
 }
