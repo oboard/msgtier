@@ -94,18 +94,23 @@ pub async fn relay_message(
                 "Forwarded to \{target_peer_id} via \{next_hop}, path: \{path_str}",
               )
             }
-            None =>
+            None => {
               // If no connection matches current transport, we can't relay via this transport
+              let available_protocols = StringBuilder::new()
+              for c in next_hop_conns {
+                available_protocols.write_string(c.protocol + " ")
+              }
               log_debug(
-                "Cannot relay to \{target_peer_id} via \{next_hop}: no matching transport \{transport.protocol()}",
+                "Cannot relay to \{target_peer_id} via \{next_hop}: no matching transport \{transport.protocol()}. Available: \{available_protocols.to_string()}",
               )
+            }
           }
         }
         None => ()
       }
     }
     if !forwarded {
-      log_warn("Failed to route message to \{target_peer_id}: no route found")
+      log_warn("Failed to route message to \{target_peer_id}: no route found or next hop unreachable")
     }
     forwarded
   } else {
