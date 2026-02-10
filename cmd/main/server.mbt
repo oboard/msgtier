@@ -618,7 +618,10 @@ async fn handle_incoming_message(
     return
   }
   // Logger
-  log_info("[\{msg.kind}]\t\{msg.source_id}(\{sender_addr})")
+  log_info(
+    "[\{msg.kind}]\t\{msg.source_id}(\{sender_addr})" +
+    (if msg.relay > 1 { " relay=\{msg.relay}" } else { "" }),
+  )
   log_debug(
     "DEBUG: incoming protocol=\{transport.protocol()} local=\{local_addr} sender=\{sender_addr} kind=\{msg.kind} id=\{msg.id}",
   )
