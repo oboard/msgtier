@@ -302,6 +302,10 @@ fn Connection::to_msgpack(self : Connection) -> @msgpack.Value {
     },
     @msgpack.string(self.version),
     @msgpack.string(self.nat_type.to_string()),
+    match self.session_id {
+      Some(sid) => @msgpack.string(sid)
+      None => @msgpack.nil()
+    },
   ])
 }
 
@@ -330,6 +334,7 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         last_ping_time_val,
         String(version),
         String(nat_type_str),
+        session_id_val,
       ]
     ) => {
       let nat_type = match nat_type_str {
@@ -368,6 +373,10 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         UInt64(t) => Some(t)
         _ => None
       }
+      let session_id = match session_id_val {
+        String(s) => Some(s)
+        _ => None
+      }
       Some(Connection::{
         peer_id,
         remote_addr,
@@ -389,7 +398,7 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         last_ping_time,
         version,
         nat_type,
-        session_id: None,
+        session_id,
       })
     }
     _ => None

@@ -985,6 +985,7 @@ async fn handle_incoming_message(
         source_id=id,
         source_addr=local_addr,
         session_id?=msg.session_id,
+        target_id=msg.source_id,
       )
       let ok = send_message(transport, sender_addr, reply)
       log_debug(
@@ -1081,9 +1082,45 @@ async fn handle_incoming_message(
       // Collect direct neighbors of the sender to update their connections list
       let sender_connections : Array[PeerConnectionInfo] = []
 
-      // Parse connection entry: [peer_id, remote_addr, relay, public_key, latency, bandwidth, packet_loss]
+      // Parse connection entry: [..., public_key]
       for entry in conn_entries {
-        match Connection::from_msgpack(entry) {
+        let (conn_val, pk_bytes) = match entry {
+          Array(arr) =>
+            if arr.length() >= 22 {
+              // New format: 21 fields + PK
+              let pk_val = arr[21]
+              let pk = match pk_val {
+                Binary(b) => b
+                _ => []
+              }
+              // Construct a new array with first 21 elements for Connection::from_msgpack
+              let conn_arr = []
+              for i = 0; i < 21; i = i + 1 {
+                conn_arr.push(arr[i])
+              }
+              (@msgpack.array(conn_arr), pk)
+            } else if arr.length() == 21 {
+              // Old format: 20 fields + PK
+              // Or New format without PK? (Assuming Sync always has PK)
+              // Check if last element looks like PK (Binary)
+              let pk_val = arr[20]
+              let pk = match pk_val {
+                Binary(b) => b
+                _ => []
+              }
+              // Construct a new array with first 20 elements + Nil for session_id
+              let conn_arr = []
+              for i = 0; i < 20; i = i + 1 {
+                conn_arr.push(arr[i])
+              }
+              conn_arr.push(@msgpack.nil()) // Pad session_id
+              (@msgpack.array(conn_arr), pk)
+            } else {
+              (entry, [])
+            }
+          _ => (entry, [])
+        }
+        match Connection::from_msgpack(conn_val) {
           Some(conn) => {
             let peer_id = conn.peer_id
             let remote_addr = conn.remote_addr
@@ -1140,7 +1177,7 @@ async fn handle_incoming_message(
                   let peer_node = PeerNode::new(
                     id=peer_id,
                     version=conn.version,
-                    public_key=[],
+                    public_key=pk_bytes,
                     addresses~,
                     metadata={},
                   )
@@ -1148,7 +1185,13 @@ async fn handle_incoming_message(
                     manager.add_peer(peer_node)
                   })
                 }
-                Some(_) =>
+                Some(_) => {
+                  // Update Public Key if we have a better one
+                  if pk_bytes.length() > 0 {
+                    update_global_peer_manager(fn(manager) {
+                      manager.update_peer_public_key(peer_id, pk_bytes)
+                    })
+                  }
                   // If we have a valid address, add it
                   if remote_addr != "routed" &&
                     !is_bind_all_address(remote_addr) {
@@ -1156,6 +1199,7 @@ async fn handle_incoming_message(
                       manager.add_peer_address(peer_id, remote_addr)
                     })
                   }
+                }
               }
 
               // Create or update connection if it's a direct neighbor (for compatibility)

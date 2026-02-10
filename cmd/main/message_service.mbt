@@ -47,7 +47,17 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
         packet_loss_rate,
         version: peer.version,
       }
-      connections_data.push(updated_conn.to_msgpack())
+      let conn_val = updated_conn.to_msgpack()
+      let sync_entry = match conn_val {
+        Array(arr) => {
+          let new_arr = []
+          new_arr.push_iter(arr.iter())
+          new_arr.push(@msgpack.binary(peer.public_key))
+          @msgpack.array(new_arr)
+        }
+        _ => conn_val
+      }
+      connections_data.push(sync_entry)
     }
   }
 
@@ -82,7 +92,17 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
             nat_type: Unknown,
             session_id: None,
           }
-          connections_data.push(sync_conn.to_msgpack())
+          let conn_val = sync_conn.to_msgpack()
+          let sync_entry = match conn_val {
+            Array(arr) => {
+              let new_arr = []
+              new_arr.push_iter(arr.iter())
+              new_arr.push(@msgpack.binary(peer.public_key))
+              @msgpack.array(new_arr)
+            }
+            _ => conn_val
+          }
+          connections_data.push(sync_entry)
         }
         None => ()
       }

@@ -39,6 +39,7 @@ pub async fn relay_message(
       ..msg,
       relay: msg.relay + 1,
       visited: updated_visited,
+      target_id: Some(target_peer_id),
     }
 
     // Use routing table to forward
