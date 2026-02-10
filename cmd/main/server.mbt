@@ -885,18 +885,30 @@ async fn handle_incoming_message(
           )
           update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
         }
-        Some(existing) =>
-          // Update public key if we found one and existing has none/empty
-          if existing.public_key.length() == 0 &&
-            effective_pk_opt.unwrap_or(b"").length() > 0 {
-            let updated_peer = {
-              ..existing,
-              public_key: effective_pk_opt.unwrap_or(b""),
-            }
-            update_global_peer_manager(fn(manager) {
-              manager.add_peer(updated_peer)
-            })
+        Some(existing) => {
+          // Update public key if provided and different
+          match effective_pk_opt {
+            Some(new_pk) =>
+              if new_pk.length() > 0 {
+                // Check if key changed or was missing
+                let needs_update = if existing.public_key.length() == 0 {
+                  true
+                } else {
+                  existing.public_key != new_pk
+                }
+                if needs_update {
+                  log_info(
+                    "Updating public key for peer \{msg.source_id} (old_len=\{existing.public_key.length()})",
+                  )
+                  let updated_peer = { ..existing, public_key: new_pk }
+                  update_global_peer_manager(fn(manager) {
+                    manager.add_peer(updated_peer)
+                  })
+                }
+              }
+            None => ()
           }
+        }
       }
 
       // Always compute and store shared secret when receiving hello

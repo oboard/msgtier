@@ -130,7 +130,8 @@ fn PeerManager::update_peer_public_key(
 ) -> PeerManager {
   match self.peers.get(peer_id) {
     Some(peer) =>
-      if peer.public_key.length() == 0 && public_key.length() > 0 {
+      if public_key.length() > 0 &&
+        (peer.public_key.length() == 0 || peer.public_key != public_key) {
         let updated_peer = { ..peer, public_key, }
         let peers = self.peers
         peers[peer_id] = updated_peer
