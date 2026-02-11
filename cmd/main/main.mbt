@@ -62,7 +62,6 @@ async fn main {
                   @async.sleep(5000)
                 }
               })
-
             }
             None => log_warn("Invalid listener URL: \{listener}")
           }
@@ -72,7 +71,6 @@ async fn main {
             log_info("HTTP API listening on http://\{addr}")
             start_http_service(addr, config)
           })
-
         }
 
         // Initialize TCP proxies

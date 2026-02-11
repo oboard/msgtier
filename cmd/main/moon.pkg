@@ -1,0 +1,29 @@
+import {
+  "moonbitlang/core/json",
+  "moonbitlang/core/set",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/env",
+  "moonbitlang/core/strconv",
+  "moonbitlang/core/bigint",
+  "moonbitlang/core/bytes",
+  "moonbitlang/async",
+  "moonbitlang/async/socket",
+  "moonbitlang/async/fs",
+  "oboard/msgtier/url",
+  "oboard/msgtier/msgpack",
+  "oboard/msgtier/x25519",
+  "moonbitlang/async/http",
+  "moonbitlang/async/websocket",
+  "moonbitlang/async/io",
+  "moonbitlang/async/process",
+  "oboard/msgtier/uuidm",
+  "moonbitlang/x/json5",
+  "oboard/msgtier/quic",
+  "moonbitlang/async/pipe",
+  "moonbitlang/async/cond_var",
+  "moonbitlang/x/crypto",
+}
+
+options(
+  "is-main": true,
+)

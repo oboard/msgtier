@@ -85,39 +85,45 @@ pub async fn relay_message(
             next_hop,
           )
 
-          // Find a connection to next_hop that matches the current transport protocol
-          let mut next_hop_conn_opt = None
-          for conn in next_hop_conns {
-            if conn.protocol == transport.protocol() {
-              next_hop_conn_opt = Some(conn)
-              break
-            }
-          }
-          match next_hop_conn_opt {
-            Some(conn) => {
-              let next_hop_addr = conn.remote_addr
-              ignore(send_message(transport, next_hop_addr, relay_msg))
-              forwarded = true
-              let path_str = relay_msg.visited.join(" -> ")
-              log_debug(
-                "Forwarded to \{target_peer_id} via \{next_hop}, path: \{path_str}",
-              )
-            }
-            None => {
-              // If no connection matches current transport, we can't relay via this transport
-              let available_protocols = StringBuilder::new()
-              for c in next_hop_conns {
-                available_protocols.write_string(c.protocol + " ")
+          if next_hop_conns.is_empty() {
+            log_debug(
+              "Route to \{target_peer_id} via \{next_hop} exists, but next hop is not connected",
+            )
+          } else {
+            // Find a connection to next_hop that matches the current transport protocol
+            let mut next_hop_conn_opt = None
+            for conn in next_hop_conns {
+              if conn.protocol == transport.protocol() {
+                next_hop_conn_opt = Some(conn)
+                break
               }
-              log_debug(
-                "Cannot relay to \{target_peer_id} via \{next_hop}: no matching transport \{transport.protocol()}. Available: \{available_protocols.to_string()}",
-              )
-              if allow_queueing {
-                add_pending_message(relay_msg)
+            }
+            match next_hop_conn_opt {
+              Some(conn) => {
+                let next_hop_addr = conn.remote_addr
+                ignore(send_message(transport, next_hop_addr, relay_msg))
                 forwarded = true
+                let path_str = relay_msg.visited.join(" -> ")
                 log_debug(
-                  "Queued relay message \{msg.id} for cross-protocol delivery via \{next_hop}",
+                  "Forwarded to \{target_peer_id} via \{next_hop}, path: \{path_str}",
                 )
+              }
+              None => {
+                // If no connection matches current transport, we can't relay via this transport
+                let available_protocols = StringBuilder::new()
+                for c in next_hop_conns {
+                  available_protocols.write_string(c.protocol + " ")
+                }
+                log_debug(
+                  "Cannot relay to \{target_peer_id} via \{next_hop}: no matching transport \{transport.protocol()}. Available: \{available_protocols.to_string()}",
+                )
+                if allow_queueing {
+                  add_pending_message(relay_msg)
+                  forwarded = true
+                  log_debug(
+                    "Queued relay message \{msg.id} for cross-protocol delivery via \{next_hop}",
+                  )
+                }
               }
             }
           }
@@ -164,18 +170,13 @@ pub async fn relay_message(
                 "Queued relay message \{msg.id} for foreign relay via other protocol",
               )
             } else {
-              log_debug(
+              log_warn(
                 "No route and no public relay found for \{target_peer_id}",
               )
             }
           }
         }
       }
-    }
-    if !forwarded {
-      log_warn(
-        "Failed to route message to \{target_peer_id}: no route found or next hop unreachable",
-      )
     }
     forwarded
   } else {

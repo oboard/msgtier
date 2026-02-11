@@ -35,7 +35,9 @@ fn take_pending_messages(predicate : (Message) -> Bool) -> Array[PendingEntry] {
       // TTL Check (30s or custom timeout)
       let timeout = entry.msg.timeout_ms.unwrap_or(30000)
       if now > entry.msg.timestamp && now - entry.msg.timestamp > timeout {
-        log_debug("Pending message \{entry.msg.id} timed out (age: \{now - entry.msg.timestamp}ms > \{timeout}ms), removed")
+        log_debug(
+          "Pending message \{entry.msg.id} timed out (age: \{now - entry.msg.timestamp}ms > \{timeout}ms), removed",
+        )
         messages.remove(i) |> ignore
       } else if predicate(entry.msg) {
         matched.push(entry)

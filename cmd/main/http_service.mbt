@@ -313,7 +313,9 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
 ///|
 async fn notfound_handler(conn : @http.ServerConnection) -> Unit {
   conn
-  ..send_response(404, "NotFound", extra_headers={ "Content-Type": "text/html" })
+  ..send_response(404, "Not Found", extra_headers={
+    "Content-Type": "text/html",
+  })
   ..write(PAGE_404)
   .end_response()
 }
@@ -323,19 +325,22 @@ async fn download_handler(conn : @http.ServerConnection) -> Unit {
   let args = @env.args()
   let exe_path = if args.length() > 0 { args[0] } else { "./msgtier" }
   try {
-    let content = @fs.read_file(exe_path)
+    let file = @fs.open(exe_path, mode=ReadOnly)
+    defer file.close()
     conn
     ..send_response(200, "OK", extra_headers={
       "Content-Type": "application/octet-stream",
       "Content-Disposition": "attachment; filename=\"msgtier\"",
     })
-    ..write(content)
+    ..write_reader(file)
     .end_response()
   } catch {
     e =>
       conn
-      ..send_response(500, "Internal Server Error", extra_headers={})
-      ..write(@utf8.encode(e.to_string()))
+      ..send_response(500, "Internal Server Error", extra_headers={
+        "Content-Type": "application/json",
+      })
+      ..write({ "error": e.to_string() }.to_json().stringify())
       .end_response()
   }
 }

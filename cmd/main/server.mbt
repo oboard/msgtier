@@ -969,8 +969,9 @@ async fn handle_incoming_message(
                 set_relay_path(peer_url, "unknown", msg.source_id)
 
                 // Check if we already have ANY connection to this address (active or not)
-                let already_connected = all_conns.any(conn => conn.remote_addr ==
-                  peer_url)
+                let already_connected = all_conns.any(conn => {
+                  conn.remote_addr == peer_url
+                })
                 if !already_connected {
                   // Send hello to discover this peer via relay through msg.from
                   let our_addresses = get_our_addresses(local_addr)
@@ -1277,7 +1278,6 @@ async fn handle_incoming_message(
                   conn.protocol,
                   relay_depth~,
                 )
-
               }
             }
           }
