@@ -163,7 +163,7 @@ pub fn IPv6::parse(input : StringView) -> IPv6 raise ValidationError {
           }
           _ => break input
         }
-      } else {
+      } nobreak {
         input
       }
       let remaining = match remaining {

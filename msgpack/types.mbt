@@ -36,8 +36,8 @@ pub impl ToJson for Value with to_json(self) {
     Int64(i) => Json::number(i.to_double())
     UInt64(i) => Json::number(i.to_double())
     String(s) => Json::string(s)
-    Array(arr) => Json::array(arr.map(_.to_json()))
-    Binary(b) => Json::array(b.to_array().map(_.to_json()))
+    Array(arr) => Json::array(arr.map(fn(x) { x.to_json() }))
+    Binary(b) => Json::array(b.to_array().map(fn(x) { x.to_json() }))
     Nil => Json::null()
   }
 }

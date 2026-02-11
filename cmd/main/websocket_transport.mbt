@@ -69,7 +69,7 @@ impl Transport for WebSocketTransport with send(self, target, data) {
               match (self.root, self.handler, self.on_disconnect) {
                 (Some(root), Some(handler), Some(on_disconnect)) => {
                   self.reader_started[target_key] = true
-                  root.spawn_bg(fn() {
+                  root.spawn_bg(async fn() {
                     try {
                       for {
                         let msg = wrapper.conn.recv()
@@ -149,7 +149,7 @@ impl Transport for WebSocketTransport with listen(
   self.handler = Some(handler)
   self.on_disconnect = Some(on_disconnect)
   self.root = Some(root)
-  self.server.run_forever(fn(request, _resp, conn) {
+  self.server.run_forever(async fn(request, _resp, conn) {
     let client_addr = conn.client_addr().to_string()
     try {
       let ws = @websocket.from_http_server(request, conn)

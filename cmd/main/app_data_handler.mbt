@@ -181,7 +181,7 @@ fn handle_data_message(
       } else {
         data_value
       }
-      root.spawn_bg(fn() {
+      root.spawn_bg(async fn() {
         let content_str = if data_content is String(content) {
           content
         } else {

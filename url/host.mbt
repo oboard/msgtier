@@ -239,7 +239,7 @@ fn ends_in_a_number(input : StringView) -> Bool {
             } else {
               return false
             }
-          } else {
+          } nobreak {
             return true
           }
         ['0'..='9', .. last] =>
@@ -249,7 +249,7 @@ fn ends_in_a_number(input : StringView) -> Bool {
             } else {
               return false
             }
-          } else {
+          } nobreak {
             return true
           }
         _ => return false

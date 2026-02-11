@@ -21,9 +21,15 @@ async fn handle_http_request(
             "Content-Type": "application/json",
           })
           ..write({ "error": "Missing target header" }.to_json().stringify())
-          ..end_response()
+          .end_response()
           return
         }
+      }
+
+      // Extract timeout from headers (default 10000ms)
+      let timeout_ms = match request.headers.get("timeout") {
+        Some(t) => @strconv.parse_uint64(t) catch { _ => 10000UL }
+        None => 10000UL
       }
 
       // Read request body (convert from Bytes to String)
@@ -64,6 +70,7 @@ async fn handle_http_request(
         target_id~,
         body=data_val,
         encrypted=is_encrypted,
+        timeout_ms~,
       )
 
       // Print to stdout for debugging
@@ -73,6 +80,7 @@ async fn handle_http_request(
       log_debug("  Data: \{body_str}")
       log_debug("  Self: \{is_self}")
       log_debug("  Encrypted: \{is_encrypted}")
+      log_debug("  Timeout: \{timeout_ms}ms")
       match data_val {
         Binary(b) => log_debug("  DataVal: Binary len=\{b.length()}")
         String(s) => log_debug("  DataVal: String len=\{s.length()}")
@@ -95,14 +103,14 @@ async fn handle_http_request(
           add_pending_message(msg)
           log_debug("HTTP /send: Registered request id=\{msg.id}")
 
-          // Wait for response with timeout (10 seconds)
-          match wait_for_response(msg.id, 10000) {
+          // Wait for response with timeout
+          match wait_for_response(msg.id, timeout_ms.to_int()) {
             Some((response, headers)) =>
               // Ensure Content-Type is set if missing
               conn
               ..send_response(200, "OK", extra_headers=headers)
               ..write(response)
-              ..end_response()
+              .end_response()
             None =>
               conn
               ..send_response(504, "Gateway Timeout", extra_headers={
@@ -113,7 +121,7 @@ async fn handle_http_request(
                 .to_json()
                 .stringify(),
               )
-              ..end_response()
+              .end_response()
           }
         }
         (None, false) =>
@@ -126,7 +134,7 @@ async fn handle_http_request(
             .to_json()
             .stringify(),
           )
-          ..end_response()
+          .end_response()
       }
     }
     (Get, path) => serve_static_handler(conn, path)
@@ -200,7 +208,7 @@ async fn serve_file(
     conn
     ..send_response(200, "OK", extra_headers={ "Content-Type": content_type })
     ..write_reader(file)
-    ..end_response()
+    .end_response()
   } catch {
     _ => ()
   }
@@ -215,7 +223,7 @@ async fn get_config_handler(conn : @http.ServerConnection) -> Unit {
     "Content-Type": "application/json",
   })
   ..write(config.to_json().stringify())
-  ..end_response()
+  .end_response()
 }
 
 ///|
@@ -226,10 +234,9 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
   let my_config = get_config()
   let my_id = my_config.id
   let my_pk = get_public_key()
-  let my_addrs = my_config.listeners.map(addr => addr.replace(
-    old="0.0.0.0",
-    new="127.0.0.1",
-  ))
+  let my_addrs = my_config.listeners.map(addr => {
+    addr.replace(old="0.0.0.0", new="127.0.0.1")
+  })
 
   // Get my active direct connections
   let all_conns = get_global_connection_manager().get_all_connections()
@@ -300,7 +307,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
     "Content-Type": "application/json",
   })
   ..write(status_info.to_json().stringify())
-  ..end_response()
+  .end_response()
 }
 
 ///|
@@ -308,7 +315,7 @@ async fn notfound_handler(conn : @http.ServerConnection) -> Unit {
   conn
   ..send_response(404, "NotFound", extra_headers={ "Content-Type": "text/html" })
   ..write(PAGE_404)
-  ..end_response()
+  .end_response()
 }
 
 ///|
@@ -323,12 +330,12 @@ async fn download_handler(conn : @http.ServerConnection) -> Unit {
       "Content-Disposition": "attachment; filename=\"msgtier\"",
     })
     ..write(content)
-    ..end_response()
+    .end_response()
   } catch {
     e =>
       conn
       ..send_response(500, "Internal Server Error", extra_headers={})
       ..write(@utf8.encode(e.to_string()))
-      ..end_response()
+      .end_response()
   }
 }

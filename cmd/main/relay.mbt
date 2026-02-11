@@ -24,7 +24,8 @@ pub async fn relay_message(
 ) -> Bool noraise {
   // Check for timeout
   let now = @env.now()
-  if now > msg.timestamp && now - msg.timestamp > message_timeout_ms {
+  let timeout = msg.timeout_ms.unwrap_or(message_timeout_ms)
+  if now > msg.timestamp && now - msg.timestamp > timeout {
     log_warn(
       "Message \{msg.id} timed out during relay (age: \{now - msg.timestamp}ms), dropped",
     )

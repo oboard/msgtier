@@ -66,7 +66,7 @@ impl Transport for TcpTransport with send(self, target, data) {
               match (self.root, self.handler, self.on_disconnect) {
                 (Some(root), Some(handler), Some(on_disconnect)) => {
                   self.reader_started[target] = true
-                  root.spawn_bg(fn() {
+                  root.spawn_bg(async fn() {
                     let reader = BufferedReader::new(conn)
                     try {
                       for {
@@ -126,7 +126,7 @@ impl Transport for TcpTransport with listen(self, root, handler, on_disconnect) 
   self.handler = Some(handler)
   self.on_disconnect = Some(on_disconnect)
   self.root = Some(root)
-  self.server.run_forever(fn(conn, remote_addr) {
+  self.server.run_forever(async fn(conn, remote_addr) {
     let remote_addr_str = remote_addr.to_string()
     self.connections[remote_addr_str] = conn
     self.reader_started[remote_addr_str] = true

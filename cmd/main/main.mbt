@@ -8,7 +8,7 @@ let global_config : Ref[Config?] = Ref::new(None)
 async fn main {
   // Initialize X25519 key pair
   // init_keypair()
-  @async.with_task_group(fn(root) {
+  @async.with_task_group(async fn(root) {
     let args = @env.args()[1:]
     match args {
       [config] => {
@@ -40,7 +40,7 @@ async fn main {
             Some(url) => {
               let host = url.get_host()
               let scheme = url.scheme
-              let _ : @async.Task[Unit] = root.spawn(fn() {
+              let _ : @async.Task[Unit] = root.spawn(async fn() {
                 for {
                   try {
                     log_info("Attempting to listen on \{listener}")
@@ -68,7 +68,7 @@ async fn main {
           }
         }
         if config.web_api is Some(addr) {
-          let _ : @async.Task[Unit] = root.spawn(fn() {
+          let _ : @async.Task[Unit] = root.spawn(async fn() {
             log_info("HTTP API listening on http://\{addr}")
             start_http_service(addr, config)
           })

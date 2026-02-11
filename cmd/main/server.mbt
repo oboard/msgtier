@@ -1321,7 +1321,7 @@ async fn start_listener_service(
     root,
     fn(bytes, sender) {
       let sender = transport.protocol() + "://" + sender
-      root.spawn_bg(fn() {
+      root.spawn_bg(async fn() {
         handle_incoming_message(
           bytes, sender, my_id, local_addr, root, transport,
         )

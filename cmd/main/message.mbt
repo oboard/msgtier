@@ -17,6 +17,7 @@ struct Message {
   broadcast : Bool // Whether this message should be broadcast to all peers
   session_id : String? // Unique identifier for the connection session
   timestamp : UInt64 // Creation timestamp for TTL and deduplication
+  timeout_ms : UInt64? // Optional custom timeout in milliseconds
 } derive(Show, Eq)
 
 ///|
@@ -41,6 +42,7 @@ fn Message::new(
   broadcast? : Bool = false,
   session_id? : String,
   timestamp? : UInt64,
+  timeout_ms? : UInt64,
 ) -> Message {
   message_id_counter.val += 1
   {
@@ -67,13 +69,14 @@ fn Message::new(
     broadcast,
     session_id,
     timestamp: timestamp.unwrap_or(@env.now()),
+    timeout_ms,
   }
 }
 
 ///|
 fn Message::to_msgpack(self : Message) -> Bytes {
   // Use fixed array structure for msgpack:
-  // [id, kind, from, addr, relay, visited, encrypted, version, public_key, secret_hash, payload, target, data, peers, broadcast, session_id]
+  // [id, kind, from, addr, relay, visited, encrypted, version, public_key, secret_hash, payload, target, data, peers, broadcast, session_id, timestamp, timeout_ms]
   let visited_array : Array[@msgpack.Value] = []
   for peer_id in self.visited {
     visited_array.push(@msgpack.string(peer_id))
@@ -126,6 +129,10 @@ fn Message::to_msgpack(self : Message) -> Bytes {
       None => @msgpack.nil()
     },
     @msgpack.uint64(self.timestamp),
+    match self.timeout_ms {
+      Some(t) => @msgpack.uint64(t)
+      None => @msgpack.nil()
+    },
   ]
   @msgpack.encode(@msgpack.array(values))
 }
@@ -297,6 +304,17 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
       } else {
         @env.now()
       }
+      let timeout_ms_pos = timestamp_pos + 1
+      let timeout_ms = if arr.length() > timeout_ms_pos {
+        match arr[timeout_ms_pos] {
+          UInt64(v) => Some(v)
+          Int(v) => Some(v.to_uint64())
+          Nil => None
+          _ => None
+        }
+      } else {
+        None
+      }
       Message::{
         id,
         kind,
@@ -315,6 +333,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         broadcast,
         session_id,
         timestamp,
+        timeout_ms,
       }
     }
     _ => fail("Expected msgpack array, got \{msgpack.to_json().stringify()}")

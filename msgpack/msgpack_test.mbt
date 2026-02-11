@@ -124,7 +124,7 @@ test "data type validation" {
     array([int(1), int(2)]),
   ]
   debug_inspect(
-    test_data.map(encode(_)).map(decode(_)),
+    test_data.map(x => decode(encode(x))),
     content=(
       #|[
       #|  Nil,
