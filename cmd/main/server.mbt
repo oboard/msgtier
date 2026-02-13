@@ -191,9 +191,9 @@ async fn handle_reconnects(
     @async.sleep(reconnect_interval)
 
     // Get current connections once for this iteration
-    let current_conns = get_global_connection_manager().get_all_connections()
-    let my_listeners = our_addresses.map(fn(a) { a.address })
-    let now = @env.now()
+    let current_conns = get_global_connection_manager()
+      .get_all_connections()
+      .filter(conn => conn.peer_id == peer_id)
 
     // Build list of target addresses
     let targets = @set.new()
@@ -218,16 +218,6 @@ async fn handle_reconnects(
     for peer_addr in targets {
       // Parse URL to check protocol
       if !peer_addr.has_prefix(transport.protocol() + "://") {
-        continue
-      }
-      if my_listeners.contains(peer_addr) {
-        continue
-      }
-      let has_recent_conn = current_conns.any(conn => {
-        conn.remote_addr == peer_addr &&
-        now - conn.last_seen <= CONNECTION_TIMEOUT_MS
-      })
-      if has_recent_conn {
         continue
       }
       log_debug(
@@ -963,12 +953,9 @@ async fn handle_incoming_message(
       // Instead of waiting for welcome, process advertised peers directly
       if advertised_peers is Some(peer_addrs) {
         let all_conns = get_global_connection_manager().get_all_connections()
-        let my_listeners = get_our_addresses(local_addr).map(fn(a) { a.address })
         for peer_addr_obj in peer_addrs {
           let peer_url = peer_addr_obj.address
-          if !is_bind_all_address(peer_url) &&
-            peer_url != local_addr &&
-            !my_listeners.contains(peer_url) {
+          if !is_bind_all_address(peer_url) && peer_url != local_addr {
             // Track this peer address for active connection attempts
             add_known_peer(peer_url)
 
@@ -1014,19 +1001,10 @@ async fn handle_incoming_message(
       if should_rebroadcast_hello(msg.source_id) {
         record_hello_time(msg.source_id)
         let known_peers = get_all_known_peers()
-        let my_listeners = get_our_addresses(local_addr).map(fn(a) { a.address })
-        let sender_addresses = match
-          get_global_peer_manager().get_peer(msg.source_id) {
-          Some(peer) => peer.addresses
-          None => []
-        }
         for peer_url in known_peers {
           // Don't send back to the peer we just received it from
           // Also skip 0.0.0.0 addresses (bind-all, not connectable)
-          if peer_url != sender_addr &&
-            !is_bind_all_address(peer_url) &&
-            !my_listeners.contains(peer_url) &&
-            !sender_addresses.contains(peer_url) {
+          if peer_url != sender_addr && !is_bind_all_address(peer_url) {
             ignore(send_message(transport, peer_url, msg))
           }
         }
