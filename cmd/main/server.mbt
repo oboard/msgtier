@@ -191,9 +191,9 @@ async fn handle_reconnects(
     @async.sleep(reconnect_interval)
 
     // Get current connections once for this iteration
-    let current_conns = get_global_connection_manager()
-      .get_all_connections()
-      .filter(conn => conn.peer_id == peer_id)
+    let current_conns = get_global_connection_manager().get_all_connections()
+    let my_listeners = our_addresses.map(fn(a) { a.address })
+    let now = @env.now()
 
     // Build list of target addresses
     let targets = @set.new()
@@ -218,6 +218,16 @@ async fn handle_reconnects(
     for peer_addr in targets {
       // Parse URL to check protocol
       if !peer_addr.has_prefix(transport.protocol() + "://") {
+        continue
+      }
+      if my_listeners.contains(peer_addr) {
+        continue
+      }
+      let has_recent_conn = current_conns.any(conn => {
+        conn.remote_addr == peer_addr &&
+        now - conn.last_seen <= CONNECTION_TIMEOUT_MS
+      })
+      if has_recent_conn {
         continue
       }
       log_debug(
