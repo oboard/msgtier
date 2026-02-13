@@ -1122,7 +1122,7 @@ async fn handle_incoming_message(
         let (conn_val, pk_bytes) = match entry {
           Array(arr) =>
             if arr.length() >= 22 {
-              // New format: 21 fields + PK
+              // 21 fields + PK
               let pk_val = arr[21]
               let pk = match pk_val {
                 Binary(b) => b
@@ -1133,22 +1133,6 @@ async fn handle_incoming_message(
               for i = 0; i < 21; i = i + 1 {
                 conn_arr.push(arr[i])
               }
-              (@msgpack.array(conn_arr), pk)
-            } else if arr.length() == 21 {
-              // Old format: 20 fields + PK
-              // Or New format without PK? (Assuming Sync always has PK)
-              // Check if last element looks like PK (Binary)
-              let pk_val = arr[20]
-              let pk = match pk_val {
-                Binary(b) => b
-                _ => []
-              }
-              // Construct a new array with first 20 elements + Nil for session_id
-              let conn_arr = []
-              for i = 0; i < 20; i = i + 1 {
-                conn_arr.push(arr[i])
-              }
-              conn_arr.push(@msgpack.nil()) // Pad session_id
               (@msgpack.array(conn_arr), pk)
             } else {
               (entry, [])

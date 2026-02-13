@@ -90,35 +90,32 @@ fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
 ///|
 fn create_sync_message(my_id : String, local_addr : String) -> Message {
   // Create a message that includes all current connections of this node
-  let all_peers = get_global_peer_manager().get_all_peers()
   let all_conns = get_global_connection_manager().get_all_connections()
   let connections_data : Array[@msgpack.Value] = []
 
   // Include direct connections (hops=1)
-  for peer in all_peers {
-    let peer_conns = peer.get_all_connections(all_conns)
-    for conn in peer_conns {
-      let elapsed_ms = @env.now() - conn.last_seen
-      let bandwidth_mbps = conn.calculate_bandwidth_mbps(elapsed_ms)
-      let packet_loss_rate = conn.calculate_packet_loss()
-      let updated_conn = Connection::{
-        ..conn,
-        bandwidth_mbps,
-        packet_loss_rate,
-        version: peer.version,
-      }
-      let conn_val = updated_conn.to_msgpack()
-      let sync_entry = match conn_val {
-        Array(arr) => {
-          let new_arr = []
-          new_arr.push_iter(arr.iter())
-          new_arr.push(@msgpack.binary(peer.public_key))
-          @msgpack.array(new_arr)
-        }
-        _ => conn_val
-      }
-      connections_data.push(sync_entry)
+  for conn in all_conns {
+    let elapsed_ms = @env.now() - conn.last_seen
+    let bandwidth_mbps = conn.calculate_bandwidth_mbps(elapsed_ms)
+    let packet_loss_rate = conn.calculate_packet_loss()
+    let updated_conn = Connection::{
+      ..conn,
+      bandwidth_mbps,
+      packet_loss_rate,
+      version: conn.version,
     }
+    let conn_val = updated_conn.to_msgpack()
+    let sync_entry = match conn_val {
+      Array(arr) =>
+        @msgpack.array(
+          [
+            ..arr,
+            @msgpack.binary(get_shared_secret(conn.peer_id).unwrap_or([])),
+          ],
+        )
+      _ => conn_val
+    }
+    connections_data.push(sync_entry)
   }
 
   // Include known routes (hops > 1)
