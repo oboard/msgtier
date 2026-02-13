@@ -10,7 +10,12 @@ test "complex data structures" {
   let outer_array = array([inner_array, int(3)])
   let encoded = encode(outer_array)
   let decoded = decode(encoded)
-  debug_inspect(decoded, content="Array([Array([..., ...]), Int(3)])")
+  debug_inspect(
+    decoded,
+    content=(
+      #|Array([Array([Int(1), Int(2)]), Int(3)])
+    ),
+  )
 
   // Test mixed array
   let mixed_array = array([int(42), string("hello"), bool(true), nil()])
@@ -19,14 +24,7 @@ test "complex data structures" {
   debug_inspect(
     decoded_mixed,
     content=(
-      #|Array(
-      #|  [
-      #|    Int(42),
-      #|    String("hello"),
-      #|    Bool(true),
-      #|    Nil,
-      #|  ],
-      #|)
+      #|Array([Int(42), String("hello"), Bool(true), Nil])
     ),
   )
 }
@@ -187,15 +185,7 @@ test "deno compatibility tests" {
   debug_inspect(
     decoded_mixed_types,
     content=(
-      #|Array(
-      #|  [
-      #|    Int(1),
-      #|    String("foo"),
-      #|    Bool(false),
-      #|    Nil,
-      #|    Array([..., ...]),
-      #|  ],
-      #|)
+      #|Array([Int(1), String("foo"), Bool(false), Nil, Array([Int(1), Int(2)])])
     ),
   )
 }

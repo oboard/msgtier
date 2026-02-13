@@ -953,9 +953,12 @@ async fn handle_incoming_message(
       // Instead of waiting for welcome, process advertised peers directly
       if advertised_peers is Some(peer_addrs) {
         let all_conns = get_global_connection_manager().get_all_connections()
+        let my_listeners = get_our_addresses(local_addr).map(fn(a) { a.address })
         for peer_addr_obj in peer_addrs {
           let peer_url = peer_addr_obj.address
-          if !is_bind_all_address(peer_url) && peer_url != local_addr {
+          if !is_bind_all_address(peer_url) &&
+            peer_url != local_addr &&
+            !my_listeners.contains(peer_url) {
             // Track this peer address for active connection attempts
             add_known_peer(peer_url)
 
@@ -985,13 +988,8 @@ async fn handle_incoming_message(
                     peers=our_addresses,
                     session_id~,
                   )
-                  // Send to both direct and relay addresses (fire and forget)
-                  send_message_with_fallback(
-                    transport, peer_url, sender_addr, hello_msg,
-                  )
-                  log_info(
-                    "Sent hello to discovered peer at \{peer_url} (fallback: \{sender_addr})",
-                  )
+                  send_message(transport, peer_url, hello_msg) |> ignore
+                  log_info("Sent hello to discovered peer at \{peer_url}")
                 }
               }
             }
@@ -1006,10 +1004,19 @@ async fn handle_incoming_message(
       if should_rebroadcast_hello(msg.source_id) {
         record_hello_time(msg.source_id)
         let known_peers = get_all_known_peers()
+        let my_listeners = get_our_addresses(local_addr).map(fn(a) { a.address })
+        let sender_addresses = match
+          get_global_peer_manager().get_peer(msg.source_id) {
+          Some(peer) => peer.addresses
+          None => []
+        }
         for peer_url in known_peers {
           // Don't send back to the peer we just received it from
           // Also skip 0.0.0.0 addresses (bind-all, not connectable)
-          if peer_url != sender_addr && !is_bind_all_address(peer_url) {
+          if peer_url != sender_addr &&
+            !is_bind_all_address(peer_url) &&
+            !my_listeners.contains(peer_url) &&
+            !sender_addresses.contains(peer_url) {
             ignore(send_message(transport, peer_url, msg))
           }
         }

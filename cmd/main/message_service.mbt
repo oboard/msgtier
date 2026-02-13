@@ -9,13 +9,73 @@ fn get_identity_info() -> (Bytes, String) {
 }
 
 ///|
+fn get_local_interface_ips() -> Array[String] {
+  let ips : Array[String] = []
+  let interfaces = @loip.list_interfaces()
+  for iface in interfaces {
+    if !iface.is_up {
+      continue
+    }
+    for ip in iface.ipv4 {
+      let is_loopback = ip == "localhost" || ip.has_prefix("127.")
+      if !ip.is_empty() && !is_loopback && !ips.contains(ip) {
+        ips.push(ip)
+      }
+    }
+    for ip in iface.ipv6 {
+      let is_loopback = ip == "::1" || ip == "0:0:0:0:0:0:0:1"
+      let is_link_local = ip.has_prefix("fe80:")
+      if !ip.is_empty() && !is_loopback && !is_link_local && !ips.contains(ip) {
+        ips.push(ip)
+      }
+    }
+  }
+  ips
+}
+
+///|
 fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
   match global_config.val {
     Some(config) => {
       let addrs : Array[NetworkAddress] = []
+      let local_ips = get_local_interface_ips()
+      // log_info("Local IPs: \{local_ips}")
       for listener_url in config.listeners {
-        let addr_str = listener_url.replace(old="0.0.0.0", new="127.0.0.1")
-        addrs.push(NetworkAddress::{ address: addr_str })
+        let mut parsed : Address? = None
+        try {
+          parsed = Some(Address::parse(listener_url))
+        } catch {
+          _ => ()
+        }
+        match parsed {
+          Some(addr) =>
+            if addr.host == "0.0.0.0" {
+              if local_ips.is_empty() {
+                let addr_str = listener_url.replace(
+                  old="0.0.0.0",
+                  new="127.0.0.1",
+                )
+                if !addrs.iter().any(fn(a) { a.address == addr_str }) {
+                  addrs.push(NetworkAddress::{ address: addr_str })
+                }
+              } else {
+                for ip in local_ips {
+                  let addr_str = Address::new(addr.protocol, ip, addr.port).to_url_string()
+                  if !addrs.iter().any(fn(a) { a.address == addr_str }) {
+                    addrs.push(NetworkAddress::{ address: addr_str })
+                  }
+                }
+              }
+            } else if !addrs.iter().any(fn(a) { a.address == listener_url }) {
+              addrs.push(NetworkAddress::{ address: listener_url })
+            }
+          None => {
+            let addr_str = listener_url.replace(old="0.0.0.0", new="127.0.0.1")
+            if !addrs.iter().any(fn(a) { a.address == addr_str }) {
+              addrs.push(NetworkAddress::{ address: addr_str })
+            }
+          }
+        }
       }
       addrs
     }
@@ -162,48 +222,4 @@ fn create_hello_message(
     secret_hash~,
     session_id?,
   )
-}
-
-///|
-// Try sending to both primary and fallback addresses (UDP fire-and-forget)
-// We send to both because UDP doesn't guarantee delivery anyway
-async fn send_message_with_fallback(
-  transport : &Transport,
-  primary_addr : String,
-  fallback_addr : String,
-  msg : Message,
-) -> Unit noraise {
-  let protocol = transport.protocol()
-
-  // Try primary address - fire and forget
-  if !primary_addr.is_empty() {
-    // Check protocol compatibility
-    let compatible = !primary_addr.contains("://") ||
-      primary_addr.has_prefix(protocol + "://")
-    if compatible {
-      try {
-        let msgpack_bytes = msg.to_msgpack()
-        transport.send(primary_addr, msgpack_bytes) |> ignore
-        log_debug("Sent to primary \{primary_addr}")
-      } catch {
-        _ => log_warn("Failed to send to primary \{primary_addr}")
-      }
-    }
-  }
-
-  // Try fallback address - fire and forget
-  if !fallback_addr.is_empty() && fallback_addr != primary_addr {
-    // Check protocol compatibility
-    let compatible = !fallback_addr.contains("://") ||
-      fallback_addr.has_prefix(protocol + "://")
-    if compatible {
-      try {
-        let msgpack_bytes = msg.to_msgpack()
-        transport.send(fallback_addr, msgpack_bytes) |> ignore
-        log_debug("Sent to fallback \{fallback_addr}")
-      } catch {
-        _ => log_warn("Failed to send to fallback \{fallback_addr}")
-      }
-    }
-  }
 }

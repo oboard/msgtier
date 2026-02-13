@@ -1,0 +1,37 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/loip"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn list_interfaces() -> Array[Interface]
+
+// Errors
+
+// Types and methods
+pub struct Interface {
+  name : String
+  ipv4 : Array[String]
+  ipv6 : Array[String]
+  is_up : Bool
+  kind : InterfaceKind
+}
+pub impl Eq for Interface
+pub impl Show for Interface
+pub impl @debug.Debug for Interface
+
+pub enum InterfaceKind {
+  Physical
+  Virtual
+  Loopback
+}
+pub impl Eq for InterfaceKind
+pub impl Show for InterfaceKind
+pub impl @debug.Debug for InterfaceKind
+
+// Type aliases
+
+// Traits
+

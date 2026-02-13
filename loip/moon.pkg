@@ -1,0 +1,16 @@
+import {
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+  "moonbitlang/core/buffer",
+}
+
+import {
+  "moonbitlang/core/env",
+  "moonbitlang/core/encoding/utf8",
+} for "test"
+
+options(
+  "max-concurrent-tests": 5,
+  "native-stub": [ "stub.c" ],
+  targets: { "loip.mbt": [ "native" ] },
+)

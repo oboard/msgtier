@@ -12,6 +12,7 @@ import {
   "oboard/msgtier/url",
   "oboard/msgtier/msgpack",
   "oboard/msgtier/x25519",
+  "oboard/msgtier/loip",
   "moonbitlang/async/http",
   "moonbitlang/async/websocket",
   "moonbitlang/async/io",
