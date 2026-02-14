@@ -28,8 +28,6 @@ fn handle_new_connection(
     let dummy_conn = Connection::new(
       my_id,
       actual_peer_id,
-      local_addr,
-      remote_addr,
       protocol,
       session_id?,
     )
@@ -88,25 +86,20 @@ fn handle_new_connection(
     actual_peer_id,
   )
   for existing_conn in existing_conns {
-    if existing_conn.local_addr == local_addr &&
-      existing_conn.remote_addr == remote_addr {
-      // Check if session ID matches (if provided and not empty)
-      // If session ID changed, we should treat it as a new connection (overwrite)
+    if existing_conn.protocol == protocol {
       let session_match = match session_id {
         Some(sid) => existing_conn.session_id is Some(old_sid) && sid == old_sid
         None => true
       }
       if session_match {
-        // Connection already exists, return it with is_new=false
         log_debug(
           "DEBUG: handle_new_connection reuse peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
         )
         return (existing_conn, false, is_new_peer)
-      } else {
-        log_debug(
-          "DEBUG: handle_new_connection session mismatch peer=\{actual_peer_id} new=\{session_id} old=\{existing_conn.session_id}",
-        )
       }
+      log_debug(
+        "DEBUG: handle_new_connection session mismatch peer=\{actual_peer_id} new=\{session_id} old=\{existing_conn.session_id}",
+      )
     }
   }
 
@@ -116,12 +109,18 @@ fn handle_new_connection(
   // but should be mapped to the stable listening connection.
   if protocol == "tcp" && peer_info is None {
     for existing_conn in existing_conns {
-      if existing_conn.protocol == "tcp" &&
-        existing_conn.local_addr == local_addr {
-        log_debug(
-          "DEBUG: handle_new_connection tcp reuse peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
-        )
-        return (existing_conn, false, is_new_peer)
+      if existing_conn.protocol == "tcp" {
+        let session_match = match session_id {
+          Some(sid) =>
+            existing_conn.session_id is Some(old_sid) && sid == old_sid
+          None => true
+        }
+        if session_match {
+          log_debug(
+            "DEBUG: handle_new_connection tcp reuse peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
+          )
+          return (existing_conn, false, is_new_peer)
+        }
       }
     }
   }
@@ -129,37 +128,15 @@ fn handle_new_connection(
   // Add new connection with protocol
   update_global_connection_manager(fn(manager) {
     let my_id = get_config().id
-    let mgr = manager.add_connection(
-      Connection::new(
-        my_id,
-        actual_peer_id,
-        local_addr,
-        remote_addr,
-        protocol,
-        session_id?,
-      ),
-    )
-    // Update relay depth for the new connection
-    let new_conns = mgr.get_peer_connections(actual_peer_id)
-    let mut updated_mgr = mgr
-    for conn in new_conns {
-      if conn.local_addr == local_addr && conn.remote_addr == remote_addr {
-        updated_mgr = mgr.update_connection_relay(conn.id, relay_depth)
-        break
-      }
-    }
-    updated_mgr
+    let new_conn = Connection::new(my_id, actual_peer_id, protocol, session_id?)
+    let mgr = manager.add_connection(new_conn)
+    mgr.update_connection_relay(new_conn.id, relay_depth)
   })
-  // Get the connection we just added
-  let conns = get_global_connection_manager().get_peer_connections(
-    actual_peer_id,
-  )
-  let filtered = conns.filter(fn(c) {
-    c.local_addr == local_addr && c.remote_addr == remote_addr
-  })
-  let conn = if filtered.is_empty() { conns[0] } else { filtered[0] }
   log_debug(
     "DEBUG: handle_new_connection added peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
+  )
+  let conn = Connection::new(my_id, actual_peer_id, protocol, session_id?).update_relay(
+    relay_depth,
   )
   (conn, true, is_new_peer)
 }
@@ -190,49 +167,117 @@ async fn handle_reconnects(
     // Sleep with fixed interval
     @async.sleep(reconnect_interval)
 
-    // Get current connections once for this iteration
-    let current_conns = get_global_connection_manager()
-      .get_all_connections()
-      .filter(conn => conn.peer_id == peer_id)
-
     // Build list of target addresses
-    let targets = @set.new()
+    let targets : Map[String, String] = {}
 
-    // 1. Add known peers
-    let known_peers = get_all_known_peers()
-    for addr in known_peers {
-      if !addr.contains("0.0.0.0") && !addr.is_empty() {
-        targets.add(addr)
+    let peers = get_global_peer_manager().get_all_peers()
+    for peer in peers {
+      for addr_str in peer.addresses {
+        let mut parsed : Address? = None
+        try {
+          parsed = Some(Address::parse(addr_str))
+        } catch {
+          _ => ()
+        }
+        match parsed {
+          Some(addr) => {
+            if addr.protocol != transport.protocol_type() {
+              continue
+            }
+            let key = peer.id +
+              "|" +
+              addr.protocol.to_string() +
+              "|" +
+              addr.port.to_string()
+            let mut use_new = false
+            match targets.get(key) {
+              None => use_new = true
+              Some(existing) => {
+                let mut existing_parsed : Address? = None
+                try {
+                  existing_parsed = Some(Address::parse(existing))
+                } catch {
+                  _ => ()
+                }
+                match existing_parsed {
+                  Some(existing_addr) => {
+                    let new_loop = is_loopback(addr.host)
+                    let old_loop = is_loopback(existing_addr.host)
+                    if old_loop && !new_loop {
+                      use_new = true
+                    } else if !old_loop && new_loop {
+                      use_new = false
+                    } else {
+                      let new_private = is_private(addr.host)
+                      let old_private = is_private(existing_addr.host)
+                      if old_private && !new_private {
+                        use_new = true
+                      }
+                    }
+                  }
+                  None => use_new = true
+                }
+              }
+            }
+            if use_new {
+              targets[key] = addr_str
+            }
+          }
+          None => ()
+        }
       }
     }
 
-    // 2. Add addresses from existing connections (if not 0.0.0.0)
-    for conn in current_conns {
-      let addr = conn.remote_addr
+    let known_peers = get_all_known_peers()
+    for addr in known_peers {
       if !addr.contains("0.0.0.0") && !addr.is_empty() {
-        targets.add(addr)
+        let peer_id_opt = get_global_peer_manager().get_peer_id_by_address(addr)
+        let mut parsed : Address? = None
+        try {
+          parsed = Some(Address::parse(addr))
+        } catch {
+          _ => ()
+        }
+        match parsed {
+          Some(a) =>
+            if a.protocol == transport.protocol_type() {
+              match peer_id_opt {
+                Some(pid) => {
+                  let key = pid +
+                    "|" +
+                    a.protocol.to_string() +
+                    "|" +
+                    a.port.to_string()
+                  match targets.get(key) {
+                    Some(_) => ()
+                    None => targets[key] = addr
+                  }
+                }
+                None =>
+                  match targets.get(addr) {
+                    Some(_) => ()
+                    None => targets[addr] = addr
+                  }
+              }
+            }
+          None =>
+            match targets.get(addr) {
+              Some(_) => ()
+              None => targets[addr] = addr
+            }
+        }
       }
     }
 
     // Process each target
-    for peer_addr in targets {
-      // Parse URL to check protocol
+    for _, peer_addr in targets {
       if !peer_addr.has_prefix(transport.protocol() + "://") {
         continue
       }
       log_debug(
         "DEBUG: reconnect hello protocol=\{transport.protocol()} from=\{local_addr} to=\{peer_addr}",
       )
-      // // Check if we already have an active connection to this peer address
-      // let has_active_conn = current_conns.any(conn => conn.remote_addr ==
-      //   peer_addr &&
-      //   conn.state == ConnectionState::Connected)
-
-      // // Only send hello if we don't have an active connection
-      // if !has_active_conn {
-      // println("Attempting reconnection to \{peer_addr}...")
       send_message(transport, peer_addr, hello_msg) |> ignore
-      // }
     }
   }
 }
@@ -376,7 +421,19 @@ async fn handle_pending_messages(
             m.contains(target_connection.protocol) {
             continue
           }
-          let target_addr = target_connection.remote_addr
+          let target_addr = match
+            pick_peer_address(target_peer_id, target_connection.protocol) {
+            Some(addr) =>
+              if addr.contains("://") {
+                addr
+              } else {
+                target_connection.protocol + "://" + addr
+              }
+            None => ""
+          }
+          if target_addr.is_empty() || target_addr == "routed" {
+            continue
+          }
           let msg = pending_msg
 
           // Address target: send directly on this transport
@@ -466,11 +523,7 @@ async fn handle_heartbeat(
       }
       // Send ping to all connections of this peer
       for conn in peer_conns {
-        let ping_local_addr = if conn.local_addr.is_empty() {
-          local_addr
-        } else {
-          conn.local_addr
-        }
+        let ping_local_addr = local_addr
         let ping_msg = Message::new(
           kind="ping",
           source_id=from,
@@ -487,15 +540,30 @@ async fn handle_heartbeat(
           manager.update_connection_packet_loss(conn.id, 1, 0)
         })
         if conn.protocol == transport.protocol() {
-          let ok = send_message(transport, conn.remote_addr, ping_msg)
-          log_debug(
-            "DEBUG: ping send protocol=\{transport.protocol()} peer=\{peer_id} addr=\{conn.remote_addr} ok=\{ok}",
-          )
+          match pick_peer_address(peer_id, conn.protocol) {
+            Some(addr) => {
+              let target_addr = if addr.contains("://") {
+                addr
+              } else {
+                conn.protocol + "://" + addr
+              }
+              if target_addr != "routed" {
+                let ok = send_message(transport, target_addr, ping_msg)
+                log_debug(
+                  "DEBUG: ping send protocol=\{transport.protocol()} peer=\{peer_id} addr=\{target_addr} ok=\{ok}",
+                )
+              }
+            }
+            None => ()
+          }
         }
 
         // Check if connection has timed out (no response for CONNECTION_TIMEOUT_MS)
         if current_time - conn.last_seen > CONNECTION_TIMEOUT_MS {
-          log_warn("Connection to \{peer_id} at \{conn.remote_addr} timed out")
+          let target_addr = pick_peer_address(peer_id, conn.protocol).unwrap_or(
+            "",
+          )
+          log_warn("Connection to \{peer_id} at \{target_addr} timed out")
           update_global_connection_manager(fn(manager) {
             manager.remove_connection(conn.id)
           })
@@ -738,6 +806,17 @@ async fn handle_incoming_message(
   // let now = @env.now()
   // let diff = if now >= conn.last_seen { now - conn.last_seen } else { 0UL }
 
+  let should_skip_hello_callback = if msg.kind == "hello" {
+    let session_key = match msg.session_id {
+      Some(sid) => sid
+      None => ""
+    }
+    let hello_key = msg.source_id + "|" + sender_addr + "|" + session_key
+    check_and_mark_hello(hello_key, 5000UL)
+  } else {
+    false
+  }
+
   // Store peer's public key if provided and compute shared secret (only if not already stored)
   if msg.public_key is Some(pk) {
     compute_and_store_shared_secret(msg.source_id, pk)
@@ -745,7 +824,9 @@ async fn handle_incoming_message(
 
   // Reply to hello if it's a new connection or new peer (key update), to ensure bidirectional key exchange.
   // This handles the case where a peer restarts (sends hello, we update), or a peer requests handshake (sends hello with new session).
-  if (is_new_connection || is_new_peer) && msg.kind == "hello" {
+  if (is_new_connection || is_new_peer) &&
+    msg.kind == "hello" &&
+    !should_skip_hello_callback {
     let our_addresses = get_our_addresses(local_addr)
     let hello_msg = create_hello_message(
       id,
@@ -841,175 +922,182 @@ async fn handle_incoming_message(
       Some(_) => "with_pk"
       None => "no_pk"
     }
-    log_info("Received \{msg.kind} from \{msg.source_id} (\{pk_status})")
+    if !(msg.kind == "hello" && should_skip_hello_callback) {
+      log_info("Received \{msg.kind} from \{msg.source_id} (\{pk_status})")
+    }
   }
   match msg {
-    { kind: "hello", peers: advertised_peers, .. } => {
-      // Logic for hello with optional public_key and secret validation
-      let mut secret_matched = false
-      let secret_valid = match global_config.val {
-        Some(config) => {
-          let our_secret_hash = bytes_to_hex(hash_secret(config.secret))
-          match msg.secret_hash {
-            Some(peer_secret_hash) =>
-              if peer_secret_hash == our_secret_hash {
-                secret_matched = true
-                true
-              } else {
-                log_warn(
-                  "Warning: Peer \{msg.source_id} secret mismatch. Expected: \{our_secret_hash}, Got: \{peer_secret_hash}. Allowing connection.",
-                )
-                true
-              }
-            None => {
-              log_warn(
-                "Warning: Peer \{msg.source_id} missing secret hash. Allowing connection.",
-              )
-              true
-            }
-          }
-        }
-        None => true
-      }
-      if !secret_valid {
-        return
-      }
-
-      // Determine effective public key
-      let effective_pk_opt = match msg.public_key {
-        Some(pk) => Some(pk)
-        None =>
-          if secret_matched {
-            match global_keypair.val {
-              Some((_, pk)) => {
-                log_warn(
-                  "Warning: Peer \{msg.source_id} missing PK but secret matched. Using our PK as fallback.",
-                )
-                Some(pk)
-              }
-              None => None
-            }
-          } else {
-            None
-          }
-      }
-
-      // Ensure peer exists in manager before learning address
-      match get_global_peer_manager().get_peer(msg.source_id) {
-        None => {
-          // Peer doesn't exist yet, create it
-          let peer_node = PeerNode::new(
-            id=msg.source_id,
-            version=VERSION,
-            public_key=effective_pk_opt.unwrap_or(b""),
-            addresses=if msg.source_addr is Some(addr) { [addr] } else { [] },
-            metadata={},
-          )
-          update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
-        }
-        Some(existing) =>
-          // Update public key if provided and different
-          match effective_pk_opt {
-            Some(new_pk) =>
-              if new_pk.length() > 0 {
-                // Check if key changed or was missing
-                let needs_update = if existing.public_key.length() == 0 {
+    { kind: "hello", peers: advertised_peers, .. } =>
+      if should_skip_hello_callback {
+        ()
+      } else {
+        // Logic for hello with optional public_key and secret validation
+        let mut secret_matched = false
+        let secret_valid = match global_config.val {
+          Some(config) => {
+            let our_secret_hash = bytes_to_hex(hash_secret(config.secret))
+            match msg.secret_hash {
+              Some(peer_secret_hash) =>
+                if peer_secret_hash == our_secret_hash {
+                  secret_matched = true
                   true
                 } else {
-                  existing.public_key != new_pk
-                }
-                if needs_update {
-                  log_info(
-                    "Updating public key for peer \{msg.source_id} (old_len=\{existing.public_key.length()})",
+                  log_warn(
+                    "Warning: Peer \{msg.source_id} secret mismatch. Expected: \{our_secret_hash}, Got: \{peer_secret_hash}. Allowing connection.",
                   )
-                  let updated_peer = { ..existing, public_key: new_pk }
-                  update_global_peer_manager(fn(manager) {
-                    manager.add_peer(updated_peer)
-                  })
-                  // Clear shared secret to force re-computation with new key
-                  clear_shared_secret(msg.source_id)
+                  true
                 }
-              }
-            None => ()
-          }
-      }
-
-      // Always compute and store shared secret when receiving hello
-      // This ensures we have the latest shared secret if peer restarted
-      match effective_pk_opt {
-        Some(pk) => {
-          log_debug(
-            "DEBUG: Received/Derived Public Key from \{msg.source_id}: \{bytes_to_hex(pk)}",
-          )
-          compute_and_store_shared_secret(msg.source_id, pk)
-        }
-        None =>
-          log_warn(
-            "Cannot compute shared secret for \{msg.source_id}: No Public Key available",
-          )
-      }
-
-      // Discover peers from advertised peer addresses in hello
-      // Instead of waiting for welcome, process advertised peers directly
-      if advertised_peers is Some(peer_addrs) {
-        let all_conns = get_global_connection_manager().get_all_connections()
-        for peer_addr_obj in peer_addrs {
-          let peer_url = peer_addr_obj.address
-          if !is_bind_all_address(peer_url) && peer_url != local_addr {
-            // Track this peer address for active connection attempts
-            add_known_peer(peer_url)
-
-            // Check if we already have a relay path for this address
-            match get_relay_path(peer_url) {
-              Some(_) =>
-                // Already greeted this address, skip to avoid duplicate hellos
-                ()
               None => {
-                // First time seeing this address - set relay path and send hello
-                set_relay_path(peer_url, "unknown", msg.source_id)
-
-                // Check if we already have ANY connection to this address (active or not)
-                let already_connected = all_conns.any(conn => {
-                  conn.remote_addr == peer_url
-                })
-                if !already_connected {
-                  // Send hello to discover this peer via relay through msg.from
-                  let our_addresses = get_our_addresses(local_addr)
-                  let session_id = @uuidm.v4_with_rng(
-                    @uuidm.SimpleRng::new(@env.now().reinterpret_as_int64()),
-                  ).to_string_simple()
-                  let hello_msg = create_hello_message(
-                    id,
-                    local_addr,
-                    1,
-                    peers=our_addresses,
-                    session_id~,
-                  )
-                  send_message(transport, peer_url, hello_msg) |> ignore
-                  log_info("Sent hello to discovered peer at \{peer_url}")
-                }
+                log_warn(
+                  "Warning: Peer \{msg.source_id} missing secret hash. Allowing connection.",
+                )
+                true
               }
             }
           }
+          None => true
         }
-      }
+        if !secret_valid {
+          return
+        }
 
-      // Re-broadcast hello to all other known peers so they also learn about this peer
-      // This ensures peer discovery propagates through the network even for peers
-      // we only know via relay paths
-      // Debounce: only re-broadcast once per peer per 30 seconds
-      if should_rebroadcast_hello(msg.source_id) {
-        record_hello_time(msg.source_id)
-        let known_peers = get_all_known_peers()
-        for peer_url in known_peers {
-          // Don't send back to the peer we just received it from
-          // Also skip 0.0.0.0 addresses (bind-all, not connectable)
-          if peer_url != sender_addr && !is_bind_all_address(peer_url) {
+        // Determine effective public key
+        let effective_pk_opt = match msg.public_key {
+          Some(pk) => Some(pk)
+          None =>
+            if secret_matched {
+              match global_keypair.val {
+                Some((_, pk)) => {
+                  log_warn(
+                    "Warning: Peer \{msg.source_id} missing PK but secret matched. Using our PK as fallback.",
+                  )
+                  Some(pk)
+                }
+                None => None
+              }
+            } else {
+              None
+            }
+        }
+
+        // Ensure peer exists in manager before learning address
+        match get_global_peer_manager().get_peer(msg.source_id) {
+          None => {
+            // Peer doesn't exist yet, create it
+            let peer_node = PeerNode::new(
+              id=msg.source_id,
+              version=VERSION,
+              public_key=effective_pk_opt.unwrap_or(b""),
+              addresses=if msg.source_addr is Some(addr) { [addr] } else { [] },
+              metadata={},
+            )
+            update_global_peer_manager(fn(manager) {
+              manager.add_peer(peer_node)
+            })
+          }
+          Some(existing) =>
+            // Update public key if provided and different
+            match effective_pk_opt {
+              Some(new_pk) =>
+                if new_pk.length() > 0 {
+                  // Check if key changed or was missing
+                  let needs_update = if existing.public_key.length() == 0 {
+                    true
+                  } else {
+                    existing.public_key != new_pk
+                  }
+                  if needs_update {
+                    log_info(
+                      "Updating public key for peer \{msg.source_id} (old_len=\{existing.public_key.length()})",
+                    )
+                    let updated_peer = { ..existing, public_key: new_pk }
+                    update_global_peer_manager(fn(manager) {
+                      manager.add_peer(updated_peer)
+                    })
+                    // Clear shared secret to force re-computation with new key
+                    clear_shared_secret(msg.source_id)
+                  }
+                }
+              None => ()
+            }
+        }
+
+        // Always compute and store shared secret when receiving hello
+        // This ensures we have the latest shared secret if peer restarted
+        match effective_pk_opt {
+          Some(pk) => {
+            log_debug(
+              "DEBUG: Received/Derived Public Key from \{msg.source_id}: \{bytes_to_hex(pk)}",
+            )
+            compute_and_store_shared_secret(msg.source_id, pk)
+          }
+          None =>
+            log_warn(
+              "Cannot compute shared secret for \{msg.source_id}: No Public Key available",
+            )
+        }
+
+        if advertised_peers is Some(peer_addrs) {
+          for peer_addr_obj in peer_addrs {
+            let peer_url = peer_addr_obj.address
+            if !is_bind_all_address(peer_url) && peer_url != local_addr {
+              add_known_peer(peer_url)
+              update_global_peer_manager(fn(manager) {
+                manager.add_peer_address(msg.source_id, peer_url)
+              })
+            }
+          }
+        }
+
+        // Re-broadcast hello to all other known peers so they also learn about this peer
+        // This ensures peer discovery propagates through the network even for peers
+        // we only know via relay paths
+        // Debounce: only re-broadcast once per peer per 30 seconds
+        if should_rebroadcast_hello(msg.source_id) {
+          record_hello_time(msg.source_id)
+          let known_peers = get_all_known_peers()
+          let targets : Map[String, String] = {}
+          for peer_url in known_peers {
+            if peer_url != sender_addr && !is_bind_all_address(peer_url) {
+              let peer_id_opt = get_global_peer_manager().get_peer_id_by_address(
+                peer_url,
+              )
+              let mut parsed : Address? = None
+              try {
+                parsed = Some(Address::parse(peer_url))
+              } catch {
+                _ => ()
+              }
+              match parsed {
+                Some(a) =>
+                  if a.protocol == transport.protocol_type() {
+                    let key = match peer_id_opt {
+                      Some(pid) =>
+                        pid +
+                        "|" +
+                        a.protocol.to_string() +
+                        "|" +
+                        a.port.to_string()
+                      None => peer_url
+                    }
+                    match targets.get(key) {
+                      Some(_) => ()
+                      None => targets[key] = peer_url
+                    }
+                  }
+                None =>
+                  match targets.get(peer_url) {
+                    Some(_) => ()
+                    None => targets[peer_url] = peer_url
+                  }
+              }
+            }
+          }
+          for _, peer_url in targets {
             ignore(send_message(transport, peer_url, msg))
           }
         }
       }
-    }
     { kind: "ping", .. } => {
       let reply = Message::new(
         kind="pong",
@@ -1034,7 +1122,11 @@ async fn handle_incoming_message(
       )
       // Find the connection that matches this sender and update its last_seen
       for conn in peer_conns {
-        if conn.remote_addr == sender_addr {
+        let session_match = match msg.session_id {
+          Some(sid) => conn.session_id is Some(old_sid) && sid == old_sid
+          None => true
+        }
+        if conn.protocol == transport.protocol() && session_match {
           let current_time = @env.now()
           // Calculate RTT if we have a ping timestamp
           match conn.last_ping_time {
@@ -1142,22 +1234,20 @@ async fn handle_incoming_message(
         match Connection::from_msgpack(conn_val) {
           Some(conn) => {
             let peer_id = conn.peer_id
-            let remote_addr = conn.remote_addr
             let relay_depth = conn.relay
             log_debug(
-              "DEBUG: sync entry peer=\{peer_id} addr=\{remote_addr} relay=\{relay_depth} source=\{msg.source_id}",
+              "DEBUG: sync entry peer=\{peer_id} relay=\{relay_depth} source=\{msg.source_id}",
             )
 
             // If relay_depth is 1, it's a direct neighbor of the sender
             if relay_depth == 1 && peer_id != msg.source_id {
               sender_connections.push(PeerConnectionInfo::{
                 peer_id,
+                protocol: conn.protocol,
                 latency_ms: conn.latency_ms,
                 bandwidth_mbps: conn.bandwidth_mbps,
                 packet_loss_rate: conn.packet_loss_rate,
                 id: conn.id,
-                local_addr: conn.local_addr,
-                remote_addr: conn.remote_addr,
                 last_seen: conn.last_seen,
                 quality: conn.quality,
                 relay: conn.relay,
@@ -1185,32 +1275,21 @@ async fn handle_incoming_message(
                 manager.update_route(peer_id, msg.source_id, new_hops)
               })
 
-              // Add discovered address to known peers for potential direct connection
-              if remote_addr != "routed" && !is_bind_all_address(remote_addr) {
-                add_known_peer(remote_addr)
-              }
-
               // Ensure peer exists in manager (even if only known via route)
               match get_global_peer_manager().get_peer(peer_id) {
                 None => {
-                  let addresses = if remote_addr != "routed" &&
-                    !is_bind_all_address(remote_addr) {
-                    [remote_addr]
-                  } else {
-                    []
-                  }
                   let peer_node = PeerNode::new(
                     id=peer_id,
                     version=conn.version,
                     public_key=pk_bytes,
-                    addresses~,
+                    addresses=[],
                     metadata={},
                   )
                   update_global_peer_manager(fn(manager) {
                     manager.add_peer(peer_node)
                   })
                 }
-                Some(_) => {
+                Some(_) =>
                   // Update Public Key if we have a better one
                   if pk_bytes.length() > 0 {
                     // Check if key changed
@@ -1231,32 +1310,6 @@ async fn handle_incoming_message(
                       clear_shared_secret(peer_id)
                     }
                   }
-                  // If we have a valid address, add it
-                  if remote_addr != "routed" &&
-                    !is_bind_all_address(remote_addr) {
-                    update_global_peer_manager(fn(manager) {
-                      manager.add_peer_address(peer_id, remote_addr)
-                    })
-                  }
-                }
-              }
-
-              // Create or update connection if it's a direct neighbor (for compatibility)
-              // Only if remote_addr is not "routed" placeholder
-              if peer_id == msg.source_id && remote_addr != "routed" {
-                // Ensure remote_addr has protocol
-                let safe_remote_addr = if remote_addr.contains("://") {
-                  remote_addr
-                } else {
-                  conn.protocol + "://" + remote_addr
-                }
-                let (_conn, _is_new, _is_new_peer) = handle_new_connection(
-                  peer_id,
-                  local_addr,
-                  safe_remote_addr,
-                  conn.protocol,
-                  relay_depth~,
-                )
               }
             }
           }
@@ -1308,15 +1361,21 @@ async fn start_listener_service(
     },
     fn(remote_addr) {
       let remote_addr = transport.protocol() + "://" + remote_addr
-      let all_conns = get_global_connection_manager().get_all_connections()
-      for conn in all_conns {
-        if conn.remote_addr == remote_addr {
-          update_global_connection_manager(fn(manager) {
-            manager.remove_connection(conn.id)
-          })
-          log_warn("[disconnect]\t\{conn.peer_id}(\{remote_addr})")
-          // println("Marked connection \{conn.id} as Disconnected")
+      match get_global_peer_manager().get_peer_id_by_address(remote_addr) {
+        Some(peer_id) => {
+          let conns = get_global_connection_manager().get_peer_connections(
+            peer_id,
+          )
+          for conn in conns {
+            if conn.protocol == transport.protocol() {
+              update_global_connection_manager(fn(manager) {
+                manager.remove_connection(conn.id)
+              })
+              log_warn("[disconnect]\t\{conn.peer_id}(\{remote_addr})")
+            }
+          }
         }
+        None => ()
       }
     },
   )

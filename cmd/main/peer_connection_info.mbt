@@ -1,12 +1,11 @@
 ///|
 struct PeerConnectionInfo {
   id : String
-  local_addr : String
-  remote_addr : String
   peer_id : String
   last_seen : UInt64
   quality : Int
   relay : Int
+  protocol : String
   metadata : Map[String, String]?
   latency_ms : Int?
   latency_history : Array[Int]

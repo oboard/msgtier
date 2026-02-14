@@ -3,8 +3,6 @@
 /// Each peer can have multiple connections (e.g., multiple network interfaces, redundant paths)
 struct Connection {
   id : String
-  local_addr : String
-  remote_addr : String
   protocol : String // "tcp", "udp", etc.
   peer_id : String
   last_seen : UInt64 // timestamp
@@ -41,8 +39,6 @@ enum NatType {
 fn Connection::new(
   my_id : String,
   peer_id : String,
-  local_addr : String,
-  remote_addr : String,
   protocol : String,
   session_id? : String,
 ) -> Connection {
@@ -58,13 +54,8 @@ fn Connection::new(
   let raw_id = "\{id1}:\{id2}:\{protocol}"
   let id = bytes_to_hex(Bytes::from_array(@crypto.sha256(@utf8.encode(raw_id))))
 
-  // Analyze NAT type based on address characteristics
-  // This is a preliminary analysis; accurate determination requires STUN/discovery
-  let nat_type = analyze_nat_type(local_addr, remote_addr)
   {
     id,
-    local_addr,
-    remote_addr,
     protocol,
     peer_id,
     last_seen: @env.now(),
@@ -81,39 +72,9 @@ fn Connection::new(
     bytes_received: 0UL,
     last_ping_time: None,
     version: "",
-    nat_type,
+    nat_type: Unknown,
     session_id: normalized_session,
   }
-}
-
-///|
-fn analyze_nat_type(local_addr : String, remote_addr : String) -> NatType {
-  let local_ip = extract_host(local_addr)
-  let remote_ip = extract_host(remote_addr)
-  if is_loopback(local_ip) && is_loopback(remote_ip) {
-    return NoNAT
-  }
-
-  // If local is public, we are not behind NAT (direct connection)
-  if !is_private(local_ip) && !is_loopback(local_ip) {
-    return NoNAT
-  }
-  if is_private(local_ip) {
-    // Local Private, Remote Public -> Behind NAT
-    if !is_private(remote_ip) && !is_loopback(remote_ip) {
-      return PortRestricted // Assume typical NAT behavior
-    }
-
-    // Both private
-    if is_private(remote_ip) {
-      if is_same_subnet(local_ip, remote_ip) {
-        return NoNAT // Same LAN
-      } else {
-        return Symmetric // Different private networks, likely complex NAT/Routing
-      }
-    }
-  }
-  Unknown
 }
 
 ///|
@@ -208,17 +169,6 @@ fn parse_int_simple(s : String) -> Int? {
 }
 
 ///|
-fn is_same_subnet(ip1 : String, ip2 : String) -> Bool {
-  // Check /24 for IPv4
-  let p1 = ip1.split(".").to_array()
-  let p2 = ip2.split(".").to_array()
-  if p1.length() == 4 && p2.length() == 4 {
-    return p1[0] == p2[0] && p1[1] == p2[1] && p1[2] == p2[2]
-  }
-  false
-}
-
-///|
 fn Connection::update_relay(self : Connection, relay_depth : Int) -> Connection {
   { ..self, relay: relay_depth }
 }
@@ -268,7 +218,7 @@ fn Connection::update_last_ping_time(
 fn Connection::to_msgpack(self : Connection) -> @msgpack.Value {
   @msgpack.array([
     @msgpack.string(self.peer_id),
-    @msgpack.string(self.remote_addr),
+    @msgpack.nil(),
     @msgpack.int(self.relay),
     match self.latency_ms {
       Some(l) => @msgpack.int(l)
@@ -277,7 +227,7 @@ fn Connection::to_msgpack(self : Connection) -> @msgpack.Value {
     @msgpack.float(self.bandwidth_mbps),
     @msgpack.int(self.packet_loss_rate),
     @msgpack.string(self.id),
-    @msgpack.string(self.local_addr),
+    @msgpack.nil(),
     @msgpack.string(self.protocol),
     @msgpack.uint64(self.last_seen),
     @msgpack.int(self.quality),
@@ -315,13 +265,13 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
     Array(
       [
         String(peer_id),
-        String(remote_addr),
+        _,
         Int(relay),
         latency_val,
         Float(bandwidth_mbps),
         Int(packet_loss_rate),
         String(id),
-        String(local_addr),
+        _,
         String(protocol),
         UInt64(last_seen),
         Int(quality),
@@ -379,13 +329,11 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
       }
       Some(Connection::{
         peer_id,
-        remote_addr,
         relay,
         latency_ms,
         bandwidth_mbps,
         packet_loss_rate,
         id,
-        local_addr,
         protocol,
         last_seen,
         quality,

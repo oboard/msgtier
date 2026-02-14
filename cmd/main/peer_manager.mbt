@@ -73,6 +73,19 @@ fn PeerManager::get_all_peers(self : PeerManager) -> Array[PeerNode] {
 }
 
 ///|
+fn PeerManager::get_peer_id_by_address(
+  self : PeerManager,
+  address : String,
+) -> String? {
+  for id, peer in self.peers {
+    if peer.addresses.contains(address) {
+      return Some(id)
+    }
+  }
+  None
+}
+
+///|
 fn PeerManager::remove_peer(
   self : PeerManager,
   peer_id : String,

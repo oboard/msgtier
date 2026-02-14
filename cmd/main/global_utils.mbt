@@ -91,6 +91,34 @@ fn get_all_known_peers() -> Array[String] {
 }
 
 ///|
+fn pick_peer_address(peer_id : String, protocol : String) -> String? {
+  match get_global_peer_manager().get_peer(peer_id) {
+    Some(peer) => {
+      for addr_str in peer.addresses {
+        if addr_str.is_empty() || is_bind_all_address(addr_str) {
+          continue
+        }
+        let mut parsed : Address? = None
+        try {
+          parsed = Some(Address::parse(addr_str))
+        } catch {
+          _ => ()
+        }
+        match parsed {
+          Some(addr) =>
+            if addr.protocol.to_string() == protocol {
+              return Some(addr_str)
+            }
+          None => ()
+        }
+      }
+      None
+    }
+    None => None
+  }
+}
+
+///|
 /// Global mapping of peer_id -> last time we received/processed hello from them
 /// Used to debounce re-broadcasting of hello messages
 let global_hello_times : Ref[Map[String, UInt64]] = Ref::new({})
@@ -115,37 +143,59 @@ fn record_hello_time(peer_id : String) -> Unit {
 }
 
 ///|
+let global_hello_callback_times : Ref[Map[String, UInt64]] = Ref::new({})
+
+///|
+fn check_and_mark_hello(key : String, ttl_ms : UInt64) -> Bool {
+  let now = @env.now()
+  let cache = global_hello_callback_times.val
+  match cache.get(key) {
+    Some(last_time) =>
+      if now - last_time <= ttl_ms {
+        true
+      } else {
+        cache[key] = now
+        false
+      }
+    None => {
+      cache[key] = now
+      false
+    }
+  }
+}
+
+///|
 /// Global mapping of discovered_address -> (peer_id, relay_via_peer_id)
 /// Tracks the relay path for discovered peers:
 /// - discovered_address: the address we learned about (e.g., "192.168.1.5:6668")
 /// - peer_id: the peer at that address
 /// - relay_via_peer_id: which peer told us about this address (relay through this peer)
-let global_relay_paths : Ref[Map[String, (String, String)]] = Ref::new({})
+// let global_relay_paths : Ref[Map[String, (String, String)]] = Ref::new({})
 
-///|
-/// Record a relay path: when peer B advertises peer C's address, relay through B to reach C
-fn set_relay_path(
-  discovered_address : String,
-  peer_id : String,
-  relay_via_peer_id : String,
-) -> Unit {
-  let paths = global_relay_paths.val
-  // Prevent unbounded growth - simple cache eviction
-  if paths.length() > 1000 {
-    paths.clear()
-  }
-  paths[discovered_address] = (peer_id, relay_via_peer_id)
-  // println(
-  //   "DEBUG: Set relay path - reach \{peer_id} at \{discovered_address} via relay through \{relay_via_peer_id}",
-  // )
-}
+// ///|
+// /// Record a relay path: when peer B advertises peer C's address, relay through B to reach C
+// fn set_relay_path(
+//   discovered_address : String,
+//   peer_id : String,
+//   relay_via_peer_id : String,
+// ) -> Unit {
+//   let paths = global_relay_paths.val
+//   // Prevent unbounded growth - simple cache eviction
+//   if paths.length() > 1000 {
+//     paths.clear()
+//   }
+//   paths[discovered_address] = (peer_id, relay_via_peer_id)
+//   // println(
+//   //   "DEBUG: Set relay path - reach \{peer_id} at \{discovered_address} via relay through \{relay_via_peer_id}",
+//   // )
+// }
 
-///|
-/// Get the relay path for a discovered address
-fn get_relay_path(address : String) -> (String, String)? {
-  let paths = global_relay_paths.val
-  paths.get(address)
-}
+// ///|
+// /// Get the relay path for a discovered address
+// fn get_relay_path(address : String) -> (String, String)? {
+//   let paths = global_relay_paths.val
+//   paths.get(address)
+// }
 
 ///|
 /// Update global peer manager state

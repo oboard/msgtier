@@ -41,10 +41,10 @@ fn PeerNode::new(
   { id, version, metadata, public_key, addresses, connections: [] }
 }
 
-///|
-fn PeerNode::get_all_connections(
-  self : PeerNode,
-  connections : Array[Connection],
-) -> Array[Connection] {
-  connections.filter(fn(conn) { conn.peer_id == self.id })
-}
+// ///|
+// fn PeerNode::get_all_connections(
+//   self : PeerNode,
+//   connections : Array[Connection],
+// ) -> Array[Connection] {
+//   connections.filter(fn(conn) { conn.peer_id == self.id })
+// }
