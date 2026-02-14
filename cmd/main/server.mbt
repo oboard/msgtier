@@ -86,6 +86,20 @@ fn handle_new_connection(
       Some(sid) => existing_conn.session_id is Some(old_sid) && sid == old_sid
       None => true
     }
+    if !session_match && session_id is Some(sid) && !sid.is_empty() {
+      let new_conn = Connection::new(my_id, actual_peer_id, session_id?).update_relay(
+        relay_depth,
+      )
+      update_global_connection_manager(fn(manager) {
+        let mgr = manager.remove_connection(existing_conn.id)
+        let mgr2 = mgr.add_connection(new_conn)
+        mgr2.update_connection_relay(new_conn.id, relay_depth)
+      })
+      log_debug(
+        "DEBUG: handle_new_connection session replace peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
+      )
+      return (new_conn, true, is_new_peer)
+    }
     if !session_match {
       update_global_connection_manager(fn(manager) {
         manager.update_connection_session_id(existing_conn.id, session_id)
