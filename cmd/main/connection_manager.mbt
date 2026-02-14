@@ -16,8 +16,17 @@ fn ConnectionManager::add_connection(
   conn : Connection,
 ) -> ConnectionManager {
   let connections = self.connections
-  connections[conn.id] = conn
   let peer_connections = self.peer_connections
+  match peer_connections.get(conn.peer_id) {
+    Some(existing_ids) =>
+      for id in existing_ids {
+        if id != conn.id {
+          connections.remove(id)
+        }
+      }
+    None => ()
+  }
+  connections[conn.id] = conn
   peer_connections[conn.peer_id] = [conn.id]
   { connections, peer_connections }
 }
@@ -47,8 +56,13 @@ fn ConnectionManager::get_all_connections(
   self : ConnectionManager,
 ) -> Array[Connection] {
   let conns = []
-  for _, conn in self.connections {
-    conns.push(conn)
+  for _, conn_ids in self.peer_connections {
+    for id in conn_ids {
+      match self.connections.get(id) {
+        Some(conn) => conns.push(conn)
+        None => ()
+      }
+    }
   }
   conns
 }
