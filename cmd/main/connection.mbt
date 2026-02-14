@@ -18,9 +18,18 @@ struct Connection {
   bytes_received : UInt64 // Total bytes received
   last_ping_time : UInt64? // Timestamp when last ping was sent
   last_pong_time : UInt64? // Timestamp when last pong was received
+  ports : Array[PortMapping] // Array of (local_port, protocol, remote_port) tuples
+  ports_last_seen : Map[String, UInt64]
   version : String // Version of the peer
   nat_type : NatType
   session_id : String? // Unique session ID for the connection
+} derive(Show, ToJson, FromJson)
+
+///|
+struct PortMapping {
+  src : Int
+  protocol : Protocol
+  dst : Int
 } derive(Show, ToJson, FromJson)
 
 ///|
@@ -73,6 +82,8 @@ fn Connection::new(
     bytes_received: 0UL,
     last_ping_time: None,
     last_pong_time: None,
+    ports: [],
+    ports_last_seen: {},
     version: "",
     nat_type: Unknown,
     session_id: normalized_session,
@@ -233,7 +244,76 @@ fn Connection::update_last_pong_time(
 }
 
 ///|
+fn make_port_key(
+  local_port : Int,
+  protocol : Protocol,
+  remote_port : Int,
+) -> String {
+  local_port.to_string() +
+  "|" +
+  protocol.to_string() +
+  "|" +
+  remote_port.to_string()
+}
+
+///|
+fn Connection::touch_port(
+  self : Connection,
+  local_port : Int,
+  protocol : Protocol,
+  remote_port : Int,
+  time : UInt64,
+) -> Connection {
+  let ports = self.ports.copy()
+  let mut exists = false
+  for p in ports {
+    if p.src == local_port && p.protocol == protocol && p.dst == remote_port {
+      exists = true
+      break
+    }
+  }
+  if !exists {
+    ports.push(PortMapping::{ src: local_port, protocol, dst: remote_port })
+  }
+  let ports_last_seen = self.ports_last_seen
+  let key = make_port_key(local_port, protocol, remote_port)
+  ports_last_seen[key] = time
+  { ..self, ports, ports_last_seen }
+}
+
+///|
+fn Connection::prune_ports(
+  self : Connection,
+  now : UInt64,
+  timeout_ms : UInt64,
+) -> Connection {
+  let new_ports : Array[PortMapping] = []
+  let new_ports_last_seen : Map[String, UInt64] = {}
+  for p in self.ports {
+    let key = make_port_key(p.src, p.protocol, p.dst)
+    match self.ports_last_seen.get(key) {
+      Some(ts) =>
+        if now >= ts && now - ts <= timeout_ms {
+          new_ports.push(p)
+          new_ports_last_seen[key] = ts
+        }
+      None => new_ports.push(p)
+    }
+  }
+  { ..self, ports: new_ports, ports_last_seen: new_ports_last_seen }
+}
+
+///|
 fn Connection::to_msgpack(self : Connection) -> @msgpack.Value {
+  let ports_val = @msgpack.array(
+    self.ports.map(fn(p) {
+      @msgpack.array([
+        @msgpack.int(p.src),
+        @msgpack.string(p.protocol.to_string()),
+        @msgpack.int(p.dst),
+      ])
+    }),
+  )
   @msgpack.array([
     @msgpack.string(self.peer_id),
     @msgpack.nil(),
@@ -246,7 +326,7 @@ fn Connection::to_msgpack(self : Connection) -> @msgpack.Value {
     @msgpack.int(self.packet_loss_rate),
     @msgpack.string(self.id),
     @msgpack.nil(),
-    @msgpack.nil(),
+    ports_val,
     @msgpack.uint64(self.last_seen),
     @msgpack.int(self.quality),
     match self.metadata {
@@ -346,6 +426,58 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         UInt64(t) => Some(t)
         _ => None
       }
+      let ports = match protocol_val {
+        Array(port_entries) => {
+          let parsed : Array[PortMapping] = []
+          for entry in port_entries {
+            match entry {
+              Array([Int(local_port), String(protocol), Int(remote_port)]) =>
+                match Protocol::parse(protocol[:]) {
+                  Some(proto) =>
+                    parsed.push(PortMapping::{
+                      src: local_port,
+                      protocol: proto,
+                      dst: remote_port,
+                    })
+                  None => ()
+                }
+              Array([Int(local_port), String(protocol), UInt64(remote_port)]) =>
+                match Protocol::parse(protocol[:]) {
+                  Some(proto) =>
+                    parsed.push(PortMapping::{
+                      src: local_port,
+                      protocol: proto,
+                      dst: remote_port.to_int(),
+                    })
+                  None => ()
+                }
+              Array([UInt64(local_port), String(protocol), Int(remote_port)]) =>
+                match Protocol::parse(protocol[:]) {
+                  Some(proto) =>
+                    parsed.push(PortMapping::{
+                      src: local_port.to_int(),
+                      protocol: proto,
+                      dst: remote_port,
+                    })
+                  None => ()
+                }
+              Array([UInt64(local_port), String(protocol), UInt64(remote_port)]) =>
+                match Protocol::parse(protocol[:]) {
+                  Some(proto) =>
+                    parsed.push(PortMapping::{
+                      src: local_port.to_int(),
+                      protocol: proto,
+                      dst: remote_port.to_int(),
+                    })
+                  None => ()
+                }
+              _ => ()
+            }
+          }
+          parsed
+        }
+        _ => []
+      }
       let session_id = match session_id_val {
         String(s) => Some(s)
         _ => None
@@ -367,6 +499,8 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         bytes_received,
         last_ping_time,
         last_pong_time: None,
+        ports,
+        ports_last_seen: {},
         version,
         nat_type,
         session_id,

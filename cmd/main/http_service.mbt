@@ -248,6 +248,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
       let packet_loss_rate = conn.calculate_packet_loss()
       my_connections.push(PeerConnectionInfo::{
         peer_id: conn.peer_id,
+        ports: conn.ports,
         latency_ms: conn.latency_ms,
         bandwidth_mbps,
         packet_loss_rate,

@@ -81,6 +81,46 @@ fn ConnectionManager::remove_connection(
 }
 
 ///|
+fn ConnectionManager::update_connection_ports(
+  self : ConnectionManager,
+  conn_id : String,
+  local_port : Int,
+  protocol : Protocol,
+  remote_port : Int,
+  timestamp : UInt64,
+) -> ConnectionManager {
+  let connections = self.connections
+  match connections.get(conn_id) {
+    Some(conn) => {
+      let updated_conn = conn.touch_port(
+        local_port, protocol, remote_port, timestamp,
+      )
+      connections[conn_id] = updated_conn
+      { connections, peer_connections: self.peer_connections }
+    }
+    None => self
+  }
+}
+
+///|
+fn ConnectionManager::prune_connection_ports(
+  self : ConnectionManager,
+  conn_id : String,
+  now : UInt64,
+  timeout_ms : UInt64,
+) -> ConnectionManager {
+  let connections = self.connections
+  match connections.get(conn_id) {
+    Some(conn) => {
+      let updated_conn = conn.prune_ports(now, timeout_ms)
+      connections[conn_id] = updated_conn
+      { connections, peer_connections: self.peer_connections }
+    }
+    None => self
+  }
+}
+
+///|
 fn ConnectionManager::update_connection_relay(
   self : ConnectionManager,
   conn_id : String,

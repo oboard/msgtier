@@ -143,6 +143,8 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
             bytes_received: 0UL,
             last_ping_time: None,
             last_pong_time: None,
+            ports: [],
+            ports_last_seen: {},
             version: peer.version,
             nat_type: Unknown,
             session_id: None,

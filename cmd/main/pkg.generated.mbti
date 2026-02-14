@@ -122,6 +122,11 @@ pub struct PendingEntry {
 
 type PendingRequest
 
+type PortMapping
+pub impl Show for PortMapping
+pub impl ToJson for PortMapping
+pub impl @json.FromJson for PortMapping
+
 pub enum Protocol {
   Tcp
   Udp

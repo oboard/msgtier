@@ -5,6 +5,48 @@ const CONNECTION_TIMEOUT_MS : UInt64 = 15000 // 15 seconds timeout
 let last_sync_broadcast_time : Ref[UInt64] = Ref::new(0)
 
 ///|
+fn parse_port_from_addr(addr : String, protocol : String) -> Int? {
+  let addr_str = if addr.contains("://") {
+    addr
+  } else {
+    protocol + "://" + addr
+  }
+  let mut parsed : Address? = None
+  try {
+    parsed = Some(Address::parse(addr_str))
+  } catch {
+    _ => ()
+  }
+  match parsed {
+    Some(a) => Some(a.port.to_int())
+    None => None
+  }
+}
+
+///|
+fn extract_port_tuple(
+  local_addr : String,
+  remote_addr : String,
+  protocol : String,
+) -> (Int, Protocol, Int)? {
+  let local_port = parse_port_from_addr(local_addr, protocol)
+  let remote_port = parse_port_from_addr(remote_addr, protocol)
+  let proto = Protocol::parse(protocol[:])
+  match local_port {
+    Some(lp) =>
+      match remote_port {
+        Some(rp) =>
+          match proto {
+            Some(p) => Some((lp, p, rp))
+            None => None
+          }
+        None => None
+      }
+    None => None
+  }
+}
+
+///|
 fn handle_new_connection(
   peer_id : String,
   local_addr : String,
@@ -80,6 +122,11 @@ fn handle_new_connection(
   let existing_conns = get_global_connection_manager().get_peer_connections(
     actual_peer_id,
   )
+  let port_tuple = if relay_depth == 1 {
+    extract_port_tuple(local_addr, remote_addr, protocol)
+  } else {
+    None
+  }
   if !existing_conns.is_empty() {
     let existing_conn = existing_conns[0]
     let session_match = match session_id {
@@ -95,20 +142,52 @@ fn handle_new_connection(
         let mgr2 = mgr.add_connection(new_conn)
         mgr2.update_connection_relay(new_conn.id, relay_depth)
       })
+      let updated_conn = match port_tuple {
+        Some((local_port, proto, remote_port)) => {
+          let now = @env.now()
+          update_global_connection_manager(fn(manager) {
+            manager.update_connection_ports(
+              new_conn.id,
+              local_port,
+              proto,
+              remote_port,
+              now,
+            )
+          })
+          new_conn.touch_port(local_port, proto, remote_port, now)
+        }
+        None => new_conn
+      }
       log_debug(
         "DEBUG: handle_new_connection session replace peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
       )
-      return (new_conn, true, is_new_peer)
+      return (updated_conn, true, is_new_peer)
     }
     if !session_match {
       update_global_connection_manager(fn(manager) {
         manager.update_connection_session_id(existing_conn.id, session_id)
       })
     }
+    let updated_conn = match port_tuple {
+      Some((local_port, proto, remote_port)) => {
+        let now = @env.now()
+        update_global_connection_manager(fn(manager) {
+          manager.update_connection_ports(
+            existing_conn.id,
+            local_port,
+            proto,
+            remote_port,
+            now,
+          )
+        })
+        existing_conn.touch_port(local_port, proto, remote_port, now)
+      }
+      None => existing_conn
+    }
     log_debug(
       "DEBUG: handle_new_connection reuse peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
     )
-    return (existing_conn, false, is_new_peer)
+    return (updated_conn, false, is_new_peer)
   }
 
   // Add new connection with protocol
@@ -124,7 +203,23 @@ fn handle_new_connection(
   let conn = Connection::new(my_id, actual_peer_id, session_id?).update_relay(
     relay_depth,
   )
-  (conn, true, is_new_peer)
+  let updated_conn = match port_tuple {
+    Some((local_port, proto, remote_port)) => {
+      let now = @env.now()
+      update_global_connection_manager(fn(manager) {
+        manager.update_connection_ports(
+          conn.id,
+          local_port,
+          proto,
+          remote_port,
+          now,
+        )
+      })
+      conn.touch_port(local_port, proto, remote_port, now)
+    }
+    None => conn
+  }
+  (updated_conn, true, is_new_peer)
 }
 
 ///|
@@ -533,6 +628,16 @@ async fn handle_heartbeat(
             }
           }
           None => ()
+        }
+
+        if conn.relay == 1 {
+          update_global_connection_manager(fn(manager) {
+            manager.prune_connection_ports(
+              conn.id,
+              current_time,
+              CONNECTION_TIMEOUT_MS,
+            )
+          })
         }
 
         let ping_timeout = match conn.last_ping_time {
@@ -1234,6 +1339,7 @@ async fn handle_incoming_message(
                 bandwidth_mbps: conn.bandwidth_mbps,
                 packet_loss_rate: conn.packet_loss_rate,
                 id: conn.id,
+                ports: conn.ports,
                 last_seen: conn.last_seen,
                 quality: conn.quality,
                 relay: conn.relay,
