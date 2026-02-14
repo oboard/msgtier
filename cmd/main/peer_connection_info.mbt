@@ -5,7 +5,6 @@ struct PeerConnectionInfo {
   last_seen : UInt64
   quality : Int
   relay : Int
-  protocol : String
   metadata : Map[String, String]?
   latency_ms : Int?
   latency_history : Array[Int]

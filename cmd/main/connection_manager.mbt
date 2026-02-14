@@ -18,18 +18,7 @@ fn ConnectionManager::add_connection(
   let connections = self.connections
   connections[conn.id] = conn
   let peer_connections = self.peer_connections
-  let peer_conns = match peer_connections.get(conn.peer_id) {
-    Some(ids) => {
-      let new_ids = ids.copy()
-      // Only add if not already present
-      if !new_ids.any(fn(id) { id == conn.id }) {
-        new_ids.push(conn.id)
-      }
-      new_ids
-    }
-    None => [conn.id]
-  }
-  peer_connections[conn.peer_id] = peer_conns
+  peer_connections[conn.peer_id] = [conn.id]
   { connections, peer_connections }
 }
 
@@ -101,6 +90,22 @@ fn ConnectionManager::update_connection_relay(
   match connections.get(conn_id) {
     Some(conn) => {
       connections[conn_id] = conn.update_relay(relay_depth)
+      { connections, peer_connections: self.peer_connections }
+    }
+    None => self
+  }
+}
+
+///|
+fn ConnectionManager::update_connection_session_id(
+  self : ConnectionManager,
+  conn_id : String,
+  session_id : String?,
+) -> ConnectionManager {
+  let connections = self.connections
+  match connections.get(conn_id) {
+    Some(conn) => {
+      connections[conn_id] = conn.update_session_id(session_id)
       { connections, peer_connections: self.peer_connections }
     }
     None => self

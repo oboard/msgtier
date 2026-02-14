@@ -128,7 +128,6 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
         Some(peer) => {
           let sync_conn = Connection::{
             id: "",
-            protocol: "",
             peer_id,
             last_seen: route.timestamp,
             quality: 0,

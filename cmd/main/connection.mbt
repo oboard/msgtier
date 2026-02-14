@@ -3,7 +3,6 @@
 /// Each peer can have multiple connections (e.g., multiple network interfaces, redundant paths)
 struct Connection {
   id : String
-  protocol : String // "tcp", "udp", etc.
   peer_id : String
   last_seen : UInt64 // timestamp
   quality : Int // connection quality metric (0-100)
@@ -39,7 +38,6 @@ enum NatType {
 fn Connection::new(
   my_id : String,
   peer_id : String,
-  protocol : String,
   session_id? : String,
 ) -> Connection {
   let (id1, id2) = if my_id < peer_id {
@@ -51,12 +49,11 @@ fn Connection::new(
     Some(sid) => if sid.is_empty() { None } else { Some(sid) }
     None => None
   }
-  let raw_id = "\{id1}:\{id2}:\{protocol}"
+  let raw_id = "\{id1}:\{id2}"
   let id = bytes_to_hex(Bytes::from_array(@crypto.sha256(@utf8.encode(raw_id))))
 
   {
     id,
-    protocol,
     peer_id,
     last_seen: @env.now(),
     quality: 0,
@@ -174,6 +171,14 @@ fn Connection::update_relay(self : Connection, relay_depth : Int) -> Connection 
 }
 
 ///|
+fn Connection::update_session_id(
+  self : Connection,
+  session_id : String?,
+) -> Connection {
+  { ..self, session_id, }
+}
+
+///|
 ///  // This function is used for connection health monitoring
 fn Connection::update_last_seen(
   self : Connection,
@@ -228,7 +233,7 @@ fn Connection::to_msgpack(self : Connection) -> @msgpack.Value {
     @msgpack.int(self.packet_loss_rate),
     @msgpack.string(self.id),
     @msgpack.nil(),
-    @msgpack.string(self.protocol),
+    @msgpack.nil(),
     @msgpack.uint64(self.last_seen),
     @msgpack.int(self.quality),
     match self.metadata {
@@ -272,7 +277,7 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         Int(packet_loss_rate),
         String(id),
         _,
-        String(protocol),
+        protocol_val,
         UInt64(last_seen),
         Int(quality),
         metadata_val,
@@ -299,6 +304,11 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
       let latency_ms = match latency_val {
         Int(l) => Some(l)
         _ => None
+      }
+      let _ = match protocol_val {
+        String(_) => ()
+        Nil => ()
+        _ => ()
       }
       let metadata = match metadata_val {
         Map(m) => {
@@ -334,7 +344,6 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         bandwidth_mbps,
         packet_loss_rate,
         id,
-        protocol,
         last_seen,
         quality,
         metadata,

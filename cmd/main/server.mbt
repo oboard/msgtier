@@ -25,12 +25,7 @@ fn handle_new_connection(
   // and do NOT add it to the connection manager.
   let my_id = get_config().id
   if actual_peer_id == my_id && !my_id.is_empty() {
-    let dummy_conn = Connection::new(
-      my_id,
-      actual_peer_id,
-      protocol,
-      session_id?,
-    )
+    let dummy_conn = Connection::new(my_id, actual_peer_id, session_id?)
     log_debug(
       "DEBUG: handle_new_connection self skip peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
     )
@@ -85,57 +80,34 @@ fn handle_new_connection(
   let existing_conns = get_global_connection_manager().get_peer_connections(
     actual_peer_id,
   )
-  for existing_conn in existing_conns {
-    if existing_conn.protocol == protocol {
-      let session_match = match session_id {
-        Some(sid) => existing_conn.session_id is Some(old_sid) && sid == old_sid
-        None => true
-      }
-      if session_match {
-        log_debug(
-          "DEBUG: handle_new_connection reuse peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
-        )
-        return (existing_conn, false, is_new_peer)
-      }
-      log_debug(
-        "DEBUG: handle_new_connection session mismatch peer=\{actual_peer_id} new=\{session_id} old=\{existing_conn.session_id}",
-      )
+  if !existing_conns.is_empty() {
+    let existing_conn = existing_conns[0]
+    let session_match = match session_id {
+      Some(sid) => existing_conn.session_id is Some(old_sid) && sid == old_sid
+      None => true
     }
-  }
-
-  // For TCP, if this is not a discovery message (no peer_info),
-  // try to reuse any existing TCP connection to this peer.
-  // This handles the case where incoming messages come from ephemeral ports
-  // but should be mapped to the stable listening connection.
-  if protocol == "tcp" && peer_info is None {
-    for existing_conn in existing_conns {
-      if existing_conn.protocol == "tcp" {
-        let session_match = match session_id {
-          Some(sid) =>
-            existing_conn.session_id is Some(old_sid) && sid == old_sid
-          None => true
-        }
-        if session_match {
-          log_debug(
-            "DEBUG: handle_new_connection tcp reuse peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
-          )
-          return (existing_conn, false, is_new_peer)
-        }
-      }
+    if !session_match {
+      update_global_connection_manager(fn(manager) {
+        manager.update_connection_session_id(existing_conn.id, session_id)
+      })
     }
+    log_debug(
+      "DEBUG: handle_new_connection reuse peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
+    )
+    return (existing_conn, false, is_new_peer)
   }
 
   // Add new connection with protocol
   update_global_connection_manager(fn(manager) {
     let my_id = get_config().id
-    let new_conn = Connection::new(my_id, actual_peer_id, protocol, session_id?)
+    let new_conn = Connection::new(my_id, actual_peer_id, session_id?)
     let mgr = manager.add_connection(new_conn)
     mgr.update_connection_relay(new_conn.id, relay_depth)
   })
   log_debug(
     "DEBUG: handle_new_connection added peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
   )
-  let conn = Connection::new(my_id, actual_peer_id, protocol, session_id?).update_relay(
+  let conn = Connection::new(my_id, actual_peer_id, session_id?).update_relay(
     relay_depth,
   )
   (conn, true, is_new_peer)
@@ -397,46 +369,22 @@ async fn handle_pending_messages(
           // So we skip sending it again to reduce traffic
           continue
         }
-        let mut connections_candidate = []
-        for c in target_connections {
-          if c.protocol == transport.protocol() {
-            connections_candidate.push(c)
-          }
+        if entry.sent_targets.get(target_peer_id) is Some(m) &&
+          m.contains(transport.protocol()) {
+          continue
         }
-        if pending_msg.kind == "sync" && connections_candidate.length() > 1 {
-          // Pick the one with least bytes_sent (most idle)
-          let mut best = connections_candidate[0]
-          for i = 1; i < connections_candidate.length(); i = i + 1 {
-            if connections_candidate[i].bytes_sent < best.bytes_sent {
-              best = connections_candidate[i]
+        let target_addr = match
+          pick_peer_address(target_peer_id, transport.protocol()) {
+          Some(addr) =>
+            if addr.contains("://") {
+              addr
+            } else {
+              transport.protocol() + "://" + addr
             }
-          }
-          connections_candidate = [best]
+          None => ""
         }
-        for target_connection in connections_candidate {
-          // Protocol check is already done in filtering
-
-          // Skip if already sent via this protocol
-          if entry.sent_targets.get(target_peer_id) is Some(m) &&
-            m.contains(target_connection.protocol) {
-            continue
-          }
-          let target_addr = match
-            pick_peer_address(target_peer_id, target_connection.protocol) {
-            Some(addr) =>
-              if addr.contains("://") {
-                addr
-              } else {
-                target_connection.protocol + "://" + addr
-              }
-            None => ""
-          }
-          if target_addr.is_empty() || target_addr == "routed" {
-            continue
-          }
+        if !target_addr.is_empty() && target_addr != "routed" {
           let msg = pending_msg
-
-          // Address target: send directly on this transport
           log_debug("PendingMessage: direct addr=\{target_addr} id=\{msg.id}")
           let success = send_message(transport, target_addr, msg)
           log_debug(
@@ -448,10 +396,29 @@ async fn handle_pending_messages(
         }
         if sent {
           let required_protocols = []
-          for conn in target_connections {
-            if !required_protocols.contains(conn.protocol) {
-              required_protocols.push(conn.protocol)
-            }
+          match get_global_peer_manager().get_peer(target_peer_id) {
+            Some(peer) =>
+              for addr in peer.addresses {
+                let mut parsed : Address? = None
+                try {
+                  parsed = Some(Address::parse(addr))
+                } catch {
+                  _ => ()
+                }
+                match parsed {
+                  Some(parsed_addr) => {
+                    let proto = parsed_addr.protocol.to_string()
+                    if !required_protocols.contains(proto) {
+                      required_protocols.push(proto)
+                    }
+                  }
+                  None => ()
+                }
+              }
+            None => ()
+          }
+          if required_protocols.is_empty() {
+            required_protocols.push(transport.protocol())
           }
           log_debug(
             "DEBUG: pending mark sent id=\{pending_msg.id} protocol=\{transport.protocol()}",
@@ -531,36 +498,32 @@ async fn handle_heartbeat(
           version=VERSION,
           session_id?=conn.session_id,
         )
-        // Record ping time before sending
-        update_global_connection_manager(fn(manager) {
-          manager.update_connection_ping_time(conn.id, Some(current_time))
-        })
-        // Increment packets_sent counter
-        update_global_connection_manager(fn(manager) {
-          manager.update_connection_packet_loss(conn.id, 1, 0)
-        })
-        if conn.protocol == transport.protocol() {
-          match pick_peer_address(peer_id, conn.protocol) {
-            Some(addr) => {
-              let target_addr = if addr.contains("://") {
-                addr
-              } else {
-                conn.protocol + "://" + addr
-              }
-              if target_addr != "routed" {
-                let ok = send_message(transport, target_addr, ping_msg)
-                log_debug(
-                  "DEBUG: ping send protocol=\{transport.protocol()} peer=\{peer_id} addr=\{target_addr} ok=\{ok}",
-                )
-              }
+        match pick_peer_address(peer_id, transport.protocol()) {
+          Some(addr) => {
+            let target_addr = if addr.contains("://") {
+              addr
+            } else {
+              transport.protocol() + "://" + addr
             }
-            None => ()
+            if target_addr != "routed" {
+              update_global_connection_manager(fn(manager) {
+                manager.update_connection_ping_time(conn.id, Some(current_time))
+              })
+              update_global_connection_manager(fn(manager) {
+                manager.update_connection_packet_loss(conn.id, 1, 0)
+              })
+              let ok = send_message(transport, target_addr, ping_msg)
+              log_debug(
+                "DEBUG: ping send protocol=\{transport.protocol()} peer=\{peer_id} addr=\{target_addr} ok=\{ok}",
+              )
+            }
           }
+          None => ()
         }
 
         // Check if connection has timed out (no response for CONNECTION_TIMEOUT_MS)
         if current_time - conn.last_seen > CONNECTION_TIMEOUT_MS {
-          let target_addr = pick_peer_address(peer_id, conn.protocol).unwrap_or(
+          let target_addr = pick_peer_address(peer_id, transport.protocol()).unwrap_or(
             "",
           )
           log_warn("Connection to \{peer_id} at \{target_addr} timed out")
@@ -1126,7 +1089,7 @@ async fn handle_incoming_message(
           Some(sid) => conn.session_id is Some(old_sid) && sid == old_sid
           None => true
         }
-        if conn.protocol == transport.protocol() && session_match {
+        if session_match {
           let current_time = @env.now()
           // Calculate RTT if we have a ping timestamp
           match conn.last_ping_time {
@@ -1243,7 +1206,6 @@ async fn handle_incoming_message(
             if relay_depth == 1 && peer_id != msg.source_id {
               sender_connections.push(PeerConnectionInfo::{
                 peer_id,
-                protocol: conn.protocol,
                 latency_ms: conn.latency_ms,
                 bandwidth_mbps: conn.bandwidth_mbps,
                 packet_loss_rate: conn.packet_loss_rate,
@@ -1367,12 +1329,10 @@ async fn start_listener_service(
             peer_id,
           )
           for conn in conns {
-            if conn.protocol == transport.protocol() {
-              update_global_connection_manager(fn(manager) {
-                manager.remove_connection(conn.id)
-              })
-              log_warn("[disconnect]\t\{conn.peer_id}(\{remote_addr})")
-            }
+            update_global_connection_manager(fn(manager) {
+              manager.remove_connection(conn.id)
+            })
+            log_warn("[disconnect]\t\{conn.peer_id}(\{remote_addr})")
           }
         }
         None => ()
