@@ -147,7 +147,6 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
             ports_last_seen: {},
             version: peer.version,
             nat_type: Unknown,
-            session_id: None,
           }
           let conn_val = sync_conn.to_msgpack()
           let sync_entry = match conn_val {
@@ -201,7 +200,6 @@ fn create_hello_message(
   local_addr : String,
   relay : Int,
   peers? : Array[NetworkAddress],
-  session_id? : String,
 ) -> Message {
   let (public_key, secret_hash) = get_identity_info()
   let peers_opt = match peers {
@@ -217,6 +215,5 @@ fn create_hello_message(
     peers?=peers_opt,
     public_key~,
     secret_hash~,
-    session_id?,
   )
 }

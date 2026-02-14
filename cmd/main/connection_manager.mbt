@@ -16,17 +16,8 @@ fn ConnectionManager::add_connection(
   conn : Connection,
 ) -> ConnectionManager {
   let connections = self.connections
-  let peer_connections = self.peer_connections
-  match peer_connections.get(conn.peer_id) {
-    Some(existing_ids) =>
-      for id in existing_ids {
-        if id != conn.id {
-          connections.remove(id)
-        }
-      }
-    None => ()
-  }
   connections[conn.id] = conn
+  let peer_connections = self.peer_connections
   peer_connections[conn.peer_id] = [conn.id]
   { connections, peer_connections }
 }
@@ -56,13 +47,8 @@ fn ConnectionManager::get_all_connections(
   self : ConnectionManager,
 ) -> Array[Connection] {
   let conns = []
-  for _, conn_ids in self.peer_connections {
-    for id in conn_ids {
-      match self.connections.get(id) {
-        Some(conn) => conns.push(conn)
-        None => ()
-      }
-    }
+  for _, conn in self.connections {
+    conns.push(conn)
   }
   conns
 }
@@ -144,22 +130,6 @@ fn ConnectionManager::update_connection_relay(
   match connections.get(conn_id) {
     Some(conn) => {
       connections[conn_id] = conn.update_relay(relay_depth)
-      { connections, peer_connections: self.peer_connections }
-    }
-    None => self
-  }
-}
-
-///|
-fn ConnectionManager::update_connection_session_id(
-  self : ConnectionManager,
-  conn_id : String,
-  session_id : String?,
-) -> ConnectionManager {
-  let connections = self.connections
-  match connections.get(conn_id) {
-    Some(conn) => {
-      connections[conn_id] = conn.update_session_id(session_id)
       { connections, peer_connections: self.peer_connections }
     }
     None => self

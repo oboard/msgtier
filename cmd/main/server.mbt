@@ -54,10 +54,9 @@ fn handle_new_connection(
   protocol : String,
   peer_info? : NetworkDiscoveryInfo,
   relay_depth? : Int = 1,
-  session_id? : String,
 ) -> (Connection, Bool, Bool) {
   log_debug(
-    "DEBUG: handle_new_connection peer=\{peer_id} local=\{local_addr} remote=\{remote_addr} protocol=\{protocol} relay=\{relay_depth} session=\{session_id}",
+    "DEBUG: handle_new_connection peer=\{peer_id} local=\{local_addr} remote=\{remote_addr} protocol=\{protocol} relay=\{relay_depth}",
   )
   // Get the actual peer ID (from peer_info if available, otherwise from peer_id parameter)
   let actual_peer_id = if peer_info is Some(info) { info.id } else { peer_id }
@@ -67,7 +66,7 @@ fn handle_new_connection(
   // and do NOT add it to the connection manager.
   let my_id = get_config().id
   if actual_peer_id == my_id && !my_id.is_empty() {
-    let dummy_conn = Connection::new(my_id, actual_peer_id, session_id?)
+    let dummy_conn = Connection::new(my_id, actual_peer_id)
     log_debug(
       "DEBUG: handle_new_connection self skip peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
     )
@@ -129,45 +128,6 @@ fn handle_new_connection(
   }
   if !existing_conns.is_empty() {
     let existing_conn = existing_conns[0]
-    let session_match = match session_id {
-      Some(sid) => existing_conn.session_id is Some(old_sid) && sid == old_sid
-      None => true
-    }
-    if !session_match && session_id is Some(sid) && !sid.is_empty() {
-      let new_conn = Connection::new(my_id, actual_peer_id, session_id?).update_relay(
-        relay_depth,
-      )
-      update_global_connection_manager(fn(manager) {
-        let mgr = manager.remove_connection(existing_conn.id)
-        let mgr2 = mgr.add_connection(new_conn)
-        mgr2.update_connection_relay(new_conn.id, relay_depth)
-      })
-      let updated_conn = match port_tuple {
-        Some((local_port, proto, remote_port)) => {
-          let now = @env.now()
-          update_global_connection_manager(fn(manager) {
-            manager.update_connection_ports(
-              new_conn.id,
-              local_port,
-              proto,
-              remote_port,
-              now,
-            )
-          })
-          new_conn.touch_port(local_port, proto, remote_port, now)
-        }
-        None => new_conn
-      }
-      log_debug(
-        "DEBUG: handle_new_connection session replace peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
-      )
-      return (updated_conn, true, is_new_peer)
-    }
-    if !session_match {
-      update_global_connection_manager(fn(manager) {
-        manager.update_connection_session_id(existing_conn.id, session_id)
-      })
-    }
     let updated_conn = match port_tuple {
       Some((local_port, proto, remote_port)) => {
         let now = @env.now()
@@ -193,16 +153,14 @@ fn handle_new_connection(
   // Add new connection with protocol
   update_global_connection_manager(fn(manager) {
     let my_id = get_config().id
-    let new_conn = Connection::new(my_id, actual_peer_id, session_id?)
+    let new_conn = Connection::new(my_id, actual_peer_id)
     let mgr = manager.add_connection(new_conn)
     mgr.update_connection_relay(new_conn.id, relay_depth)
   })
   log_debug(
     "DEBUG: handle_new_connection added peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
   )
-  let conn = Connection::new(my_id, actual_peer_id, session_id?).update_relay(
-    relay_depth,
-  )
+  let conn = Connection::new(my_id, actual_peer_id).update_relay(relay_depth)
   let updated_conn = match port_tuple {
     Some((local_port, proto, remote_port)) => {
       let now = @env.now()
@@ -232,16 +190,11 @@ async fn handle_reconnects(
     "DEBUG: handle_reconnects start protocol=\{transport.protocol()} local=\{local_addr} id=\{peer_id}",
   )
   let our_addresses = get_our_addresses(local_addr)
-  // Generate a random session_id for the new connection attempt
-  let session_id = @uuidm.v4_with_rng(
-    @uuidm.SimpleRng::new(@env.now().reinterpret_as_int64()),
-  ).to_string_simple()
   let hello_msg = create_hello_message(
     peer_id,
     local_addr,
     1,
     peers=our_addresses,
-    session_id~,
   )
   let reconnect_interval = 5000 // Fixed interval: 5s
   for {
@@ -586,7 +539,6 @@ async fn handle_heartbeat(
               source_id=from,
               source_addr=local_addr,
               version=VERSION,
-              // No session_id for routed ping
             )
             // Use relay_message to forward
             ignore(relay_message(transport, from, ping_msg, peer_id))
@@ -605,7 +557,6 @@ async fn handle_heartbeat(
           source_id=from,
           source_addr=ping_local_addr,
           version=VERSION,
-          session_id?=conn.session_id,
         )
         match pick_peer_address(peer_id, transport.protocol()) {
           Some(addr) => {
@@ -885,10 +836,6 @@ async fn handle_incoming_message(
     transport.protocol(),
     peer_info?,
     relay_depth=relay_depth_to_use,
-    session_id=match msg.session_id {
-      Some(sid) => sid
-      None => ""
-    },
   )
   log_debug(
     "DEBUG: connection handled peer=\{msg.source_id} local=\{local_addr} remote=\{effective_addr} protocol=\{transport.protocol()} new=\{is_new_connection}",
@@ -897,11 +844,7 @@ async fn handle_incoming_message(
   // let diff = if now >= conn.last_seen { now - conn.last_seen } else { 0UL }
 
   let should_skip_hello_callback = if msg.kind == "hello" {
-    let session_key = match msg.session_id {
-      Some(sid) => sid
-      None => ""
-    }
-    let hello_key = msg.source_id + "|" + sender_addr + "|" + session_key
+    let hello_key = msg.source_id + "|" + sender_addr
     check_and_mark_hello(hello_key, 5000UL)
   } else {
     false
@@ -913,18 +856,11 @@ async fn handle_incoming_message(
   }
 
   // Reply to hello if it's a new connection or new peer (key update), to ensure bidirectional key exchange.
-  // This handles the case where a peer restarts (sends hello, we update), or a peer requests handshake (sends hello with new session).
   if (is_new_connection || is_new_peer) &&
     msg.kind == "hello" &&
     !should_skip_hello_callback {
     let our_addresses = get_our_addresses(local_addr)
-    let hello_msg = create_hello_message(
-      id,
-      local_addr,
-      1,
-      peers=our_addresses,
-      session_id=conn.session_id.unwrap_or(""),
-    )
+    let hello_msg = create_hello_message(id, local_addr, 1, peers=our_addresses)
     let target_addr = effective_addr
     let target_addr_full = if target_addr.contains("://") {
       target_addr
@@ -1193,7 +1129,6 @@ async fn handle_incoming_message(
         kind="pong",
         source_id=id,
         source_addr=local_addr,
-        session_id?=msg.session_id,
         target_id=msg.source_id,
       )
       let ok = send_message(transport, sender_addr, reply)
@@ -1212,29 +1147,23 @@ async fn handle_incoming_message(
       )
       // Find the connection that matches this sender and update its last_seen
       for conn in peer_conns {
-        let session_match = match msg.session_id {
-          Some(sid) => conn.session_id is Some(old_sid) && sid == old_sid
-          None => true
-        }
-        if session_match {
-          let current_time = @env.now()
-          // Calculate RTT if we have a ping timestamp
-          match conn.last_ping_time {
-            Some(ping_time) => {
-              let rtt_ms = (current_time - ping_time).to_int()
-              update_global_connection_manager(fn(manager) {
-                manager.update_connection_latency(conn.id, rtt_ms)
-              })
-            }
-            None => ()
+        let current_time = @env.now()
+        // Calculate RTT if we have a ping timestamp
+        match conn.last_ping_time {
+          Some(ping_time) => {
+            let rtt_ms = (current_time - ping_time).to_int()
+            update_global_connection_manager(fn(manager) {
+              manager.update_connection_latency(conn.id, rtt_ms)
+            })
           }
-          update_global_connection_manager(fn(manager) {
-            manager.update_connection_pong_time(conn.id, Some(current_time))
-          })
-          update_global_connection_manager(fn(manager) {
-            manager.update_connection_last_seen(conn.id, current_time)
-          })
+          None => ()
         }
+        update_global_connection_manager(fn(manager) {
+          manager.update_connection_pong_time(conn.id, Some(current_time))
+        })
+        update_global_connection_manager(fn(manager) {
+          manager.update_connection_last_seen(conn.id, current_time)
+        })
       }
     }
     // Proxy handlers moved to kind="data" with ProxyMessage
@@ -1271,15 +1200,11 @@ async fn handle_incoming_message(
                   transport.protocol() + "://" + addr
                 }
                 let our_addresses = get_our_addresses(local_addr)
-                // Generate a temporary session ID to force a new connection event on the peer
-                // This ensures the peer replies with their hello message (and public key)
-                let trigger_session_id = "recovery-" + @env.now().to_string()
                 let hello_msg = create_hello_message(
                   id,
                   local_addr,
                   1,
                   peers=our_addresses,
-                  session_id=trigger_session_id,
                 )
                 ignore(send_message(transport, target_addr, hello_msg))
               }
@@ -1305,16 +1230,16 @@ async fn handle_incoming_message(
       for entry in conn_entries {
         let (conn_val, pk_bytes) = match entry {
           Array(arr) =>
-            if arr.length() >= 22 {
-              // 21 fields + PK
-              let pk_val = arr[21]
+            if arr.length() >= 21 {
+              // 20 fields + PK
+              let pk_val = arr[20]
               let pk = match pk_val {
                 Binary(b) => b
                 _ => []
               }
-              // Construct a new array with first 21 elements for Connection::from_msgpack
+              // Construct a new array with first 20 elements for Connection::from_msgpack
               let conn_arr = []
-              for i = 0; i < 21; i = i + 1 {
+              for i = 0; i < 20; i = i + 1 {
                 conn_arr.push(arr[i])
               }
               (@msgpack.array(conn_arr), pk)

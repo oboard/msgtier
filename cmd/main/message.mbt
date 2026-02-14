@@ -15,7 +15,6 @@ struct Message {
   secret_hash : String? // Hash of network secret for authentication
   encrypted : Bool // Whether the data field is encrypted
   broadcast : Bool // Whether this message should be broadcast to all peers
-  session_id : String? // Unique identifier for the connection session
   timestamp : UInt64 // Creation timestamp for TTL and deduplication
   timeout_ms : UInt64? // Optional custom timeout in milliseconds
 } derive(Show, Eq)
@@ -40,7 +39,6 @@ fn Message::new(
   secret_hash? : String,
   encrypted? : Bool = false,
   broadcast? : Bool = false,
-  session_id? : String,
   timestamp? : UInt64,
   timeout_ms? : UInt64,
 ) -> Message {
@@ -67,7 +65,6 @@ fn Message::new(
     secret_hash,
     encrypted,
     broadcast,
-    session_id,
     timestamp: timestamp.unwrap_or(@env.now()),
     timeout_ms,
   }
@@ -76,7 +73,7 @@ fn Message::new(
 ///|
 fn Message::to_msgpack(self : Message) -> Bytes {
   // Use fixed array structure for msgpack:
-  // [id, kind, from, addr, relay, visited, encrypted, version, public_key, secret_hash, payload, target, data, peers, broadcast, session_id, timestamp, timeout_ms]
+  // [id, kind, from, addr, relay, visited, encrypted, version, public_key, secret_hash, payload, target, data, peers, broadcast, timestamp, timeout_ms]
   let visited_array : Array[@msgpack.Value] = []
   for peer_id in self.visited {
     visited_array.push(@msgpack.string(peer_id))
@@ -124,10 +121,6 @@ fn Message::to_msgpack(self : Message) -> Bytes {
       None => @msgpack.nil()
     },
     @msgpack.bool(self.broadcast),
-    match self.session_id {
-      Some(sid) => @msgpack.string(sid)
-      None => @msgpack.nil()
-    },
     @msgpack.uint64(self.timestamp),
     match self.timeout_ms {
       Some(t) => @msgpack.uint64(t)
@@ -143,7 +136,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
     Array(arr) => {
       // Support both old and new message formats for backwards compatibility
       // Old structure: [id, kind, from, addr, relay, encrypted, version, ...]
-      // New structure: [id, kind, from, addr, relay, visited, encrypted, version, ..., session_id, timestamp]
+      // New structure: [id, kind, from, addr, relay, visited, encrypted, version, ..., timestamp]
       if arr.length() < 6 {
         fail("Message array too short: expected at least 6 elements")
       }
@@ -284,17 +277,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
       } else {
         false
       }
-      let session_id_pos = broadcast_pos + 1
-      let session_id = if arr.length() > session_id_pos {
-        match arr[session_id_pos] {
-          String(v) => Some(v)
-          Nil => None
-          _ => fail("Invalid session_id at position \{session_id_pos}")
-        }
-      } else {
-        None
-      }
-      let timestamp_pos = session_id_pos + 1
+      let timestamp_pos = broadcast_pos + 1
       let timestamp = if arr.length() > timestamp_pos {
         match arr[timestamp_pos] {
           UInt64(v) => v
@@ -331,7 +314,6 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         secret_hash,
         encrypted,
         broadcast,
-        session_id,
         timestamp,
         timeout_ms,
       }

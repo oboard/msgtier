@@ -22,7 +22,6 @@ struct Connection {
   ports_last_seen : Map[String, UInt64]
   version : String // Version of the peer
   nat_type : NatType
-  session_id : String? // Unique session ID for the connection
 } derive(Show, ToJson, FromJson)
 
 ///|
@@ -45,19 +44,11 @@ enum NatType {
 ///|
 
 ///|
-fn Connection::new(
-  my_id : String,
-  peer_id : String,
-  session_id? : String,
-) -> Connection {
+fn Connection::new(my_id : String, peer_id : String) -> Connection {
   let (id1, id2) = if my_id < peer_id {
     (my_id, peer_id)
   } else {
     (peer_id, my_id)
-  }
-  let normalized_session = match session_id {
-    Some(sid) => if sid.is_empty() { None } else { Some(sid) }
-    None => None
   }
   let secret_hash = match global_config.val {
     Some(config) => bytes_to_hex(hash_secret(config.secret))
@@ -87,7 +78,6 @@ fn Connection::new(
     ports_last_seen: {},
     version: "",
     nat_type: Unknown,
-    session_id: normalized_session,
   }
 }
 
@@ -185,14 +175,6 @@ fn parse_int_simple(s : String) -> Int? {
 ///|
 fn Connection::update_relay(self : Connection, relay_depth : Int) -> Connection {
   { ..self, relay: relay_depth }
-}
-
-///|
-fn Connection::update_session_id(
-  self : Connection,
-  session_id : String?,
-) -> Connection {
-  { ..self, session_id, }
 }
 
 ///|
@@ -351,10 +333,6 @@ fn Connection::to_msgpack(self : Connection) -> @msgpack.Value {
     },
     @msgpack.string(self.version),
     @msgpack.string(self.nat_type.to_string()),
-    match self.session_id {
-      Some(sid) => @msgpack.string(sid)
-      None => @msgpack.nil()
-    },
   ])
 }
 
@@ -383,7 +361,6 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         last_ping_time_val,
         String(version),
         String(nat_type_str),
-        session_id_val,
       ]
     ) => {
       let nat_type = match nat_type_str {
@@ -479,10 +456,6 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         }
         _ => []
       }
-      let session_id = match session_id_val {
-        String(s) => Some(s)
-        _ => None
-      }
       Some(Connection::{
         peer_id,
         relay,
@@ -504,7 +477,6 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         ports_last_seen: {},
         version,
         nat_type,
-        session_id,
       })
     }
     _ => None
