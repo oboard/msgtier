@@ -9,13 +9,13 @@ test "Connection::new generates hash id" {
 }
 
 ///|
-test "Connection::new includes session_id in hash" {
+test "Connection::new ignores session_id in hash" {
   let conn_base = Connection::new("peerA", "peerB", session_id="session-123")
   let conn_same = Connection::new("peerA", "peerB", session_id="session-123")
   let conn_diff = Connection::new("peerA", "peerB", session_id="session-456")
   inspect(conn_base.id.length(), content="64")
   inspect(conn_base.id == conn_same.id, content="true")
-  inspect(conn_base.id == conn_diff.id, content="false")
+  inspect(conn_base.id == conn_diff.id, content="true")
 }
 
 ///|

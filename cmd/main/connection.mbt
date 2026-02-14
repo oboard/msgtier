@@ -59,10 +59,11 @@ fn Connection::new(
     Some(sid) => if sid.is_empty() { None } else { Some(sid) }
     None => None
   }
-  let raw_id = match normalized_session {
-    Some(sid) => "\{id1}:\{id2}:\{sid}"
-    None => "\{id1}:\{id2}"
+  let secret_hash = match global_config.val {
+    Some(config) => bytes_to_hex(hash_secret(config.secret))
+    None => bytes_to_hex(hash_secret(""))
   }
+  let raw_id = "\{id1}:\{id2}:\{secret_hash}"
   let id = bytes_to_hex(Bytes::from_array(@crypto.sha256(@utf8.encode(raw_id))))
 
   {
