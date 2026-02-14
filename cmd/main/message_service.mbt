@@ -106,13 +106,13 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
     }
     let conn_val = updated_conn.to_msgpack()
     let sync_entry = match conn_val {
-      Array(arr) =>
-        @msgpack.array(
-          [
-            ..arr,
-            @msgpack.binary(get_shared_secret(conn.peer_id).unwrap_or([])),
-          ],
-        )
+      Array(arr) => {
+        let pk_bytes = get_global_peer_manager()
+          .get_peer(conn.peer_id)
+          .map(peer => peer.public_key)
+          .unwrap_or([])
+        @msgpack.array([..arr, @msgpack.binary(pk_bytes)])
+      }
       _ => conn_val
     }
     connections_data.push(sync_entry)
@@ -142,6 +142,7 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
             bytes_sent: 0UL,
             bytes_received: 0UL,
             last_ping_time: None,
+            last_pong_time: None,
             version: peer.version,
             nat_type: Unknown,
             session_id: None,

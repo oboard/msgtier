@@ -6,8 +6,6 @@ let global_config : Ref[Config?] = Ref::new(None)
 
 ///|
 async fn main {
-  // Initialize X25519 key pair
-  // init_keypair()
   @async.with_task_group(async fn(root) {
     let args = @env.args()[1:]
     match args {
@@ -72,14 +70,6 @@ async fn main {
             start_http_service(addr, config)
           })
         }
-
-        // Initialize TCP proxies
-        // init_tcp_proxies(root, config) |> ignore
-
-        // 等待所有任务完成
-        // for task in tasks {
-        //   task.wait()
-        // }
       }
       _ => log_info("MsgTier 0.1")
     }

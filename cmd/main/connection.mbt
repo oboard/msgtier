@@ -17,6 +17,7 @@ struct Connection {
   bytes_sent : UInt64 // Total bytes sent through connection
   bytes_received : UInt64 // Total bytes received
   last_ping_time : UInt64? // Timestamp when last ping was sent
+  last_pong_time : UInt64? // Timestamp when last pong was received
   version : String // Version of the peer
   nat_type : NatType
   session_id : String? // Unique session ID for the connection
@@ -71,6 +72,7 @@ fn Connection::new(
     bytes_sent: 0UL,
     bytes_received: 0UL,
     last_ping_time: None,
+    last_pong_time: None,
     version: "",
     nat_type: Unknown,
     session_id: normalized_session,
@@ -223,6 +225,14 @@ fn Connection::update_last_ping_time(
 }
 
 ///|
+fn Connection::update_last_pong_time(
+  self : Connection,
+  time : UInt64?,
+) -> Connection {
+  { ..self, last_pong_time: time }
+}
+
+///|
 fn Connection::to_msgpack(self : Connection) -> @msgpack.Value {
   @msgpack.array([
     @msgpack.string(self.peer_id),
@@ -356,6 +366,7 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         bytes_sent,
         bytes_received,
         last_ping_time,
+        last_pong_time: None,
         version,
         nat_type,
         session_id,

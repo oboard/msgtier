@@ -535,8 +535,17 @@ async fn handle_heartbeat(
           None => ()
         }
 
-        // Check if connection has timed out (no response for CONNECTION_TIMEOUT_MS)
-        if current_time - conn.last_seen > CONNECTION_TIMEOUT_MS {
+        let ping_timeout = match conn.last_ping_time {
+          Some(ping_time) => {
+            let pong_ok = match conn.last_pong_time {
+              Some(pong_time) => pong_time >= ping_time
+              None => false
+            }
+            current_time - ping_time > CONNECTION_TIMEOUT_MS && !pong_ok
+          }
+          None => false
+        }
+        if ping_timeout {
           let target_addr = pick_peer_address(peer_id, transport.protocol()).unwrap_or(
             "",
           )
@@ -544,7 +553,6 @@ async fn handle_heartbeat(
           update_global_connection_manager(fn(manager) {
             manager.remove_connection(conn.id)
           })
-          // Broadcast update because a connection became inactive
           log_debug(
             "DEBUG: heartbeat timeout broadcast protocol=\{transport.protocol()} peer=\{peer_id}",
           )
@@ -1116,8 +1124,10 @@ async fn handle_incoming_message(
             None => ()
           }
           update_global_connection_manager(fn(manager) {
-            let timestamp = @env.now()
-            manager.update_connection_last_seen(conn.id, timestamp)
+            manager.update_connection_pong_time(conn.id, Some(current_time))
+          })
+          update_global_connection_manager(fn(manager) {
+            manager.update_connection_last_seen(conn.id, current_time)
           })
         }
       }

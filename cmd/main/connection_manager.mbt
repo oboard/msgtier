@@ -220,3 +220,20 @@ fn ConnectionManager::update_connection_ping_time(
     None => self
   }
 }
+
+///|
+fn ConnectionManager::update_connection_pong_time(
+  self : ConnectionManager,
+  conn_id : String,
+  pong_time : UInt64?,
+) -> ConnectionManager {
+  let connections = self.connections
+  match connections.get(conn_id) {
+    Some(conn) => {
+      let updated_conn = conn.update_last_pong_time(pong_time)
+      connections[conn_id] = updated_conn
+      { connections, peer_connections: self.peer_connections }
+    }
+    None => self
+  }
+}
