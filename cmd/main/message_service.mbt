@@ -164,12 +164,21 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
       }
     }
   }
+  let known_peers = get_all_known_peers()
+  let peers_list : Array[NetworkAddress] = []
+  for addr in known_peers {
+    if !addr.is_empty() && !is_bind_all_address(addr) {
+      peers_list.push(NetworkAddress::{ address: addr })
+    }
+  }
+  let peers_opt = if peers_list.is_empty() { None } else { Some(peers_list) }
   Message::new(
     kind="sync",
     source_id=my_id,
     source_addr=local_addr,
     relay=1,
     broadcast=true,
+    peers?=peers_opt,
     body=@msgpack.array(connections_data),
   )
 }

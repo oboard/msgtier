@@ -1,5 +1,5 @@
 ///|
-const CONNECTION_TIMEOUT_MS : UInt64 = 15000 // 15 seconds timeout
+const CONNECTION_TIMEOUT_MS : UInt64 = 60000 // 60 seconds timeout
 
 ///|
 let last_sync_broadcast_time : Ref[UInt64] = Ref::new(0)
@@ -1222,9 +1222,16 @@ async fn handle_incoming_message(
       handle_data_message(root, id, local_addr, merged, response_data)
     }
     { kind: "sync", body: Array(conn_entries), .. } => {
-      // Handle connection update from peer
-      // Collect direct neighbors of the sender to update their connections list
       let sender_connections : Array[PeerConnectionInfo] = []
+      if msg.peers is Some(peer_addrs) {
+        let known_list : Array[String] = []
+        for peer_addr_obj in peer_addrs {
+          if peer_addr_obj.address != local_addr {
+            known_list.push(peer_addr_obj.address)
+          }
+        }
+        add_known_peers(known_list)
+      }
 
       // Parse connection entry: [..., public_key]
       for entry in conn_entries {

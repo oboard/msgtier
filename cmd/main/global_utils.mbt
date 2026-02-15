@@ -77,6 +77,13 @@ fn add_known_peer(peer_addr : String) -> Unit {
 }
 
 ///|
+fn add_known_peers(peer_addrs : Array[String]) -> Unit {
+  for addr in peer_addrs {
+    add_known_peer(addr)
+  }
+}
+
+///|
 fn is_bind_all_address(addr : String) -> Bool {
   match @url.Url::parse(addr) {
     Some(url) => url.hostname() == "0.0.0.0"
