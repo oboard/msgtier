@@ -11,14 +11,10 @@
     #pragma comment(lib, "ws2_32.lib")
     #define close closesocket
 #else
-    #include <unistd.h>
-    #include <sys/socket.h>
-    #include <sys/ioctl.h>
     #include <net/if.h>
     #include <arpa/inet.h>
     #include <ifaddrs.h>
     #include <netinet/in.h>
-    #include <netdb.h>
 #endif
 
 #include "moonbit.h"
