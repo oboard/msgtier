@@ -117,68 +117,12 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
     }
     connections_data.push(sync_entry)
   }
-
-  // Include known routes (hops > 1)
-  let all_routes = get_global_peer_manager().get_all_routes()
-  for peer_id, route in all_routes {
-    // Only advertise routes that are NOT direct connections (to avoid duplication)
-    // and valid routes
-    if route.hops > 1 {
-      match get_global_peer_manager().get_peer(peer_id) {
-        Some(peer) => {
-          let sync_conn = Connection::{
-            id: "",
-            peer_id,
-            last_seen: route.timestamp,
-            quality: 0,
-            relay: route.hops,
-            metadata: None,
-            latency_ms: None,
-            bandwidth_mbps: 0.0,
-            packet_loss_rate: 0,
-            latency_history: [],
-            packets_sent: 0,
-            packets_lost: 0,
-            bytes_sent: 0UL,
-            bytes_received: 0UL,
-            last_ping_time: None,
-            last_pong_time: None,
-            ports: [],
-            ports_last_seen: {},
-            version: peer.version,
-            nat_type: Unknown,
-          }
-          let conn_val = sync_conn.to_msgpack()
-          let sync_entry = match conn_val {
-            Array(arr) => {
-              let new_arr = []
-              new_arr.push_iter(arr.iter())
-              new_arr.push(@msgpack.binary(peer.public_key))
-              @msgpack.array(new_arr)
-            }
-            _ => conn_val
-          }
-          connections_data.push(sync_entry)
-        }
-        None => ()
-      }
-    }
-  }
-  let known_peers = get_all_known_peers()
-  let peers_list : Array[NetworkAddress] = []
-  for addr in known_peers {
-    if !addr.is_empty() && !is_bind_all_address(addr) {
-      peers_list.push(NetworkAddress::{ address: addr })
-    }
-  }
-  let peers_opt = if peers_list.is_empty() { None } else { Some(peers_list) }
   Message::new(
     kind="sync",
     source_id=my_id,
     source_addr=local_addr,
     relay=1,
     broadcast=true,
-    peers?=peers_opt,
     body=@msgpack.array(connections_data),
   )
 }

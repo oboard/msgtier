@@ -343,22 +343,9 @@ async fn handle_pending_messages(
 
     // Process each pending message
     for entry in pending {
-      let mut pending_msg = entry.msg
+      let pending_msg = entry.msg
       let cm = get_global_connection_manager()
       let mut sent = false
-      if !pending_msg.broadcast {
-        match pending_msg.target_id {
-          Some(target_id) =>
-            if !can_direct_connect(target_id) {
-              log_debug(
-                "Switching to broadcast for message \{pending_msg.id} to \{target_id}",
-              )
-              set_pending_message_broadcast(pending_msg.id, true)
-              pending_msg = { ..pending_msg, broadcast: true }
-            }
-          None => ()
-        }
-      }
       let target_peer_ids = if pending_msg.broadcast {
         get_global_peer_manager().get_all_peers().map(p => p.id)
       } else {
@@ -422,13 +409,9 @@ async fn handle_pending_messages(
           continue
         }
 
-        // For sync messages, we want to limit to ONE connection total across all protocols if possible
         if pending_msg.kind == "sync" &&
           entry.sent_targets.get(target_peer_id) is Some(m) &&
-          !m.is_empty() {
-          // Check if ANY protocol has sent to this peer
-          // If the map is not empty, it means we have already sent this message via some protocol
-          // So we skip sending it again to reduce traffic
+          m.length() > 0 {
           continue
         }
         if entry.sent_targets.get(target_peer_id) is Some(m) &&
