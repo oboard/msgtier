@@ -92,13 +92,6 @@ fn handle_new_connection(
     update_global_peer_manager(fn(manager) {
       manager.add_peer_address(info.id, remote_addr)
     })
-
-    // Add all addresses provided in peer_info to the peer manager
-    for addr_obj in info.addresses {
-      update_global_peer_manager(fn(manager) {
-        manager.add_peer_address(info.id, addr_obj.address)
-      })
-    }
   } else {
     // Only create peer if it doesn't exist yet
     match get_global_peer_manager().get_peer(actual_peer_id) {
@@ -206,6 +199,12 @@ async fn handle_reconnects(
 
     let peers = get_global_peer_manager().get_all_peers()
     for peer in peers {
+      let has_direct_conn = get_global_connection_manager()
+        .get_peer_connections(peer.id)
+        .any(fn(conn) { conn.relay == 1 })
+      if has_direct_conn {
+        continue
+      }
       for addr_str in peer.addresses {
         let mut parsed : Address? = None
         try {
@@ -277,6 +276,12 @@ async fn handle_reconnects(
             if a.protocol == transport.protocol_type() {
               match peer_id_opt {
                 Some(pid) => {
+                  let has_direct_conn = get_global_connection_manager()
+                    .get_peer_connections(pid)
+                    .any(fn(conn) { conn.relay == 1 })
+                  if has_direct_conn {
+                    continue
+                  }
                   let key = pid +
                     "|" +
                     a.protocol.to_string() +
@@ -584,7 +589,7 @@ async fn handle_heartbeat(
           }
           None => false
         }
-        if ping_timeout {
+        if ping_timeout && conn.relay == 1 {
           let target_addr = pick_peer_address(peer_id, transport.protocol()).unwrap_or(
             "",
           )
@@ -785,14 +790,6 @@ async fn handle_incoming_message(
         add_if_valid(connectable_addr)
       }
 
-      // Also include addresses from the hello message payload (the peer's other listeners)
-      match msg.peers {
-        Some(peers_list) =>
-          for p in peers_list {
-            add_if_valid(p.address)
-          }
-        None => ()
-      }
       Some(NetworkDiscoveryInfo::{
         id: msg.source_id,
         version: match msg.version {
@@ -1051,9 +1048,6 @@ async fn handle_incoming_message(
             let peer_url = peer_addr_obj.address
             if !is_bind_all_address(peer_url) && peer_url != local_addr {
               add_known_peer(peer_url)
-              update_global_peer_manager(fn(manager) {
-                manager.add_peer_address(msg.source_id, peer_url)
-              })
             }
           }
         }
@@ -1374,10 +1368,12 @@ async fn start_listener_service(
             peer_id,
           )
           for conn in conns {
-            update_global_connection_manager(fn(manager) {
-              manager.remove_connection(conn.id)
-            })
-            log_warn("[disconnect]\t\{conn.peer_id}(\{remote_addr})")
+            if conn.relay == 1 {
+              update_global_connection_manager(fn(manager) {
+                manager.remove_connection(conn.id)
+              })
+              log_warn("[disconnect]\t\{conn.peer_id}(\{remote_addr})")
+            }
           }
         }
         None => ()
