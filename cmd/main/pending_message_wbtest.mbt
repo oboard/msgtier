@@ -78,11 +78,10 @@ test "set pending message broadcast" {
     kind="test",
     source_id="src",
     target_id="dst",
-    broadcast=false,
   )
   add_pending_message(msg)
-  set_pending_message_broadcast("msg4", true)
+  set_pending_message_broadcast("msg4")
   let pending = take_pending_messages(fn(_) { true })
   assert_eq(pending.length(), 1)
-  assert_eq(pending[0].msg.broadcast, true)
+  assert_eq(pending[0].msg.is_broadcast(), true)
 }

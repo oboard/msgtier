@@ -122,7 +122,6 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
     source_id=my_id,
     source_addr=local_addr,
     relay=1,
-    broadcast=true,
     body=@msgpack.array(connections_data),
   )
 }

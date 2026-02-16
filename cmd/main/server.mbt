@@ -362,7 +362,7 @@ async fn handle_pending_messages(
       let pending_msg = entry.msg
       let cm = get_global_connection_manager()
       let mut sent = false
-      let target_peer_ids = if pending_msg.broadcast {
+      let target_peer_ids = if pending_msg.is_broadcast() {
         get_global_peer_manager().get_all_peers().map(p => p.id)
       } else {
         match pending_msg.target_id {
@@ -956,7 +956,7 @@ async fn handle_incoming_message(
   }
 
   // Handle broadcast forwarding: if broadcast is true, forward to all peers (except sender)
-  if msg.broadcast &&
+  if msg.is_broadcast() &&
     msg.source_id != id &&
     !msg.visited.any(fn(peer_id) { peer_id == id }) {
     // Add current node to visited list to track the path and prevent loops

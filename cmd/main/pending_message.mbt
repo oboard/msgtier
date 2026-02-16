@@ -85,7 +85,7 @@ fn mark_pending_message_sent(
       target_protocols[protocol] = true
 
       // If broadcast, do not remove (rely on TTL to keep sending to other peers)
-      if entry.msg.broadcast {
+      if entry.msg.is_broadcast() {
         return false
       }
       let mut all_sent = true
@@ -111,11 +111,11 @@ pub fn clear_pending_messages() -> Unit {
 }
 
 ///|
-pub fn set_pending_message_broadcast(id : String, broadcast : Bool) -> Unit {
+pub fn set_pending_message_broadcast(id : String) -> Unit {
   let messages = global_pending_messages
   for i = 0; i < messages.length(); i = i + 1 {
     if messages[i].msg.id == id {
-      messages[i].msg = { ..messages[i].msg, broadcast, }
+      messages[i].msg = { ..messages[i].msg, target_id: None }
       break
     }
   }

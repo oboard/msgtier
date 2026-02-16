@@ -14,13 +14,17 @@ struct Message {
   public_key : Bytes? // X25519 public key for E2E encryption (sent in hello/welcome)
   secret_hash : String? // Hash of network secret for authentication
   encrypted : Bool // Whether the data field is encrypted
-  broadcast : Bool // Whether this message should be broadcast to all peers
   timestamp : UInt64 // Creation timestamp for TTL and deduplication
   timeout_ms : UInt64? // Optional custom timeout in milliseconds
 } derive(Show, Eq)
 
 ///|
 let message_id_counter : Ref[Int] = Ref::new(0)
+
+///|
+fn Message::is_broadcast(self : Message) -> Bool {
+  self.target_id is None
+}
 
 ///|
 fn Message::new(
@@ -38,7 +42,6 @@ fn Message::new(
   public_key? : Bytes,
   secret_hash? : String,
   encrypted? : Bool = false,
-  broadcast? : Bool = false,
   timestamp? : UInt64,
   timeout_ms? : UInt64,
 ) -> Message {
@@ -64,7 +67,6 @@ fn Message::new(
     public_key,
     secret_hash,
     encrypted,
-    broadcast,
     timestamp: timestamp.unwrap_or(@env.now()),
     timeout_ms,
   }
@@ -120,7 +122,6 @@ fn Message::to_msgpack(self : Message) -> Bytes {
       }
       None => @msgpack.nil()
     },
-    @msgpack.bool(self.broadcast),
     @msgpack.uint64(self.timestamp),
     match self.timeout_ms {
       Some(t) => @msgpack.uint64(t)
@@ -135,8 +136,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
   match msgpack {
     Array(arr) => {
       // Support both old and new message formats for backwards compatibility
-      // Old structure: [id, kind, from, addr, relay, encrypted, version, ...]
-      // New structure: [id, kind, from, addr, relay, visited, encrypted, version, ..., timestamp]
+      // [id, kind, from, addr, relay, visited, encrypted, version, ..., timestamp]
       if arr.length() < 6 {
         fail("Message array too short: expected at least 6 elements")
       }
@@ -267,17 +267,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
       } else {
         None
       }
-      let broadcast_pos = peers_pos + 1
-      let broadcast = if arr.length() > broadcast_pos {
-        match arr[broadcast_pos] {
-          Bool(v) => v
-          Nil => false
-          _ => fail("Invalid broadcast at position \{broadcast_pos}")
-        }
-      } else {
-        false
-      }
-      let timestamp_pos = broadcast_pos + 1
+      let timestamp_pos = peers_pos + 1
       let timestamp = if arr.length() > timestamp_pos {
         match arr[timestamp_pos] {
           UInt64(v) => v
@@ -313,7 +303,6 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         public_key,
         secret_hash,
         encrypted,
-        broadcast,
         timestamp,
         timeout_ms,
       }
