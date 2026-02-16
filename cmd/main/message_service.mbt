@@ -137,7 +137,31 @@ async fn send_message(
     return false
   }
   try {
-    let msgpack_bytes = msg.to_msgpack()
+    let msg_to_send = if msg.encrypted {
+      match msg.target_id {
+        Some(target_id) => {
+          let encoded = @msgpack.encode(msg.body)
+          let encrypted = encrypt_for_peer(target_id, encoded)
+          if encrypted.length() > 0 {
+            Message::{
+              ..msg,
+              body: @msgpack.binary(encrypted),
+              encrypted: true,
+            }
+          } else {
+            log_warn("No shared secret for \{target_id}, sending unencrypted")
+            Message::{ ..msg, encrypted: false }
+          }
+        }
+        None => {
+          log_warn("Encrypted message missing target_id, sending unencrypted")
+          Message::{ ..msg, encrypted: false }
+        }
+      }
+    } else {
+      msg
+    }
+    let msgpack_bytes = msg_to_send.to_msgpack()
     transport.send(target_addr, msgpack_bytes)
   } catch {
     _ => {

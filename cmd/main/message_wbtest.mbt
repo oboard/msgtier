@@ -32,7 +32,7 @@ test "message with optional fields subset 1" {
   // Test a subset of optional fields
   let original : Message = Message::new(
     id="test-msg-2",
-    kind="data",
+    kind="script",
     source_id="node-a",
     source_addr="127.0.0.1:8000",
     relay=2,
@@ -65,7 +65,7 @@ test "message with peers" {
   ]
   let original : Message = Message::new(
     id="test-msg-3",
-    kind="data",
+    kind="script",
     source_id="node-a",
     source_addr="127.0.0.1:8000",
     relay=1,

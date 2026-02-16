@@ -18,6 +18,13 @@ fn check_and_mark_processed(id : String, timestamp : UInt64) -> Bool {
 }
 
 ///|
+fn decode_binary_payload(raw : Bytes) -> @msgpack.Value {
+  @msgpack.decode(raw) catch {
+    _ => @msgpack.binary(raw)
+  }
+}
+
+///|
 fn handle_data_message(
   root : @async.TaskGroup[Unit],
   id : String,
@@ -35,65 +42,7 @@ fn handle_data_message(
       }
       log_info("Received data response from \{msg.source_id}:")
       let final_data = match data_value {
-        Binary(raw) => {
-          let payload_bytes = if msg.encrypted {
-            // Check if we have a shared secret first
-            match get_shared_secret(msg.source_id) {
-              None => {
-                log_error(
-                  "Received encrypted message from \{msg.source_id} but no shared secret found. Dropping.",
-                )
-                return
-              }
-              Some(_) => ()
-            }
-            match decrypt_from_peer(msg.source_id, raw) {
-              Some(decrypted) => {
-                log_debug(
-                  "DEBUG: Decrypted message from \{msg.source_id}, len=\{decrypted.length()}",
-                )
-                // Debug: print first few bytes
-                if decrypted.length() > 0 {
-                  // Simplified logging to avoid string replace issues
-                  log_debug(
-                    "DEBUG: Decrypted bytes length: \{decrypted.length()}",
-                  )
-                  let mut s = ""
-                  for i = 0; i < decrypted.length(); i = i + 1 {
-                    s = s + decrypted[i].to_int().to_string() + " "
-                  }
-                  log_debug("DEBUG: Decrypted bytes: \{s}")
-                }
-                decrypted
-              }
-              None => {
-                log_error(
-                  "Failed to decrypt message from \{msg.source_id}, raw length=\{raw.length()}",
-                )
-                return // Abort if decryption fails
-              }
-            }
-          } else {
-            raw
-          }
-          if payload_bytes.length() > 0 {
-            @msgpack.decode(payload_bytes) catch {
-              _ => {
-                log_warn("Failed to decode response bytes")
-                data_value
-              }
-            }
-            // Handle empty payload bytes (decryption failure or empty response)
-            // But if raw was not empty and we failed to decrypt (returning b""), we shouldn't fallback to data_value (which is raw)
-            // If raw was empty, data_value is likely Nil or Binary(b"")
-          } else if raw.length() > 0 && msg.encrypted {
-            // Decryption failed (logged above), return Nil
-            @msgpack.nil()
-          } else {
-            // Not encrypted or empty raw, return data_value
-            data_value
-          }
-        }
+        Binary(raw) => decode_binary_payload(raw)
         _ => data_value
       }
       log_debug(
@@ -125,61 +74,9 @@ fn handle_data_message(
           log_debug("DEBUG: Received data_value String len=\{s.length()}")
         _ => log_debug("DEBUG: Received data_value Other")
       }
-      let data_content = if msg.encrypted && data_value is Binary(raw_data) {
-        // Check if we have a shared secret first
-        match get_shared_secret(msg.source_id) {
-          None => {
-            log_error(
-              "Received encrypted message from \{msg.source_id} but no shared secret found. Dropping.",
-            )
-            return
-          }
-          Some(_) => ()
-        }
-        let decrypted_bytes = match decrypt_from_peer(msg.source_id, raw_data) {
-          Some(decrypted) => {
-            log_debug(
-              "DEBUG: Decrypted message from \{msg.source_id}, len=\{decrypted.length()}",
-            )
-            // Debug: print first few bytes
-            if decrypted.length() > 0 {
-              // Simplified logging to avoid string replace issues
-              log_debug("DEBUG: Decrypted bytes length: \{decrypted.length()}")
-              let mut s = ""
-              for i = 0; i < decrypted.length(); i = i + 1 {
-                s = s + decrypted[i].to_int().to_string() + " "
-              }
-              log_debug("DEBUG: Decrypted bytes: \{s}")
-            }
-            decrypted
-          }
-          None => {
-            log_error(
-              "Failed to decrypt message from \{msg.source_id}, raw length=\{raw_data.length()}",
-            )
-            return
-          }
-        }
-        if decrypted_bytes.length() > 0 {
-          let decoded = @msgpack.decode(decrypted_bytes) catch {
-            _ => {
-              log_error("DEBUG: Failed to decode decrypted bytes")
-              @msgpack.nil()
-            }
-          }
-          log_debug("DEBUG: Decoded MsgPack type: \{decoded}")
-          decoded
-        } else {
-          // Decryption failed or empty payload
-          if raw_data.length() > 0 {
-            log_warn(
-              "DEBUG: Decryption failed for non-empty payload, returning nil",
-            )
-          }
-          @msgpack.nil()
-        }
-      } else {
-        data_value
+      let data_content = match data_value {
+        Binary(raw_data) => decode_binary_payload(raw_data)
+        _ => data_value
       }
       root.spawn_bg(async fn() {
         let content_str = if data_content is String(content) {
@@ -200,28 +97,10 @@ fn handle_data_message(
         )
         match execute_script_handler(content_str) {
           Some(output) => {
-            let response_data_raw = output.to_msgpack()
-            let (response_data, is_encrypted) = match
-              get_shared_secret(msg.source_id) {
-              Some(_) =>
-                (
-                  @msgpack.binary(
-                    encrypt_for_peer(
-                      msg.source_id,
-                      @msgpack.encode(response_data_raw),
-                    ),
-                  ),
-                  true,
-                )
-              None => {
-                log_warn(
-                  "No shared secret for \{msg.source_id}, sending unencrypted binary",
-                )
-                (@msgpack.binary(@msgpack.encode(response_data_raw)), false)
-              }
-            }
+            let response_data = output.to_msgpack()
+            let is_encrypted = get_shared_secret(msg.source_id) is Some(_)
             let response_msg = Message::new(
-              kind="data",
+              kind="script",
               source_id=id,
               source_addr=local_addr,
               target_id=msg.source_id,

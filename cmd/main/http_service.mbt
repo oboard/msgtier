@@ -31,6 +31,10 @@ async fn handle_http_request(
         Some(t) => @strconv.parse_uint64(t) catch { _ => 10000UL }
         None => 10000UL
       }
+      let kind = match request.headers.get("kind") {
+        Some(k) => k
+        None => "script"
+      }
 
       // Read request body (convert from Bytes to String)
       let body_str = body.read_all().text()
@@ -40,30 +44,14 @@ async fn handle_http_request(
       let addrs = config.listeners
       let local_addr = if addrs.is_empty() { "127.0.0.1:0" } else { addrs[0] }
 
-      // Prepare data payload (plain string for self, encrypted binary for others)
+      // Prepare data payload (encryption handled at send time)
       let is_self = target_id.trim() == my_id
-      let (data_val, is_encrypted) = if is_self {
-        log_debug(
-          "HTTP /send: Self-message detected, sending unencrypted binary",
-        )
-        (@msgpack.string(body_str), false)
-      } else {
-        // Encrypt for target peer
-        let data = encrypt_for_peer(
-          target_id,
-          @msgpack.encode(@msgpack.string(body_str)),
-        )
-        if data.length() > 0 {
-          (@msgpack.binary(data), true)
-        } else {
-          log_warn("No shared secret for \{target_id}, sending unencrypted")
-          (@msgpack.string(body_str), false)
-        }
-      }
+      let data_val = @msgpack.string(body_str)
+      let is_encrypted = !is_self
 
       // Create data message to send with body as data
       let msg = Message::new(
-        kind="data",
+        kind~,
         source_id=my_id,
         relay=1,
         version=VERSION,
@@ -77,15 +65,12 @@ async fn handle_http_request(
       log_debug("HTTP /send: Queuing message id=\{msg.id} to \{target_id}")
       log_debug("  From: \{my_id}")
       log_debug("  Local: \{local_addr}")
+      log_debug("  Kind: \{kind}")
       log_debug("  Data: \{body_str}")
       log_debug("  Self: \{is_self}")
       log_debug("  Encrypted: \{is_encrypted}")
       log_debug("  Timeout: \{timeout_ms}ms")
-      match data_val {
-        Binary(b) => log_debug("  DataVal: Binary len=\{b.length()}")
-        String(s) => log_debug("  DataVal: String len=\{s.length()}")
-        _ => log_debug("  DataVal: Other")
-      }
+      log_debug("  DataVal: String len=\{body_str.length()}")
       log_info(
         "HTTP /send: Added pending message id=\{msg.id} target=\{target_id}",
       )

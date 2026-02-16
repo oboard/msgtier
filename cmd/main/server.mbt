@@ -402,7 +402,11 @@ async fn handle_pending_messages(
                 transport.protocol() + "://" + addr
               }
               if !target_addr.is_empty() && target_addr != "routed" {
-                let msg = pending_msg
+                let msg = match pending_msg.target_id {
+                  Some(_) => pending_msg
+                  None =>
+                    Message::{ ..pending_msg, target_id: Some(target_peer_id) }
+                }
                 log_debug(
                   "PendingMessage: lan addr=\{target_addr} id=\{msg.id}",
                 )
@@ -478,7 +482,10 @@ async fn handle_pending_messages(
           None => ""
         }
         if !target_addr.is_empty() && target_addr != "routed" {
-          let msg = pending_msg
+          let msg = match pending_msg.target_id {
+            Some(_) => pending_msg
+            None => Message::{ ..pending_msg, target_id: Some(target_peer_id) }
+          }
           log_debug("PendingMessage: direct addr=\{target_addr} id=\{msg.id}")
           let success = send_message(transport, target_addr, msg)
           log_debug(
@@ -758,6 +765,8 @@ async fn handle_incoming_message(
   if msg.source_id == id && msg.target_id != Some(id) {
     return
   }
+  let msg = decrypt_message_body(transport, id, local_addr, msg)
+  guard msg is Some(msg) else { return }
   // Logger
   log_info(
     "[\{msg.kind}]\t\{msg.source_id}(\{sender_addr})" +
@@ -954,10 +963,17 @@ async fn handle_incoming_message(
     let known_peers = get_all_known_peers()
     for peer_addr in known_peers {
       if peer_addr != sender_addr && !peer_addr.has_prefix("0.0.0.0:") {
-        let broadcast_msg = Message::{
-          ..msg,
-          relay: msg.relay + 1,
-          visited: updated_visited,
+        let broadcast_msg = match
+          get_global_peer_manager().get_peer_id_by_address(peer_addr) {
+          Some(peer_id) =>
+            Message::{
+              ..msg,
+              relay: msg.relay + 1,
+              visited: updated_visited,
+              target_id: Some(peer_id),
+            }
+          None =>
+            Message::{ ..msg, relay: msg.relay + 1, visited: updated_visited }
         }
         ignore(send_message(transport, peer_addr, broadcast_msg))
         // println("[broadcast]\t\{msg.from}(\{sender_addr}) -> \{peer_addr}")
@@ -1145,6 +1161,8 @@ async fn handle_incoming_message(
           }
         }
       }
+    { kind: "text", body: String(text), .. } =>
+      log_info("Received text message: \{text}")
     { kind: "ping", .. } => {
       let reply = Message::new(
         kind="pong",
@@ -1187,61 +1205,8 @@ async fn handle_incoming_message(
         })
       }
     }
-    // Proxy handlers moved to kind="data" with ProxyMessage
-    { kind: "send", target_id: Some(target), body, .. } => {
-      // When sending new data, encrypt it for the target
-      let encrypted_data = match body {
-        Binary(raw) => @msgpack.binary(encrypt_for_peer(target, raw))
-        _ => body // Should be binary
-      }
-      let direct = Message::new(
-        kind="data",
-        source_id=msg.source_id,
-        source_addr?=msg.source_addr,
-        body=encrypted_data,
-        target_id=target,
-        encrypted=true,
-      )
-      add_pending_message(direct)
-    }
-    { kind: "data", body, .. } => {
-      // Check for missing shared secret on encrypted message
-      if msg.encrypted {
-        match get_shared_secret(msg.source_id) {
-          None => {
-            log_warn(
-              "Received encrypted data from \{msg.source_id} but no shared secret. Sending hello to trigger handshake.",
-            )
-            match msg.source_addr {
-              Some(addr) => {
-                // Ensure address has protocol
-                let target_addr = if addr.contains("://") {
-                  addr
-                } else {
-                  transport.protocol() + "://" + addr
-                }
-                let our_addresses = get_our_addresses(local_addr)
-                let hello_msg = create_hello_message(
-                  id,
-                  local_addr,
-                  1,
-                  peers=our_addresses,
-                )
-                ignore(send_message(transport, target_addr, hello_msg))
-              }
-              None => ()
-            }
-            return
-          }
-          Some(_) => ()
-        }
-      }
+    { kind: "script", body, .. } =>
       handle_data_message(root, id, local_addr, msg, body)
-    }
-    { kind: "data_response", body: response_data, payload: correlation_id, .. } => {
-      let merged = { ..msg, kind: "data", payload: correlation_id }
-      handle_data_message(root, id, local_addr, merged, response_data)
-    }
     { kind: "sync", body: Array(conn_entries), .. } => {
       let sender_connections : Array[PeerConnectionInfo] = []
       if msg.peers is Some(peer_addrs) {
