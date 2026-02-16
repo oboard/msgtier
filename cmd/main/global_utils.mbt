@@ -126,6 +126,39 @@ fn pick_peer_address(peer_id : String, protocol : String) -> String? {
 }
 
 ///|
+fn pick_peer_lan_address(peer_id : String, protocol : String) -> String? {
+  match get_global_peer_manager().get_peer(peer_id) {
+    Some(peer) => {
+      for addr_str in peer.addresses {
+        if addr_str.is_empty() ||
+          addr_str == "routed" ||
+          is_bind_all_address(addr_str) {
+          continue
+        }
+        let mut parsed : Address? = None
+        try {
+          parsed = Some(Address::parse(addr_str))
+        } catch {
+          _ => ()
+        }
+        match parsed {
+          Some(addr) =>
+            if addr.protocol.to_string() == protocol {
+              let host = extract_host(addr_str)
+              if is_private(host) || is_loopback(host) {
+                return Some(addr_str)
+              }
+            }
+          None => ()
+        }
+      }
+      None
+    }
+    None => None
+  }
+}
+
+///|
 /// Global mapping of peer_id -> last time we received/processed hello from them
 /// Used to debounce re-broadcasting of hello messages
 let global_hello_times : Ref[Map[String, UInt64]] = Ref::new({})

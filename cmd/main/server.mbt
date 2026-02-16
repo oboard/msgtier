@@ -383,6 +383,39 @@ async fn handle_pending_messages(
         }
         let target_connections = cm.get_peer_connections(target_peer_id)
         if target_connections.is_empty() {
+          match pick_peer_lan_address(target_peer_id, transport.protocol()) {
+            Some(addr) => {
+              let target_addr = if addr.contains("://") {
+                addr
+              } else {
+                transport.protocol() + "://" + addr
+              }
+              if !target_addr.is_empty() && target_addr != "routed" {
+                let msg = pending_msg
+                log_debug(
+                  "PendingMessage: lan addr=\{target_addr} id=\{msg.id}",
+                )
+                let success = send_message(transport, target_addr, msg)
+                log_debug(
+                  "DEBUG: pending lan send protocol=\{transport.protocol()} addr=\{target_addr} id=\{msg.id} ok=\{success}",
+                )
+                if success {
+                  sent = true
+                  mark_pending_message_sent(
+                    pending_msg.id,
+                    target_peer_id,
+                    transport.protocol(),
+                    [transport.protocol()],
+                  )
+                  |> ignore
+                }
+              }
+            }
+            None => ()
+          }
+          if sent {
+            continue
+          }
           // Check if we have a route for this peer
           match get_global_peer_manager().get_route(target_peer_id) {
             Some(route) => {

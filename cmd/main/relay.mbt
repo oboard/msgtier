@@ -87,7 +87,31 @@ pub async fn relay_message(
       }
     }
 
-    // 2. Routing table check
+    // 2. LAN direct address check
+    if !forwarded {
+      match pick_peer_lan_address(target_peer_id, transport.protocol()) {
+        Some(addr) => {
+          let target_addr = if addr.contains("://") {
+            addr
+          } else {
+            transport.protocol() + "://" + addr
+          }
+          if !target_addr.is_empty() && target_addr != "routed" {
+            let ok = send_message(transport, target_addr, relay_msg)
+            if ok {
+              forwarded = true
+              let path_str = relay_msg.visited.join(" -> ")
+              log_debug(
+                "Forwarded to \{target_peer_id} via LAN, path: \{path_str}",
+              )
+            }
+          }
+        }
+        None => ()
+      }
+    }
+
+    // 3. Routing table check
     if !forwarded {
       match get_global_peer_manager().get_route(target_peer_id) {
         Some(route) => {
