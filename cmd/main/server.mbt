@@ -1173,7 +1173,7 @@ async fn handle_incoming_message(
         sender_addr,
         msg.source_id,
         msg.payload.unwrap_or(msg.id),
-        @msgpack.string("echo: " + text),
+        @msgpack.string(text),
       )
     }
     { kind: "response", payload: Some(correlation_id), body, .. } => {
