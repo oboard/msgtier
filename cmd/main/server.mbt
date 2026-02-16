@@ -121,6 +121,17 @@ fn handle_new_connection(
   }
   if !existing_conns.is_empty() {
     let existing_conn = existing_conns[0]
+    let should_upgrade = relay_depth < existing_conn.relay
+    if should_upgrade {
+      update_global_connection_manager(fn(manager) {
+        manager.update_connection_relay(existing_conn.id, relay_depth)
+      })
+    }
+    let upgraded_conn = if should_upgrade {
+      existing_conn.update_relay(relay_depth)
+    } else {
+      existing_conn
+    }
     let updated_conn = match port_tuple {
       Some((local_port, proto, remote_port)) => {
         let now = @env.now()
@@ -133,9 +144,9 @@ fn handle_new_connection(
             now,
           )
         })
-        existing_conn.touch_port(local_port, proto, remote_port, now)
+        upgraded_conn.touch_port(local_port, proto, remote_port, now)
       }
-      None => existing_conn
+      None => upgraded_conn
     }
     log_debug(
       "DEBUG: handle_new_connection reuse peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
