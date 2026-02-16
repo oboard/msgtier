@@ -2,12 +2,79 @@
 const PAGE_404 : Bytes = b"<html><head></head><body>Page Not Found</body></html>"
 
 ///|
+let ws_clients : Ref[Map[String, @websocket.Conn]] = Ref::new({})
+
+///|
+async fn emit_ws_message(msg : Message) -> Unit {
+  let bytes = msg.to_msgpack()
+  let to_remove = []
+  for client_id, conn in ws_clients.val {
+    conn.send_binary(bytes) catch {
+      _ => to_remove.push(client_id)
+    }
+  }
+  for client_id in to_remove {
+    ws_clients.val.remove(client_id)
+  }
+}
+
+///|
+fn handle_ws_incoming(bytes : Bytes) -> Unit {
+  let msgpack_value = @msgpack.decode(bytes) catch {
+    _ => {
+      log_warn("WS: invalid msgpack payload")
+      return
+    }
+  }
+  let msg : Message = Message::from_msgpack(msgpack_value) catch {
+    _ => {
+      log_warn("WS: invalid message payload")
+      return
+    }
+  }
+  let msg = Message::{ ..msg, encrypted: false }
+  add_pending_message(msg)
+}
+
+///|
+async fn handle_ws_connection(
+  request : @http.Request,
+  conn : @http.ServerConnection,
+) -> Unit {
+  let client_addr = conn.client_addr().to_string()
+  try {
+    let ws = @websocket.from_http_server(request, conn)
+    ws_clients.val[client_addr] = ws
+    defer {
+      ws.close()
+      ws_clients.val.remove(client_addr)
+    }
+    for {
+      let msg = ws.recv()
+      match msg.kind {
+        Text => {
+          let text = msg.read_all().text()
+          log_warn("WS: ignoring text message len=\{text.length()}")
+        }
+        Binary => {
+          let bytes = msg.read_all().binary()
+          handle_ws_incoming(bytes)
+        }
+      }
+    }
+  } catch {
+    _ => ()
+  }
+}
+
+///|
 async fn handle_http_request(
   request : @http.Request,
   body : &@io.Reader,
   conn : @http.ServerConnection,
 ) -> Unit {
   match (request.meth, request.path) {
+    (Get, "/ws") => handle_ws_connection(request, conn)
     (Get, "/api/config") => get_config_handler(conn)
     (Get, "/api/status") => status_handler(conn)
     (Get, "/api/download") => download_handler(conn)

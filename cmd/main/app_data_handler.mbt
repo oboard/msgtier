@@ -25,7 +25,7 @@ fn decode_binary_payload(raw : Bytes) -> @msgpack.Value {
 }
 
 ///|
-fn handle_data_message(
+fn handle_script_message(
   root : @async.TaskGroup[Unit],
   id : String,
   local_addr : String,
@@ -96,24 +96,14 @@ fn handle_data_message(
           "DEBUG: Handling data message. Encrypted=\{msg.encrypted}, Content='\{content_str}'",
         )
         match execute_script_handler(content_str) {
-          Some(output) => {
-            let response_data = output.to_msgpack()
-            let is_encrypted = get_shared_secret(msg.source_id) is Some(_)
-            let response_msg = Message::new(
-              kind="script",
-              source_id=id,
-              source_addr=local_addr,
-              target_id=msg.source_id,
-              relay=1,
-              body=response_data,
-              encrypted=is_encrypted,
-              payload=msg.payload.unwrap_or(msg.id), // Use payload (correlation_id) if available, otherwise fallback to msg.id
+          Some(output) =>
+            send_response_message(
+              id,
+              local_addr,
+              msg.source_id,
+              msg.payload.unwrap_or(msg.id),
+              output.to_msgpack(),
             )
-            add_pending_message(response_msg)
-            log_info(
-              "DataResponse: queued id=\{response_msg.id} correlation=\{msg.id} to=\{msg.source_id} encrypted=\{is_encrypted}",
-            )
-          }
           None =>
             log_warn(
               "No scripts configured or script not found, received data: \{content_str}",
@@ -122,6 +112,31 @@ fn handle_data_message(
       })
     }
   }
+}
+
+///|
+fn send_response_message(
+  source_id : String,
+  source_addr : String,
+  target_id : String,
+  correlation_id : String,
+  response_data : @msgpack.Value,
+) -> Unit {
+  let is_encrypted = get_shared_secret(target_id) is Some(_)
+  let response_msg = Message::new(
+    kind="response",
+    source_id~,
+    source_addr~,
+    target_id~,
+    relay=1,
+    body=response_data,
+    encrypted=is_encrypted,
+    payload=correlation_id,
+  )
+  add_pending_message(response_msg)
+  log_info(
+    "DataResponse: queued id=\{response_msg.id} correlation=\{correlation_id} to=\{target_id} encrypted=\{is_encrypted}",
+  )
 }
 
 ///|

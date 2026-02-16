@@ -380,13 +380,14 @@ async fn handle_pending_messages(
               "PendingMessage: handling local loopback id=\{pending_msg.id}",
             )
             // Use spawn_bg to avoid blocking the pending loop
-            root.spawn_bg(fn() {
-              handle_data_message(
-                root,
+            root.spawn_bg(async fn() {
+              handle_incoming_message(
+                pending_msg.to_msgpack(),
+                local_addr,
                 my_id,
                 local_addr,
-                pending_msg,
-                pending_msg.body,
+                root,
+                transport,
               )
             })
           }
@@ -767,6 +768,9 @@ async fn handle_incoming_message(
   }
   let msg = decrypt_message_body(transport, id, local_addr, msg)
   guard msg is Some(msg) else { return }
+  if !msg.encrypted {
+    root.spawn_bg(async fn() { emit_ws_message(msg) })
+  }
   // Logger
   log_info(
     "[\{msg.kind}]\t\{msg.source_id}(\{sender_addr})" +
@@ -1161,8 +1165,28 @@ async fn handle_incoming_message(
           }
         }
       }
-    { kind: "text", body: String(text), .. } =>
+    { kind: "text", body: String(text), .. } => {
       log_info("Received text message: \{text}")
+
+      send_response_message(
+        id,
+        sender_addr,
+        msg.source_id,
+        msg.payload.unwrap_or(msg.id),
+        @msgpack.string("echo: " + text),
+      )
+    }
+    { kind: "response", payload: Some(correlation_id), body, .. } => {
+      let final_data = match body {
+        Binary(raw) => decode_binary_payload(raw)
+        _ => body
+      }
+      handle_data_response(correlation_id, final_data, msg.source_id)
+    }
+    { kind: "response", payload: None, .. } =>
+      log_warn(
+        "Response message missing payload correlation id from \{msg.source_id}",
+      )
     { kind: "ping", .. } => {
       let reply = Message::new(
         kind="pong",
@@ -1206,7 +1230,7 @@ async fn handle_incoming_message(
       }
     }
     { kind: "script", body, .. } =>
-      handle_data_message(root, id, local_addr, msg, body)
+      handle_script_message(root, id, local_addr, msg, body)
     { kind: "sync", body: Array(conn_entries), .. } => {
       let sender_connections : Array[PeerConnectionInfo] = []
       if msg.peers is Some(peer_addrs) {
