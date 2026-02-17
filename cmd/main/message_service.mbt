@@ -139,6 +139,7 @@ async fn send_message(
     log_warn(
       "send_message: dropped expired message \{msg.id} (age: \{now - msg.timestamp}ms)",
     )
+    remove_pending_message(msg) |> ignore
     return false
   }
 

@@ -222,9 +222,11 @@ async fn handle_object_download(
 
           match wait_for_response(req_id, 10000) {
             Some((data, _)) => {
-              log_info("ObjectStore: fetched object id=\{id} size=\{data.length()}")
+              log_info(
+                "ObjectStore: fetched object id=\{id} size=\{data.length()}",
+              )
               // Save to local store for future requests
-              let _ = save_object(data, id=id)
+              let _ = save_object(data, id~)
 
               conn
               ..send_response(200, "OK", extra_headers={
@@ -524,30 +526,28 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
   let all_conns = get_global_connection_manager().get_all_connections()
   let my_connections : Array[PeerConnectionInfo] = []
   for conn in all_conns {
-    if conn.relay == 1 {
-      let elapsed_ms = @env.now() - conn.last_seen
-      let bandwidth_mbps = conn.calculate_bandwidth_mbps(elapsed_ms)
-      let packet_loss_rate = conn.calculate_packet_loss()
-      my_connections.push(PeerConnectionInfo::{
-        peer_id: conn.peer_id,
-        ports: conn.ports,
-        latency_ms: conn.latency_ms,
-        bandwidth_mbps,
-        packet_loss_rate,
-        id: conn.id,
-        last_seen: conn.last_seen,
-        quality: conn.quality,
-        relay: conn.relay,
-        metadata: conn.metadata,
-        latency_history: conn.latency_history,
-        packets_sent: conn.packets_sent,
-        packets_lost: conn.packets_lost,
-        bytes_sent: conn.bytes_sent,
-        bytes_received: conn.bytes_received,
-        last_ping_time: conn.last_ping_time,
-        nat_type: conn.nat_type,
-      })
-    }
+    let elapsed_ms = @env.now() - conn.last_seen
+    let bandwidth_mbps = conn.calculate_bandwidth_mbps(elapsed_ms)
+    let packet_loss_rate = conn.calculate_packet_loss()
+    my_connections.push(PeerConnectionInfo::{
+      peer_id: conn.peer_id,
+      ports: conn.ports,
+      latency_ms: conn.latency_ms,
+      bandwidth_mbps,
+      packet_loss_rate,
+      id: conn.id,
+      last_seen: conn.last_seen,
+      quality: conn.quality,
+      relay: conn.relay,
+      metadata: conn.metadata,
+      latency_history: conn.latency_history,
+      packets_sent: conn.packets_sent,
+      packets_lost: conn.packets_lost,
+      bytes_sent: conn.bytes_sent,
+      bytes_received: conn.bytes_received,
+      last_ping_time: conn.last_ping_time,
+      nat_type: conn.nat_type,
+    })
   }
   let me = PeerNode::new(
     id=my_id,
