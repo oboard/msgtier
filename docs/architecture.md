@@ -6,7 +6,9 @@
 - **welcome** - Response with known peer list and public key for discovery
 - **ping** - Health check heartbeat
 - **pong** - Heartbeat response
-- **data** - User message (always encrypted binary payload, triggers script execution)
+- **script** - User message (triggers script execution)
+- **text** - Text message (logged by receiver)
+- **binary** - Binary message (raw data)
 - **relay** - Forward message through intermediate peer
 - **punch** - NAT traversal request
 
@@ -17,7 +19,7 @@ MsgTier implements X25519 Elliptic Curve Diffie-Hellman (ECDH) key exchange with
 1. **Key Generation** - Each node generates an X25519 key pair on startup
 2. **Key Exchange** - Public keys are exchanged during the hello/welcome handshake
 3. **Shared Secret** - Peers compute shared secrets via ECDH (including a self-shared secret for loopback)
-4. **Encryption** - All data payloads are symmetrically encrypted using the shared secret
+4. **Encryption** - All payloads are symmetrically encrypted using the shared secret
 
 **Encryption Flow:**
 ```
@@ -39,7 +41,7 @@ Sender                          Receiver
    │                               │
 ```
 
-Messages are automatically encrypted. If a peer's shared secret is not available, transmission falls back to unencrypted with a warning (but for `data` messages, we strive for encryption).
+Messages are automatically encrypted. If a peer's shared secret is not available, transmission falls back to unencrypted with a warning (but for `script`/`binary` messages, we strive for encryption).
 
 ## Peer Discovery
 
@@ -80,12 +82,12 @@ When a direct P2P connection or intra-network route cannot be established, MsgTi
 The system implements continuous connection health monitoring:
 
 - **Heartbeat Interval**: 10 seconds - Periodic ping sent to all peers
-- **Timeout Threshold**: 30 seconds - No pong response marks connection inactive
+- **Timeout Threshold**: 60 seconds - No pong response marks connection inactive
 - **Automatic Reconnection**: Failed connections retry with exponential backoff
 - **Connection State Tracking**: Each connection is marked as Active/Disconnected
-- **Real-time Status**: Query via HTTP `/status` endpoint to monitor health
+- **Real-time Status**: Query via HTTP `/api/status` endpoint to monitor health
 
-Connections that don't receive pong responses within 30 seconds are automatically marked as disconnected, and the system attempts to reconnect periodically.
+Connections that don't receive pong responses within 60 seconds are automatically marked as disconnected, and the system attempts to reconnect periodically.
 
 ## Message Flow
 
@@ -93,7 +95,7 @@ Messages flow through the system in the following sequence:
 
 ```
 ┌─────────────────┐
-│  HTTP Client    │  User sends POST /send
+│  HTTP Client    │  User sends POST /api/send
 └────────┬────────┘
          │ {target: "peer_id", body: "message"}
          ▼
@@ -123,7 +125,7 @@ Messages flow through the system in the following sequence:
          │ Decrypt & Parse
          ▼
    ┌─────────────────────────────────────┐
-   │  Is kind == "data"?                 │
+   │  Is kind == "script"?               │
    │  Does body match a script name?     │
    └──────────┬────────────────────┬─────┘
               │                    │
@@ -143,8 +145,8 @@ Messages flow through the system in the following sequence:
 
 **Key Features:**
 - **Asynchronous Processing**: HTTP handler waits for response (with timeout) but processing is async.
-- **Unified Encryption**: All data messages are encrypted, even to self.
-- **Best Connection Selection**: Automatically picks active connection with best quality.
+- **Unified Encryption**: All payloads are encrypted, even to self.
+- **Best Connection Selection**: Automatically picks active connection with best quality (prioritizing LAN addresses).
 - **Script Matching**: Message body matched against configured script names (case-sensitive).
 - **Platform-Specific Execution**: Scripts run via platform-specific shells (Windows: cmd.exe, Unix: sh).
 
@@ -183,7 +185,7 @@ When a `hello` message is received:
 The heartbeat background task:
 - Every 10 seconds: Sends `ping` to all known peer connections
 - Tracks `pong` responses and updates `last_seen` timestamps
-- After 30 seconds without a pong: Marks connection as inactive
+- After 60 seconds without a pong: Marks connection as inactive
 - Continues monitoring for reconnection opportunity
 
 ### 5. Message Sending
@@ -192,7 +194,7 @@ When HTTP POST /send is received:
 - **Encryption**: Payload is encrypted using the shared secret for the target (or self)
 - **Queuing**: Encrypted message is added to `pending_messages`
 - **Processing**: Background task (100ms interval) retrieves the queue
-- **Routing**: Finds best active connection, internal route, or public relay fallback
+- **Routing**: Finds best active connection, internal route, or public relay fallback (prioritizing LAN addresses)
 - **Transmission**: Sends message via appropriate transport (UDP/TCP/WS)
 - **Cleanup**: Clears processed messages from queue
 
@@ -202,7 +204,7 @@ When a message arrives (via any transport):
 - Message is decoded from MessagePack format
 - Connection state is updated (marked Active)
 - **If message is encrypted: decrypt using shared secret derived from X25519 ECDH**
-- If message type is `data`: extract script name from body
+- If message type is `script`: extract script name from body
 - Lookup script name in configuration scripts map
 - If found: spawn async task to execute script with platform-specific shell
 - Execute asynchronously to avoid blocking the transport handler
@@ -215,8 +217,9 @@ When a message arrives (via any transport):
 | `welcome` | Response | Contains peer list for discovery |
 | `ping` | To peer | Health check request |
 | `pong` | Response | Health check response |
-| `data` | To peer | User message (triggers script) |
-| `send` | Internal | Message send request |
+| `script` | To peer | User message (triggers script) |
+| `text` | To peer | Text message (logged only) |
+| `binary` | To peer | Binary message (raw data) |
 | `relay` | To relay peer | Forward message through intermediate |
 | `punch_request` | For NAT | Initiate NAT traversal |
 | `punch` | For NAT | NAT traversal message |
@@ -234,7 +237,7 @@ When a message arrives (via any transport):
     ┌────│ Active   │◄────┐
     │    └──────────┘     │
     │         │           │
-    │  30s    │ pong      │ reconnect
+    │  60s    │ pong      │ reconnect
     │  no     │ received  │ succeeds
     │  pong   │           │
     │         ▼           │

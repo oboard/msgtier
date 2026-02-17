@@ -16,13 +16,13 @@ Replace `9000` with the port configured in your node's `web_api` field.
 
 ## Endpoints
 
-### GET /config
+### GET /api/config
 
 Returns the current node's configuration.
 
 **Request:**
 ```bash
-curl http://localhost:9000/config
+curl http://localhost:9000/api/config
 ```
 
 **Response:**
@@ -38,7 +38,7 @@ curl http://localhost:9000/config
     "udp://127.0.0.1:6668",
     "ws://127.0.0.1:6669"
   ],
-  "relay_network_whitelist": "*",
+  "relay_network_whitelist": ["*"],
   "relay_all_peer_rpc": true,
   "foreign_relay_bps_limit": 1048576,
   "web_api": "127.0.0.1:9000",
@@ -51,13 +51,13 @@ curl http://localhost:9000/config
 
 ---
 
-### GET /status
+### GET /api/status
 
 Returns real-time connection status and peer information.
 
 **Request:**
 ```bash
-curl http://localhost:9000/status
+curl http://localhost:9000/api/status
 ```
 
 **Response:**
@@ -126,14 +126,15 @@ curl http://localhost:9000/status
 
 ---
 
-### POST /send
+### POST /api/send
 
 Send a message to a target peer. Messages are automatically encrypted using X25519 ECDH shared secrets when available.
 
 **Request:**
 ```bash
-curl -X POST 'http://localhost:9000/send' \
+curl -X POST 'http://localhost:9000/api/send' \
   -H 'target: 2' \
+  -H 'kind: script' \
   -d 'chrome'
 ```
 
@@ -142,11 +143,13 @@ curl -X POST 'http://localhost:9000/send' \
 | Header | Required | Description |
 |--------|----------|-------------|
 | `target` | Yes | Peer ID of the destination |
+| `kind` | No | Message type (default: "script", can be "text" or "binary") |
+| `timeout` | No | Request timeout in ms (default: 10000) |
 | `Content-Type` | No | Request content type (default: application/octet-stream) |
 
 **Body:**
 
-The request body is the message data (typically a script name).
+The request body is the message data (typically a script name for kind="script", or raw content for others).
 
 **Success Response (200 OK):**
 ```json
@@ -186,7 +189,7 @@ The request body is the message data (typically a script name).
 ### Example 1: Check Node Status
 
 ```bash
-curl http://localhost:9000/status | jq '.connections | length'
+curl http://localhost:9000/api/status | jq '.connections | length'
 ```
 
 Output: Number of total connections
@@ -196,8 +199,9 @@ Output: Number of total connections
 Trigger the "chrome" script on peer "1":
 
 ```bash
-curl -X POST 'http://localhost:9000/send' \
+curl -X POST 'http://localhost:9000/api/send' \
   -H 'target: 1' \
+  -H 'kind: script' \
   -d 'chrome'
 ```
 
@@ -206,8 +210,9 @@ curl -X POST 'http://localhost:9000/send' \
 Send a custom message to a peer:
 
 ```bash
-curl -X POST 'http://localhost:9000/send' \
+curl -X POST 'http://localhost:9000/api/send' \
   -H 'target: 1' \
+  -H 'kind: script' \
   -d 'hello world'
 ```
 
@@ -217,19 +222,19 @@ Note: If "hello world" is not a configured script name, the message is received 
 
 ```bash
 # Watch connection status every second
-watch -n 1 "curl -s http://localhost:9000/status | jq '.active_connections'"
+watch -n 1 "curl -s http://localhost:9000/api/status | jq '.active_connections'"
 ```
 
 ### Example 5: List All Connected Peers
 
 ```bash
-curl -s http://localhost:9000/status | jq '.connections[] | .peer_id' | sort -u
+curl -s http://localhost:9000/api/status | jq '.connections[] | .peer_id' | sort -u
 ```
 
 ### Example 6: Check for Inactive Connections
 
 ```bash
-curl -s http://localhost:9000/status | jq '.connections[] | select(.active == false)'
+curl -s http://localhost:9000/api/status | jq '.connections[] | select(.active == false)'
 ```
 
 ### Example 7: Automated Health Check
@@ -237,7 +242,7 @@ curl -s http://localhost:9000/status | jq '.connections[] | select(.active == fa
 ```bash
 #!/bin/bash
 while true; do
-  status=$(curl -s http://localhost:9000/status)
+  status=$(curl -s http://localhost:9000/api/status)
   active=$(echo "$status" | jq '.active_connections')
   total=$(echo "$status" | jq '.total_connections')
   echo "$(date): Active: $active / Total: $total"
@@ -266,7 +271,7 @@ Solution: Add `target` header with peer ID
   "target": "unknown-peer"
 }
 ```
-Solution: Verify peer exists - check `/status` endpoint
+Solution: Verify peer exists - check `/api/status` endpoint
 
 **503 Service Unavailable**
 ```json
@@ -300,7 +305,7 @@ No rate limiting is currently implemented. Use reasonable request intervals to a
 
 ## Best Practices
 
-1. **Always check /status** before sending critical messages
+1. **Always check /api/status** before sending critical messages
 2. **Handle 404 errors gracefully** - peer may not have discovered yet
 3. **Use meaningful script names** in config for clarity
 4. **Monitor active_connections** to detect network issues

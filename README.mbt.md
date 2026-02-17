@@ -55,7 +55,7 @@ Create a `node.json` config file:
 ### 3. Send Messages
 
 ```bash
-curl --location 'localhost:9000/send' \
+curl --location 'localhost:9000/api/send' \
   --header 'target: 1' \
   --data 'chrome'
 ```
@@ -68,7 +68,9 @@ curl --location 'localhost:9000/send' \
 - **welcome** - Response with known peer list and public key for discovery
 - **ping** - Health check heartbeat
 - **pong** - Heartbeat response
-- **data** - User message (always encrypted binary payload, triggers script execution)
+- **script** - User message (triggers script execution)
+- **text** - Text message (logged by receiver)
+- **binary** - Binary message (raw data)
 - **relay** - Forward message through intermediate peer
 - **punch** - NAT traversal request
 
@@ -79,7 +81,7 @@ MsgTier implements X25519 Elliptic Curve Diffie-Hellman (ECDH) key exchange with
 1. **Key Generation** - Each node generates an X25519 key pair on startup
 2. **Key Exchange** - Public keys are exchanged during the hello/welcome handshake
 3. **Shared Secret** - Peers compute shared secrets via ECDH (including a self-shared secret for loopback)
-4. **Encryption** - All data payloads are symmetrically encrypted using the shared secret
+4. **Encryption** - All payloads are symmetrically encrypted using the shared secret
 
 **Encryption Flow:**
 ```
@@ -101,7 +103,7 @@ Sender                          Receiver
    │                               │
 ```
 
-Messages are automatically encrypted. If a peer's shared secret is not available, transmission falls back to unencrypted with a warning (but for `data` messages, we strive for encryption).
+Messages are automatically encrypted. If a peer's shared secret is not available, transmission falls back to unencrypted with a warning (but for `script`/`binary` messages, we strive for encryption).
 
 ### Peer Discovery
 
@@ -132,12 +134,12 @@ Result:
 The system implements continuous connection health monitoring:
 
 - **Heartbeat Interval**: 10 seconds - Periodic ping sent to all peers
-- **Timeout Threshold**: 30 seconds - No pong response marks connection inactive
+- **Timeout Threshold**: 60 seconds - No pong response marks connection inactive
 - **Automatic Reconnection**: Failed connections retry with exponential backoff
 - **Connection State Tracking**: Each connection is marked as Active/Disconnected
-- **Real-time Status**: Query via HTTP `/status` endpoint to monitor health
+- **Real-time Status**: Query via HTTP `/api/status` endpoint to monitor health
 
-Connections that don't receive pong responses within 30 seconds are automatically marked as disconnected, and the system attempts to reconnect periodically.
+Connections that don't receive pong responses within 60 seconds are automatically marked as disconnected, and the system attempts to reconnect periodically.
 
 ### Message Flow
 
@@ -145,9 +147,9 @@ Messages flow through the system in the following sequence:
 
 ```
 ┌─────────────────┐
-│  HTTP Client    │  User sends POST /send
+│  HTTP Client    │  User sends POST /api/send
 └────────┬────────┘
-         │ {target: "peer_id", body: "message"}
+         │ {target: "peer_id", body: "message", kind: "script"}
          ▼
 ┌──────────────────────────┐
 │  HTTP Handler            │  1. Check if Loopback (target == self) -> Direct Queue
@@ -174,7 +176,7 @@ Messages flow through the system in the following sequence:
          │ Decrypt & Parse
          ▼
    ┌─────────────────────────────────────┐
-   │  Is kind == "data"?                 │
+   │  Is kind == "script"?               │
    │  Does body match a script name?     │
    └──────────┬────────────────────┬─────┘
               │                    │
@@ -194,25 +196,25 @@ Messages flow through the system in the following sequence:
 
 **Key Features:**
 - **Asynchronous Processing**: HTTP handler waits for response (with timeout) but processing is async.
-- **Unified Encryption**: All data messages are encrypted, even to self.
-- **Best Connection Selection**: Automatically picks active connection with best quality.
+- **Unified Encryption**: All payloads are encrypted, even to self.
+- **Best Connection Selection**: Automatically picks active connection with best quality (prioritizing LAN addresses).
 - **Script Matching**: Message body matched against configured script names (case-sensitive).
 - **Platform-Specific Execution**: Scripts run via platform-specific shells (Windows: cmd.exe, Unix: sh).
 
 ## HTTP API
 
-### GET /config
+### GET /api/config
 Returns the current node configuration
 
 ```bash
-curl http://127.0.0.1:9000/config
+curl http://127.0.0.1:9000/api/config
 ```
 
-### GET /status
+### GET /api/status
 Returns connection status and peer information
 
 ```bash
-curl http://127.0.0.1:9000/status
+curl http://127.0.0.1:9000/api/status
 ```
 
 Response includes:
@@ -221,14 +223,20 @@ Response includes:
 - Local and remote addresses
 - Connection state
 
-### POST /send
+### POST /api/send
 Send a message to a target peer
 
 ```bash
-curl --location 'http://127.0.0.1:9000/send' \
+curl --location 'http://127.0.0.1:9000/api/send' \
   --header 'target: peer_id' \
+  --header 'kind: script' \
   --data 'message_body'
 ```
+
+Headers:
+- `target`: Destination peer ID (required)
+- `kind`: Message type (default: "script", can be "text" or "binary")
+- `timeout`: Request timeout in ms (default: 10000)
 
 ## Cross-Platform Script Execution
 
@@ -283,16 +291,16 @@ When a `hello` message is received:
 The heartbeat background task:
 - Every 10 seconds: Sends `ping` to all known peer connections
 - Tracks `pong` responses and updates `last_seen` timestamps
-- After 30 seconds without a pong: Marks connection as inactive
+- After 60 seconds without a pong: Marks connection as inactive
 - Continues monitoring for reconnection opportunity
 
 ### 5. Message Sending
 
-When HTTP POST /send is received:
+When HTTP POST `/api/send` is received:
 - **Encryption**: Payload is encrypted using the shared secret for the target (or self)
 - **Queuing**: Encrypted message is added to `pending_messages`
 - **Processing**: Background task (100ms interval) retrieves the queue
-- **Routing**: Finds best active connection to target peer (or uses Loopback)
+- **Routing**: Finds best active connection to target peer (or uses Loopback), prioritizing LAN addresses
 - **Transmission**: Sends message via appropriate transport (UDP/TCP/WS)
 - **Cleanup**: Clears processed messages from queue
 
@@ -302,7 +310,7 @@ When a message arrives (via any transport):
 - Message is decoded from MessagePack format
 - Connection state is updated (marked Active)
 - **Decryption**: Message is decrypted using the shared secret
-- If message type is `data`: extract script name from body
+- If message type is `script`: extract script name from body
 - Lookup script name in configuration scripts map
 - If found: spawn async task to execute script with platform-specific shell
 - Execute asynchronously to avoid blocking the transport handler
@@ -315,8 +323,9 @@ When a message arrives (via any transport):
 | `welcome` | Response | Contains peer list for discovery |
 | `ping` | To peer | Health check request |
 | `pong` | Response | Health check response |
-| `data` | To peer | User message (triggers script) |
-| `send` | Internal | Message send request |
+| `script` | To peer | User message (triggers script) |
+| `text` | To peer | Text message (logged only) |
+| `binary` | To peer | Binary message (raw data) |
 | `relay` | To relay peer | Forward message through intermediate |
 | `punch_request` | For NAT | Initiate NAT traversal |
 | `punch` | For NAT | NAT traversal message |
@@ -334,7 +343,7 @@ When a message arrives (via any transport):
     ┌────│ Active   │◄────┐
     │    └──────────┘     │
     │         │           │
-    │  30s    │ pong      │ reconnect
+    │  60s    │ pong      │ reconnect
     │  no     │ received  │ succeeds
     │  pong   │           │
     │         ▼           │
@@ -372,7 +381,7 @@ moon info
 ./msgtier node3.json
 
 # Terminal 4: Send message from Node 3 to Node 1 through Node 2
-curl -X POST 'http://localhost:9002/send' \
+curl -X POST 'http://localhost:9002/api/send' \
   -H 'target: 1' \
   -d 'chrome'
 ```

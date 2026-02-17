@@ -21,6 +21,10 @@ features:
     details: X25519 ECDH key exchange with symmetric encryption for secure communication.
   - title: Message Relay
     details: Messages are automatically relayed through intermediate peers to reach distant nodes.
+  - title: Foreign Network Relay
+    details: Cross-network relay via public nodes when direct routes fail.
+  - title: HTTP API
+    details: REST endpoints for peer status, config, and message sending.
   - title: Health Checks
     details: Continuous heartbeat monitoring with automatic failure detection and reconnection.
   - title: Script Execution

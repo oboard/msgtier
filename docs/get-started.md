@@ -45,7 +45,7 @@ Create a `node.json` configuration file for each node:
 | `secret` | String | Shared secret key (reserved for future use) |
 | `listeners` | Array | Addresses to listen on. Supported protocols: `udp://`, `tcp://`, `ws://`. Use 0.0.0.0 to bind all interfaces |
 | `peers` | Array | Initial peer addresses to connect to. Supported protocols: `udp://`, `tcp://`, `ws://` |
-| `relay_network_whitelist` | String | Comma-separated list of allowed target networks for relay (default: "*") |
+| `relay_network_whitelist` | Array[String] | List of allowed target networks for relay (default: ["*"]) |
 | `relay_all_peer_rpc` | Boolean | Whether to relay RPC messages even if not in whitelist (default: true) |
 | `foreign_relay_bps_limit` | Number | Bandwidth limit (bytes/sec) for foreign network relay (default: 0 = unlimited) |
 | `web_api` | String | HTTP server address (optional) |
@@ -118,7 +118,7 @@ Warning: Sending unencrypted message to peer_id (no shared secret available)
 Send a message to a peer using the REST API:
 
 ```bash
-curl -X POST 'http://127.0.0.1:9000/send' \
+curl -X POST 'http://127.0.0.1:9000/api/send' \
   -H 'target: 1' \
   -d 'script_name'
 ```
@@ -138,7 +138,7 @@ When a message is received, if the message body matches a script name in the con
 
 Send via HTTP:
 ```bash
-curl -X POST 'http://localhost:9000/send' \
+curl -X POST 'http://localhost:9000/api/send' \
   -H 'target: 1' \
   -d 'chrome'
 ```
@@ -149,7 +149,7 @@ Node will execute: `open /Applications/Google\ Chrome.app`
 
 View connection status and peer information:
 ```bash
-curl http://127.0.0.1:9000/status
+curl http://127.0.0.1:9000/api/status
 ```
 
 ## Troubleshooting
@@ -186,7 +186,7 @@ curl http://127.0.0.1:9000/status
 **Problem:** Messages taking long time to deliver
 
 **Solution:**
-- Check connection status: `curl http://localhost:9000/status`
+- Check connection status: `curl http://localhost:9000/api/status`
 - Verify heartbeat/pong responses working
 - Consider network topology - use nodes as relays
 
