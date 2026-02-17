@@ -50,7 +50,7 @@ fn resolve_request(
       req.headers.merge_in_place(headers)
       req.cond.signal()
     }
-    None => log_warn("RequestTracker: resolve id=\{id} not found")
+    None => log_debug("RequestTracker: resolve id=\{id} not found")
   }
 }
 
@@ -65,7 +65,7 @@ async fn wait_for_response(
         for {
           match req.response {
             Some(r) => break (r, req.headers)
-            None => req.cond.wait()
+            None => @async.sleep(10)
           }
         }
       })

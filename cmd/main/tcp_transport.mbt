@@ -4,9 +4,15 @@ suberror TransportError {
 } derive(Show)
 
 ///|
+struct TcpConnection {
+  socket : @socket.Tcp
+  sending : Ref[Bool]
+}
+
+///|
 struct TcpTransport {
   server : @socket.TcpServer
-  connections : Map[String, @socket.Tcp]
+  connections : Map[String, TcpConnection]
   mut handler : ((Bytes, String) -> Unit)?
   mut on_disconnect : ((String) -> Unit)?
   mut root : @async.TaskGroup[Unit]?
@@ -52,15 +58,17 @@ impl Transport for TcpTransport with send(self, target, data) {
         try {
           let target_addr = @socket.Addr::parse(target)
           let c = @socket.Tcp::connect(target_addr)
-          self.connections[target] = c
-          conn_opt = Some(c)
+          let wrapper = TcpConnection::{ socket: c, sending: Ref::new(false) }
+          self.connections[target] = wrapper
+          conn_opt = Some(wrapper)
           created = true
         } catch {
           _ => () // Will be handled by outer try/catch or loop
         }
       }
       match conn_opt {
-        Some(conn) => {
+        Some(wrapper) => {
+          let conn = wrapper.socket
           if created {
             if self.reader_started.get(target) is None {
               match (self.root, self.handler, self.on_disconnect) {
@@ -101,8 +109,22 @@ impl Transport for TcpTransport with send(self, target, data) {
           // Combine header and data to ensure atomic write
           // This prevents interleaving of header/data when multiple threads share the connection
           let full_packet = header + data
-          conn.write(full_packet)
-          return true
+
+          // Spinlock to prevent concurrent writes
+          while wrapper.sending.val {
+            @async.sleep(1)
+          }
+          wrapper.sending.val = true
+          try {
+            conn.write(full_packet)
+            wrapper.sending.val = false
+            return true
+          } catch {
+            e => {
+              wrapper.sending.val = false
+              raise e
+            }
+          }
         }
         None =>
           // Connection creation failed
@@ -128,7 +150,10 @@ impl Transport for TcpTransport with listen(self, root, handler, on_disconnect) 
   self.root = Some(root)
   self.server.run_forever(async fn(conn, remote_addr) {
     let remote_addr_str = remote_addr.to_string()
-    self.connections[remote_addr_str] = conn
+    self.connections[remote_addr_str] = TcpConnection::{
+      socket: conn,
+      sending: Ref::new(false),
+    }
     self.reader_started[remote_addr_str] = true
     let reader = BufferedReader::new(conn)
     try {

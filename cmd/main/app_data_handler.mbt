@@ -32,86 +32,53 @@ fn handle_script_message(
   msg : Message,
   data_value : @msgpack.Value,
 ) -> Unit {
-  match msg.payload {
-    Some(correlation_id) => {
-      // If we receive a response, we can stop broadcasting/retrying the original request
-      remove_pending_message_by_id(correlation_id) |> ignore
-      if check_and_mark_processed(msg.id, msg.timestamp) {
-        log_warn("Duplicate or expired response \{msg.id} ignored")
-        return
-      }
-      log_info("Received data response from \{msg.source_id}:")
-      let final_data = match data_value {
-        Binary(raw) => decode_binary_payload(raw)
-        _ => data_value
-      }
-      log_debug(
-        "DEBUG: Final response data: " +
-        final_data.to_string().unwrap_or("error"),
-      )
-      handle_data_response(correlation_id, final_data, msg.source_id)
-    }
-    None => {
-      // Extract raw binary data or use String directly
-      // check_and_mark_processed(msg.id, msg.timestamp) has been removed from here
-      // because message processing logic should be idempotent if possible,
-      // or handled by the caller. But wait, user requested idempotency.
-      // The issue is check_and_mark_processed was called TWICE in the provided log context?
-      // No, the log shows "Duplicate or expired message ... ignored" only ONCE per ID for the *response* path in previous turn.
-      // But for *request* path (None case), we also need it.
-
-      if check_and_mark_processed(msg.id, msg.timestamp) {
-        log_warn("Duplicate or expired message \{msg.id} ignored")
-        return
-      }
-      log_debug(
-        "DEBUG: Processing data message from \{msg.source_id}, encrypted=\{msg.encrypted}",
-      )
-      match data_value {
-        Binary(b) =>
-          log_debug("DEBUG: Received data_value Binary len=\{b.length()}")
-        String(s) =>
-          log_debug("DEBUG: Received data_value String len=\{s.length()}")
-        _ => log_debug("DEBUG: Received data_value Other")
-      }
-      let data_content = match data_value {
-        Binary(raw_data) => decode_binary_payload(raw_data)
-        _ => data_value
-      }
-      root.spawn_bg(async fn() {
-        let content_str = if data_content is String(content) {
-          content
-        } else {
-          ""
-        }
-        // Trim whitespace and remove null bytes from content string
-        let cleaned = StringBuilder::new()
-        for c in content_str {
-          if c != '\u0000' {
-            cleaned.write_char(c)
-          }
-        }
-        let content_str = cleaned.to_string().trim().to_string()
-        log_info(
-          "DEBUG: Handling data message. Encrypted=\{msg.encrypted}, Content='\{content_str}'",
-        )
-        match execute_script_handler(content_str) {
-          Some(output) =>
-            send_response_message(
-              id,
-              local_addr,
-              msg.source_id,
-              msg.payload.unwrap_or(msg.id),
-              output.to_msgpack(),
-            )
-          None =>
-            log_warn(
-              "No scripts configured or script not found, received data: \{content_str}",
-            )
-        }
-      })
-    }
+  if check_and_mark_processed(msg.id, msg.timestamp) {
+    log_warn("Duplicate or expired message \{msg.id} ignored")
+    return
   }
+
+  log_debug(
+    "DEBUG: Processing data message from \{msg.source_id}, encrypted=\{msg.encrypted}",
+  )
+  match data_value {
+    Binary(b) =>
+      log_debug("DEBUG: Received data_value Binary len=\{b.length()}")
+    String(s) =>
+      log_debug("DEBUG: Received data_value String len=\{s.length()}")
+    _ => log_debug("DEBUG: Received data_value Other")
+  }
+  let data_content = match data_value {
+    Binary(raw_data) => decode_binary_payload(raw_data)
+    _ => data_value
+  }
+  root.spawn_bg(async fn() {
+    let content_str = if data_content is String(content) { content } else { "" }
+    // Trim whitespace and remove null bytes from content string
+    let cleaned = StringBuilder::new()
+    for c in content_str {
+      if c != '\u0000' {
+        cleaned.write_char(c)
+      }
+    }
+    let content_str = cleaned.to_string().trim().to_string()
+    log_info(
+      "DEBUG: Handling data message. Encrypted=\{msg.encrypted}, Content='\{content_str}'",
+    )
+    match execute_script_handler(content_str) {
+      Some(output) =>
+        send_response_message(
+          id,
+          local_addr,
+          msg.source_id,
+          msg.payload.unwrap_or(msg.id),
+          output.to_msgpack(),
+        )
+      None =>
+        log_warn(
+          "Script execution returned no output for message \{msg.id} content='\{content_str}'",
+        )
+    }
+  })
 }
 
 ///|

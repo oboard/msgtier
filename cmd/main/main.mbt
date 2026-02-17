@@ -21,6 +21,9 @@ async fn main {
         log_debug("DEBUG: My Public Key: \{bytes_to_hex(get_public_key())}")
         let id = config.id
 
+        // Initialize object store
+        init_object_store(dir="data/objects_" + id)
+
         // Initialize shared secret with self for loopback encryption
         compute_and_store_shared_secret(id, get_public_key())
 

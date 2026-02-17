@@ -769,7 +769,13 @@ async fn handle_incoming_message(
   let msg = decrypt_message_body(transport, id, local_addr, msg)
   guard msg is Some(msg) else { return }
   if !msg.encrypted {
-    root.spawn_bg(async fn() { emit_ws_message(msg) })
+    if msg.kind == "object_request" {
+      root.spawn_bg(async fn() { handle_object_request(msg) })
+    } else if msg.kind == "object_response" {
+      handle_object_response(msg)
+    } else {
+      root.spawn_bg(async fn() { emit_ws_message(msg) })
+    }
   }
   // Logger
   log_info(
@@ -1227,6 +1233,28 @@ async fn handle_incoming_message(
         update_global_connection_manager(fn(manager) {
           manager.update_connection_last_seen(conn.id, current_time)
         })
+      }
+    }
+    { kind: "file_request", body, .. } => {
+      let object_id = match body {
+        String(s) => s
+        _ => ""
+      }
+      let data_opt = try {
+        get_object(object_id)
+      } catch {
+        _ => None
+      }
+      match data_opt {
+        Some(data) =>
+          send_response_message(
+            id,
+            local_addr,
+            msg.source_id,
+            msg.payload.unwrap_or(msg.id),
+            @msgpack.binary(data),
+          )
+        None => log_warn("File request for unknown object \{object_id}")
       }
     }
     { kind: "script", body, .. } =>
