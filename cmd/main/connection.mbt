@@ -305,7 +305,7 @@ fn Connection::to_msgpack(self : Connection) -> @msgpack.Value {
       Some(l) => @msgpack.int(l)
       None => @msgpack.nil()
     },
-    @msgpack.float(self.bandwidth_mbps),
+    @msgpack.float64(self.bandwidth_mbps),
     @msgpack.int(self.packet_loss_rate),
     @msgpack.string(self.id),
     @msgpack.nil(),
@@ -345,7 +345,7 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         _,
         Int(relay),
         latency_val,
-        Float(bandwidth_mbps),
+        Float64(bandwidth_mbps),
         Int(packet_loss_rate),
         String(id),
         _,

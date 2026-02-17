@@ -1,76 +1,14 @@
 // MessagePack encoder
 
-// Buffer for building MessagePack data
-
-///|
-priv struct Buffer {
-  bytes : Array[Int]
-}
-
-///|
-fn Buffer::new() -> Buffer {
-  { bytes: [] }
-}
-
-///|
-fn Buffer::write_byte(self : Buffer, byte : Int) -> Unit {
-  self.bytes.push(byte)
-}
-
-///|
-fn Buffer::write_u16(self : Buffer, value : Int) -> Unit {
-  self.write_byte((value >> 8) & 0xFF)
-  self.write_byte(value & 0xFF)
-}
-
-///|
-fn Buffer::write_u32(self : Buffer, value : Int) -> Unit {
-  self.write_byte((value >> 24) & 0xFF)
-  self.write_byte((value >> 16) & 0xFF)
-  self.write_byte((value >> 8) & 0xFF)
-  self.write_byte(value & 0xFF)
-}
-
-///|
-fn Buffer::write_i64(self : Buffer, value : Int64) -> Unit {
-  // Write Int64 as 8 bytes in big-endian format
-  // Extract high and low 32 bits
-  let high = (value >> 32).to_int()
-  let low = value.to_int()
-  self.write_u32(high)
-  self.write_u32(low)
-}
-
-///|
-fn Buffer::write_u64(self : Buffer, value : UInt64) -> Unit {
-  // Write UInt64 as 8 bytes in big-endian format
-  // Extract high and low 32 bits
-  let high = (value >> 32).to_int()
-  let low = value.to_int()
-  self.write_u32(high)
-  self.write_u32(low)
-}
-
-///|
-fn Buffer::to_bytes(self : Buffer) -> Bytes {
-  let arr : Array[Byte] = []
-  for i in self.bytes {
-    arr.push(i.to_byte())
-  }
-  Bytes::from_array(arr)
-}
-
-// MessagePack encoder
-
 ///|
 pub fn encode(value : Value) -> Bytes {
-  let buffer = Buffer::new()
+  let buffer = @buffer.new()
   encode_to_buffer(buffer, value)
   buffer.to_bytes()
 }
 
 ///|
-fn encode_to_buffer(buffer : Buffer, value : Value) -> Unit {
+fn encode_to_buffer(buffer : @buffer.Buffer, value : Value) -> Unit {
   match value {
     Nil => buffer.write_byte(NIL_CODE)
     Bool(true) => buffer.write_byte(TRUE_CODE)
@@ -78,77 +16,78 @@ fn encode_to_buffer(buffer : Buffer, value : Value) -> Unit {
     Int(i) =>
       if i >= 0 && i <= 127 {
         // positive fixint: 0x00 - 0x7f
-        buffer.write_byte(i)
+        buffer.write_byte(i.to_byte())
       } else if i >= -32 && i < 0 {
         // negative fixint: 0xe0 - 0xff
-        buffer.write_byte(NEGATIVE_FIXINT_CODE | (i & 0x1f))
+        buffer.write_byte(NEGATIVE_FIXINT_CODE | (i & 0x1f).to_byte())
       } else if i >= 128 && i <= 255 {
         // uint8
         buffer.write_byte(0xcc)
-        buffer.write_byte(i)
+        buffer.write_byte(i.to_byte())
       } else if i >= 256 && i <= 65535 {
         // uint16
         buffer.write_byte(0xcd)
-        buffer.write_u16(i)
+        buffer.write_uint16_be(i.to_uint16())
       } else if i >= 65536 {
         // uint32
         buffer.write_byte(0xce)
-        buffer.write_u32(i)
+        buffer.write_uint_be(i.reinterpret_as_uint())
       } else if i >= -128 && i < -32 {
         // int8
         buffer.write_byte(INT8_CODE)
-        buffer.write_byte(i & 0xFF)
+        buffer.write_byte(i.to_byte() & 0xFF)
       } else if i >= -32768 && i < -128 {
         // int16
         buffer.write_byte(INT16_CODE)
-        buffer.write_u16(i)
+        buffer.write_uint16_be(i.to_uint16())
       } else {
         // int32
         buffer.write_byte(INT32_CODE)
-        buffer.write_u32(i)
+        buffer.write_uint_be(i.reinterpret_as_uint())
       }
     Int64(i64) => {
       // Encode Int64 as int64 format
       buffer.write_byte(INT64_CODE)
-      buffer.write_i64(i64)
+      buffer.write_int64_be(i64)
     }
     UInt64(u64) => {
       // Encode UInt64 as uint64 format
       buffer.write_byte(UINT64_CODE)
-      buffer.write_u64(u64)
+      buffer.write_uint64_be(u64)
     }
-    Float(_) => {
+    Float32(f) => {
+      // Encode as Float32 (32-bit IEEE 754)
+      buffer.write_byte(FLOAT32_CODE)
+      let u32 = f.reinterpret_as_uint()
+      buffer.write_uint_be(u32)
+    }
+    Float64(f) => {
       // Encode as Float64 (64-bit IEEE 754)
-      // First convert to bits - this is tricky in MoonBit
-      // For now use 0xcb format and write 8 zero bytes as placeholder
-      // A full implementation would need float-to-bits conversion
       buffer.write_byte(FLOAT64_CODE)
-      // Write placeholder 64 bits (0.0)
-      buffer.write_u32(0)
-      buffer.write_u32(0)
+      let u64 = f.reinterpret_as_uint64()
+      buffer.write_uint64_be(u64)
     }
     String(s) => {
-      let len = s.length()
+      let bytes = @utf8.encode(s)
+      let len = bytes.length()
       if len <= 31 {
         // fixstr
-        buffer.write_byte(FIXSTR_CODE | len)
+        buffer.write_byte(FIXSTR_CODE | len.to_byte())
       } else if len <= 255 {
         // str8
         buffer.write_byte(STR8_CODE)
-        buffer.write_byte(len)
+        buffer.write_byte(len.to_byte())
       } else if len <= 65535 {
         // str16
         buffer.write_byte(STR16_CODE)
-        buffer.write_u16(len)
+        buffer.write_uint16_be(len.to_uint16())
       } else {
         // str32
         buffer.write_byte(STR32_CODE)
-        buffer.write_u32(len)
+        buffer.write_uint_be(len.reinterpret_as_uint())
       }
       // Write string bytes
-      for i = 0; i < len; i = i + 1 {
-        buffer.write_byte(s[i].to_byte().to_int())
-      }
+      buffer.write_bytes(bytes)
     }
     Binary(b) => {
       // Encode binary data with length prefix
@@ -156,34 +95,34 @@ fn encode_to_buffer(buffer : Buffer, value : Value) -> Unit {
       if len <= 255 {
         // bin8
         buffer.write_byte(BIN8_CODE)
-        buffer.write_byte(len)
+        buffer.write_byte(len.to_byte())
       } else if len <= 65535 {
         // bin16
         buffer.write_byte(BIN16_CODE)
-        buffer.write_u16(len)
+        buffer.write_uint16_be(len.to_uint16())
       } else {
         // bin32
         buffer.write_byte(BIN32_CODE)
-        buffer.write_u32(len)
+        buffer.write_uint_be(len.reinterpret_as_uint())
       }
       // Write binary bytes
       for i = 0; i < len; i = i + 1 {
-        buffer.write_byte(b[i].to_int())
+        buffer.write_byte(b[i])
       }
     }
     Array(arr) => {
       let len = arr.length()
       if len <= 15 {
         // fixarray
-        buffer.write_byte(FIXARRAY_CODE | len)
+        buffer.write_byte(FIXARRAY_CODE | len.to_byte())
       } else if len <= 65535 {
         // array16
         buffer.write_byte(ARRAY16_CODE)
-        buffer.write_u16(len)
+        buffer.write_uint16_be(len.to_uint16())
       } else {
         // array32
         buffer.write_byte(ARRAY32_CODE)
-        buffer.write_u32(len)
+        buffer.write_uint_be(len.reinterpret_as_uint())
       }
       // Encode each element
       for i = 0; i < len; i = i + 1 {
@@ -194,15 +133,15 @@ fn encode_to_buffer(buffer : Buffer, value : Value) -> Unit {
       let len = map.length()
       if len <= 15 {
         // fixmap
-        buffer.write_byte(FIXMAP_CODE | len)
+        buffer.write_byte(FIXMAP_CODE | len.to_byte())
       } else if len <= 65535 {
         // map16
         buffer.write_byte(MAP16_CODE)
-        buffer.write_u16(len)
+        buffer.write_uint16_be(len.to_uint16())
       } else {
         // map32
         buffer.write_byte(MAP32_CODE)
-        buffer.write_u32(len)
+        buffer.write_uint_be(len.reinterpret_as_uint())
       }
       // Encode each key-value pair
       map.each(fn(key, value) {

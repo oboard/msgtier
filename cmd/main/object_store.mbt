@@ -12,12 +12,10 @@ pub async fn init_object_store(dir? : String) -> Unit {
     Some(d) => global_object_store.root_dir = d
     None => ()
   }
-  
+
   let d = global_object_store.root_dir
   if not(@fs.exists(d)) {
-    try {
-      @fs.mkdir(d, permission=0o755)
-    } catch {
+    @fs.mkdir(d, permission=0o755) catch {
       _ => log_warn("Failed to create object store directory: \{d}")
     }
   }
@@ -34,11 +32,7 @@ pub async fn handle_object_request(msg : Message) -> Unit {
     "ObjectStore: received request for object id=\{object_id} from=\{msg.source_id}",
   )
 
-  let data_opt = try {
-    get_object(object_id)
-  } catch {
-    _ => None
-  }
+  let data_opt = get_object(object_id) catch { _ => None }
 
   match data_opt {
     Some(data) => {
@@ -55,10 +49,8 @@ pub async fn handle_object_request(msg : Message) -> Unit {
         "ObjectStore: sent response for object id=\{object_id} to=\{msg.source_id}",
       )
     }
-    None => {
-      log_warn("ObjectStore: requested object id=\{object_id} not found")
-      // Optionally send 404 response
-    }
+    None => log_warn("ObjectStore: requested object id=\{object_id} not found")
+    // Optionally send 404 response
   }
 }
 
@@ -74,7 +66,9 @@ pub fn handle_object_response(msg : Message) -> Unit {
     _ => return
   }
 
-  log_info("ObjectStore: received response for request id=\{request_id} size=\{data.length()}")
+  log_info(
+    "ObjectStore: received response for request id=\{request_id} size=\{data.length()}",
+  )
   resolve_request(request_id, {}, data)
 }
 
@@ -98,11 +92,9 @@ pub async fn save_object(data : Bytes, id? : String) -> String {
     Some(id) => id
     None => @uuidm.v4().to_string()
   }
-  
+
   let path = global_object_store.root_dir + "/" + object_id
-  try {
-    @fs.write_file(path, data)
-  } catch {
+  @fs.write_file(path, data) catch {
     e => log_warn("Failed to save object: \{e}")
   }
   object_id

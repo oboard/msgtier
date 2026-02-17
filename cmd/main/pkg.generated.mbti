@@ -17,11 +17,23 @@ pub fn clear_pending_messages() -> Unit
 
 pub fn get_global_foreign_network_manager() -> ForeignNetworkManager
 
+pub async fn get_object(String) -> Bytes?
+
+pub async fn handle_object_request(Message) -> Unit
+
+pub fn handle_object_response(Message) -> Unit
+
+pub async fn has_object(String) -> Bool
+
 pub fn hash_secret(String) -> Bytes
+
+pub async fn init_object_store(dir? : String) -> Unit
 
 pub async fn relay_message(&Transport, String, Message, String, allow_queueing? : Bool) -> Bool noraise
 
-pub fn set_pending_message_broadcast(String, Bool) -> Unit
+pub async fn save_object(Bytes, id? : String) -> String
+
+pub fn set_pending_message_broadcast(String) -> Unit
 
 // Errors
 type AddressParseError
@@ -99,6 +111,8 @@ pub impl Show for NetworkDiscoveryInfo
 pub impl ToJson for NetworkDiscoveryInfo
 pub impl @json.FromJson for NetworkDiscoveryInfo
 
+type ObjectStore
+
 type PeerConnectionInfo
 pub impl Show for PeerConnectionInfo
 pub impl ToJson for PeerConnectionInfo
@@ -165,6 +179,8 @@ pub impl ToJson for ScriptOutput
 type StatusInfo
 pub impl ToJson for StatusInfo
 
+type TcpConnection
+
 type TcpTransport
 
 type UdpTransport
@@ -172,6 +188,8 @@ type UdpTransport
 type WebSocketConnWrapper
 
 type WebSocketTransport
+
+type WsClient
 
 // Type aliases
 

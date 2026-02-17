@@ -194,16 +194,17 @@ async fn handle_reconnects(
     "DEBUG: handle_reconnects start protocol=\{transport.protocol()} local=\{local_addr} id=\{peer_id}",
   )
   let our_addresses = get_our_addresses(local_addr)
-  let hello_msg = create_hello_message(
-    peer_id,
-    local_addr,
-    1,
-    peers=our_addresses,
-  )
   let reconnect_interval = 5000 // Fixed interval: 5s
   for {
     // Sleep with fixed interval
     @async.sleep(reconnect_interval)
+
+    let hello_msg = create_hello_message(
+      peer_id,
+      local_addr,
+      1,
+      peers=our_addresses,
+    )
 
     // Build list of target addresses
     let targets : Map[String, String] = {}
@@ -360,18 +361,6 @@ async fn handle_pending_messages(
     // Process each pending message
     for entry in pending {
       let pending_msg = entry.msg
-
-      // Double check for timeout before processing
-      let now = @env.now()
-      let timeout = pending_msg.timeout_ms.unwrap_or(30000UL)
-      if now > pending_msg.timestamp && now - pending_msg.timestamp > timeout {
-        log_debug(
-          "Pending loop: dropping expired message \{pending_msg.id} (age: \{now - pending_msg.timestamp}ms)",
-        )
-        remove_pending_message(pending_msg) |> ignore
-        continue
-      }
-
       let cm = get_global_connection_manager()
       let mut sent = false
       let target_peer_ids = if pending_msg.is_broadcast() {
@@ -1252,11 +1241,7 @@ async fn handle_incoming_message(
         String(s) => s
         _ => ""
       }
-      let data_opt = try {
-        get_object(object_id)
-      } catch {
-        _ => None
-      }
+      let data_opt = get_object(object_id) catch { _ => None }
       match data_opt {
         Some(data) =>
           send_response_message(

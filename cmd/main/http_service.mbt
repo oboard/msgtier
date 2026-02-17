@@ -15,9 +15,40 @@ let ws_clients : Ref[Map[String, WsClient]] = Ref::new({})
 ///|
 
 ///|
+let last_emitted_ids : Ref[Map[String, UInt64]] = Ref::new({})
+
+///|
+let last_emitted_order : Ref[Array[String]] = Ref::new([])
+
+///|
 async fn emit_ws_message(msg : Message) -> Unit {
   if msg.kind != "text" && msg.kind != "file" && msg.kind != "image" {
     return
+  }
+
+  // Deduplicate messages within a short window
+  let now = @env.now()
+  let id = msg.id
+  match last_emitted_ids.val.get(id) {
+    Some(ts) =>
+      if now - ts < 10000UL {
+        // Already emitted recently
+        return
+      }
+    None => ()
+  }
+
+  // Update or insert timestamp
+  last_emitted_ids.val[id] = now
+
+  // Track order for FIFO eviction
+  last_emitted_order.val.push(id)
+
+  // Cleanup old IDs to maintain max size (FIFO)
+  while last_emitted_order.val.length() > 1000 {
+    let old_id = last_emitted_order.val[0]
+    last_emitted_order.val.remove(0) |> ignore
+    last_emitted_ids.val.remove(old_id)
   }
 
   let m : Json = {

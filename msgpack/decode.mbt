@@ -8,7 +8,7 @@ pub fn decode(data : Bytes) -> Value raise MsgPackError {
     raise InvalidData("Empty data")
   }
   let first_byte = data[0]
-  match first_byte.to_int() {
+  match first_byte {
     0xc0 => Nil
     0xc2 => Bool(false)
     0xc3 => Bool(true)
@@ -108,16 +108,27 @@ pub fn decode(data : Bytes) -> Value raise MsgPackError {
       if data.length() < 5 {
         raise InvalidData("Incomplete float32")
       }
-      // For now, treat float32 as 0.0 (placeholder)
-      Float(0.0)
+      let val_bits = (data[1].to_int() << 24) |
+        (data[2].to_int() << 16) |
+        (data[3].to_int() << 8) |
+        data[4].to_int()
+      Float32(Float::reinterpret_from_int(val_bits))
     }
     0xcb => {
       // float64
       if data.length() < 9 {
         raise InvalidData("Incomplete float64")
       }
-      // For now, treat float64 as 0.0 (placeholder)
-      Float(0.0)
+      let high = (data[1].to_int() << 24) |
+        (data[2].to_int() << 16) |
+        (data[3].to_int() << 8) |
+        data[4].to_int()
+      let low = (data[5].to_int() << 24) |
+        (data[6].to_int() << 16) |
+        (data[7].to_int() << 8) |
+        data[8].to_int()
+      let u64_bits = high.to_int64() * 0x100000000L + low.to_int64()
+      Float64(u64_bits.reinterpret_as_double())
     }
     0xc4 => {
       // bin8
@@ -284,17 +295,14 @@ pub fn decode(data : Bytes) -> Value raise MsgPackError {
 // Helper function to decode string bytes
 
 ///|
-fn decode_string_bytes(data : Bytes, offset : Int, length : Int) -> Value {
-  let str_bytes : Array[Byte] = []
-  for i = 0; i < length; i = i + 1 {
-    str_bytes.push(data[offset + i])
+fn decode_string_bytes(
+  data : Bytes,
+  offset : Int,
+  length : Int,
+) -> Value raise MsgPackError {
+  String(@utf8.decode(data[offset:offset + length])) catch {
+    _ => raise InvalidData("Invalid UTF-8 string")
   }
-  let mut str_val = ""
-  for byte in str_bytes {
-    let char_val = Int::unsafe_to_char(byte.to_int())
-    str_val = str_val + char_val.to_string()
-  }
-  String(str_val)
 }
 
 // Helper functions for decoding complex types
@@ -478,16 +486,27 @@ fn decode_value_at_offset(
       if offset + 4 >= data.length() {
         raise InvalidData("Incomplete float32")
       }
-      // For now, treat float32 as 0.0 (placeholder)
-      (Float(0.0), offset + 5)
+      let val_bits = (data[offset + 1].to_int() << 24) |
+        (data[offset + 2].to_int() << 16) |
+        (data[offset + 3].to_int() << 8) |
+        data[offset + 4].to_int()
+      (Float32(Float::reinterpret_from_int(val_bits)), offset + 5)
     }
     0xcb => {
       // float64
       if offset + 8 >= data.length() {
         raise InvalidData("Incomplete float64")
       }
-      // For now, treat float64 as 0.0 (placeholder)
-      (Float(0.0), offset + 9)
+      let high = (data[offset + 1].to_int() << 24) |
+        (data[offset + 2].to_int() << 16) |
+        (data[offset + 3].to_int() << 8) |
+        data[offset + 4].to_int()
+      let low = (data[offset + 5].to_int() << 24) |
+        (data[offset + 6].to_int() << 16) |
+        (data[offset + 7].to_int() << 8) |
+        data[offset + 8].to_int()
+      let u64_bits = (high.to_int64() << 32) | (low.to_int64() & 0xFFFFFFFFL)
+      (Float64(u64_bits.reinterpret_as_double()), offset + 9)
     }
     0xc4 => {
       // bin8
@@ -614,21 +633,14 @@ fn decode_value_at_offset(
         // negative fixint
         (Int(first_byte.to_int() - 256), offset + 1)
       } else if (first_byte.to_int() & 0xe0) == 0xa0 {
-        // fixstr
         let str_length = first_byte.to_int() & 0x1f
         if offset + str_length >= data.length() {
           raise InvalidData("Incomplete fixstr")
         }
-        let str_bytes : Array[Byte] = []
-        for i = 1; i <= str_length; i = i + 1 {
-          str_bytes.push(data[offset + i])
-        }
-        let mut str_val = ""
-        for byte in str_bytes {
-          let char_val = Int::unsafe_to_char(byte.to_int())
-          str_val = str_val + char_val.to_string()
-        }
-        (String(str_val), offset + str_length + 1)
+        (
+          decode_string_bytes(data, offset + 1, str_length),
+          offset + str_length + 1,
+        )
       } else if (first_byte.to_int() & 0xf0) == 0x90 {
         // fixarray
         let array_length = first_byte.to_int() & 0x0f

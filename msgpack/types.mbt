@@ -14,8 +14,10 @@ pub enum Value {
   Int64(Int64)
   // 64-bit unsigned integer
   UInt64(UInt64)
+  // Single precision floating point
+  Float32(Float)
   // Double precision floating point
-  Float(Double)
+  Float64(Double)
   // String
   String(String)
   // Binary data
@@ -32,7 +34,8 @@ pub impl ToJson for Value with to_json(self) {
     Map(m) => Json::object(m.map((_, value) => value.to_json()))
     Bool(b) => Json::boolean(b)
     Int(i) => Json::number(i.to_double())
-    Float(i) => Json::number(i)
+    Float32(i) => Json::number(i.to_double())
+    Float64(i) => Json::number(i)
     Int64(i) => Json::number(i.to_double())
     UInt64(i) => Json::number(i.to_double())
     String(s) => Json::string(s)
@@ -52,6 +55,11 @@ pub(all) suberror MsgPackError {
   InvalidData(String)
 }
 
+///|
+pub impl Show for MsgPackError with output(self, logger) {
+  logger.write_string(self.to_string())
+}
+
 // Implement to_string method for MsgPackError
 
 ///|
@@ -65,81 +73,81 @@ pub fn MsgPackError::to_string(self : MsgPackError) -> String {
 // MessagePack format code constants
 
 ///|
-pub const NIL_CODE : Int = 0xc0
+pub const NIL_CODE : Byte = 0xc0
 
 ///|
-pub const FALSE_CODE : Int = 0xc2
+pub const FALSE_CODE : Byte = 0xc2
 
 ///|
-pub const TRUE_CODE : Int = 0xc3
+pub const TRUE_CODE : Byte = 0xc3
 
 ///|
-pub const INT8_CODE : Int = 0xd0
+pub const INT8_CODE : Byte = 0xd0
 
 ///|
-pub const INT16_CODE : Int = 0xd1
+pub const INT16_CODE : Byte = 0xd1
 
 ///|
-pub const INT32_CODE : Int = 0xd2
+pub const INT32_CODE : Byte = 0xd2
 
 ///|
-pub const INT64_CODE : Int = 0xd3
+pub const INT64_CODE : Byte = 0xd3
 
 ///|
-pub const UINT64_CODE : Int = 0xcf
+pub const UINT64_CODE : Byte = 0xcf
 
 ///|
-pub const UINT32_CODE : Int = 0xce
+pub const UINT32_CODE : Byte = 0xce
 
 ///|
-pub const FLOAT32_CODE : Int = 0xca
+pub const FLOAT32_CODE : Byte = 0xca
 
 ///|
-pub const FLOAT64_CODE : Int = 0xcb
+pub const FLOAT64_CODE : Byte = 0xcb
 
 ///|
-pub const BIN16_CODE : Int = 0xc5
+pub const BIN16_CODE : Byte = 0xc5
 
 ///|
-pub const BIN32_CODE : Int = 0xc6
+pub const BIN32_CODE : Byte = 0xc6
 
 ///|
-pub const FIXSTR_CODE : Int = 0xa0
+pub const FIXSTR_CODE : Byte = 0xa0
 
 ///|
-pub const STR8_CODE : Int = 0xd9
+pub const STR8_CODE : Byte = 0xd9
 
 ///|
-pub const STR16_CODE : Int = 0xda
+pub const STR16_CODE : Byte = 0xda
 
 ///|
-pub const STR32_CODE : Int = 0xdb
+pub const STR32_CODE : Byte = 0xdb
 
 ///|
-pub const BIN8_CODE : Int = 0xc4
+pub const BIN8_CODE : Byte = 0xc4
 
 ///|
-pub const FIXARRAY_CODE : Int = 0x90
+pub const FIXARRAY_CODE : Byte = 0x90
 
 ///|
-pub const ARRAY16_CODE : Int = 0xdc
+pub const ARRAY16_CODE : Byte = 0xdc
 
 ///|
-pub const ARRAY32_CODE : Int = 0xdd
+pub const ARRAY32_CODE : Byte = 0xdd
 
 ///|
-pub const FIXMAP_CODE : Int = 0x80
+pub const FIXMAP_CODE : Byte = 0x80
 
 ///|
-pub const MAP16_CODE : Int = 0xde
+pub const MAP16_CODE : Byte = 0xde
 
 ///|
-pub const MAP32_CODE : Int = 0xdf
+pub const MAP32_CODE : Byte = 0xdf
 
 // Negative fixint 0xe0 - 0xff
 
 ///|
-pub const NEGATIVE_FIXINT_CODE : Int = 0xe0
+pub const NEGATIVE_FIXINT_CODE : Byte = 0xe0
 
 // Helper functions for creating values
 
@@ -169,8 +177,13 @@ pub fn uint64(u : UInt64) -> Value {
 }
 
 ///|
-pub fn float(f : Double) -> Value {
-  Float(f)
+pub fn float32(f : Float) -> Value {
+  Float32(f)
+}
+
+///|
+pub fn float64(f : Double) -> Value {
+  Float64(f)
 }
 
 ///|
