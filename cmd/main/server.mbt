@@ -360,6 +360,18 @@ async fn handle_pending_messages(
     // Process each pending message
     for entry in pending {
       let pending_msg = entry.msg
+
+      // Double check for timeout before processing
+      let now = @env.now()
+      let timeout = pending_msg.timeout_ms.unwrap_or(30000UL)
+      if now > pending_msg.timestamp && now - pending_msg.timestamp > timeout {
+        log_debug(
+          "Pending loop: dropping expired message \{pending_msg.id} (age: \{now - pending_msg.timestamp}ms)",
+        )
+        remove_pending_message(pending_msg) |> ignore
+        continue
+      }
+
       let cm = get_global_connection_manager()
       let mut sent = false
       let target_peer_ids = if pending_msg.is_broadcast() {

@@ -132,6 +132,16 @@ async fn send_message(
   target_addr : String,
   msg : Message,
 ) -> Bool noraise {
+  // Check if message is expired
+  let now = @env.now()
+  let timeout = msg.timeout_ms.unwrap_or(30000UL)
+  if now > msg.timestamp && now - msg.timestamp > timeout {
+    log_warn(
+      "send_message: dropped expired message \{msg.id} (age: \{now - msg.timestamp}ms)",
+    )
+    return false
+  }
+
   if target_addr.is_empty() {
     return false
   }
