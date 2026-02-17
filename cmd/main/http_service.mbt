@@ -26,14 +26,65 @@ fn handle_ws_incoming(bytes : Bytes) -> Unit {
       return
     }
   }
-  let msg : Message = Message::from_msgpack(msgpack_value) catch {
-    _ => {
-      log_warn("WS: invalid message payload")
-      return
+
+  // Check if it's a full Message or a simple chat payload
+  // Full message has "id" field
+  let is_full_message = match msgpack_value {
+    Map(m) => m.contains("id")
+    _ => false
+  }
+
+  if is_full_message {
+    let msg : Message = Message::from_msgpack(msgpack_value) catch {
+      _ => {
+        log_warn("WS: invalid message payload")
+        return
+      }
+    }
+    let msg = Message::{ ..msg, encrypted: false }
+    add_pending_message(msg)
+  } else {
+    // Handle simple chat payload: { target, kind, content }
+    match msgpack_value {
+      Map(m) => {
+        let target_val = m.get("target")
+        let kind_val = m.get("kind")
+        let content_val = m.get("content")
+
+        let target_id_opt = match target_val {
+          Some(String(t)) => if t == "broadcast" { None } else { Some(t) }
+          _ => None // Default to broadcast if missing? Or should we require it?
+          // Let's treat missing as broadcast for now to be flexible
+        }
+
+        let kind = match kind_val {
+          Some(String(k)) => k
+          _ => "text"
+        }
+        let body = content_val.unwrap_or(@msgpack.nil())
+
+        let config = get_config()
+        let my_id = config.id
+
+        let msg = Message::new(
+          kind~,
+          source_id=my_id,
+          target_id?=target_id_opt,
+          body~,
+          relay=1,
+          version=VERSION,
+          timeout_ms=30000UL,
+        )
+
+        let target_display = target_id_opt.unwrap_or("broadcast")
+        log_info(
+          "WS: Received chat message kind=\{kind} target=\{target_display}",
+        )
+        add_pending_message(msg)
+      }
+      _ => log_warn("WS: invalid payload format (expected Map)")
     }
   }
-  let msg = Message::{ ..msg, encrypted: false }
-  add_pending_message(msg)
 }
 
 ///|
