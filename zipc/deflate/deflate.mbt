@@ -216,6 +216,7 @@ fn write_u16_le_bytes(value : Int) -> Bytes {
   Bytes::from_array([b0.to_byte(), b1.to_byte()])
 }
 
+///|
 /// Create deflate-compressed file data for ZIP (DEPRECATED - use deflate_of_bytes)
 pub fn deflate_of_bytes(data : Bytes, level : Level) -> Bytes {
   match deflate_compress(data, level) {
