@@ -63,7 +63,7 @@ jobs:
 
       - name: Build binary
         run: |
-          moon build cmd/main --target ${{ matrix.build_target }}
+          moon build cmd/main --release --target ${{ matrix.build_target }}
 
       - name: Prepare artifact (Native)
         if: matrix.build_target == 'native'
