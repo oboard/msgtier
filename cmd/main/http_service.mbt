@@ -329,7 +329,7 @@ async fn handle_http_request(
   }
 
   match (request.meth, request.path) {
-    (Get, "/ws") => handle_ws_connection(request, conn)
+    (Get, "/api/ws") => handle_ws_connection(request, conn)
     (Get, "/api/config") => get_config_handler(conn)
     (Get, "/api/status") => status_handler(conn)
     (Get, "/api/download") => download_handler(conn)
@@ -485,7 +485,7 @@ async fn serve_static_handler(
   if @fs.exists(full_path) {
     serve_file(conn, full_path, path)
   } else {
-    notfound_handler(conn)
+    serve_file(conn, static_root + "/index.html", "/index.html")
   }
 }
 

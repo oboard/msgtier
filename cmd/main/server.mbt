@@ -404,11 +404,7 @@ async fn handle_pending_messages(
                 transport.protocol() + "://" + addr
               }
               if !target_addr.is_empty() && target_addr != "routed" {
-                let msg = match pending_msg.target_id {
-                  Some(_) => pending_msg
-                  None =>
-                    Message::{ ..pending_msg, target_id: Some(target_peer_id) }
-                }
+                let msg = pending_msg
                 log_debug(
                   "PendingMessage: lan addr=\{target_addr} id=\{msg.id}",
                 )
@@ -431,6 +427,10 @@ async fn handle_pending_messages(
             None => ()
           }
           if sent {
+            continue
+          }
+          // For broadcast messages, do not use unicast routing to avoid duplicates and type confusion
+          if pending_msg.is_broadcast() {
             continue
           }
           // Check if we have a route for this peer
@@ -484,10 +484,7 @@ async fn handle_pending_messages(
           None => ""
         }
         if !target_addr.is_empty() && target_addr != "routed" {
-          let msg = match pending_msg.target_id {
-            Some(_) => pending_msg
-            None => Message::{ ..pending_msg, target_id: Some(target_peer_id) }
-          }
+          let msg = pending_msg
           log_debug("PendingMessage: direct addr=\{target_addr} id=\{msg.id}")
           let success = send_message(transport, target_addr, msg)
           log_debug(
@@ -974,17 +971,11 @@ async fn handle_incoming_message(
     let known_peers = get_all_known_peers()
     for peer_addr in known_peers {
       if peer_addr != sender_addr && !peer_addr.has_prefix("0.0.0.0:") {
-        let broadcast_msg = match
-          get_global_peer_manager().get_peer_id_by_address(peer_addr) {
-          Some(peer_id) =>
-            Message::{
-              ..msg,
-              relay: msg.relay + 1,
-              visited: updated_visited,
-              target_id: Some(peer_id),
-            }
-          None =>
-            Message::{ ..msg, relay: msg.relay + 1, visited: updated_visited }
+        let broadcast_msg = Message::{
+          ..msg,
+          relay: msg.relay + 1,
+          visited: updated_visited,
+          target_id: None,
         }
         ignore(send_message(transport, peer_addr, broadcast_msg))
         // println("[broadcast]\t\{msg.from}(\{sender_addr}) -> \{peer_addr}")
