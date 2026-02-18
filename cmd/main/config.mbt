@@ -23,6 +23,20 @@ async fn Config::from_file(path : String) -> Config {
 fn get_config() -> Config {
   match global_config.val {
     Some(config) => config
-    None => abort("Missing config")
+    None =>
+      {
+        id: "",
+        secret: "",
+        peers: [],
+        listeners: [],
+        scripts: None,
+        web_api: None,
+        metadata: None,
+        log: None,
+        port: None,
+        relay_network_whitelist: None,
+        relay_all_peer_rpc: None,
+        foreign_relay_bps_limit: None,
+      }
   }
 }

@@ -1,0 +1,13 @@
+import {
+  "oboard/msgtier/zipc/crc32",
+  "oboard/msgtier/zipc/adler32",
+  "oboard/msgtier/zipc/huffman",
+  "gmlewis/flate",
+  "gmlewis/io",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/buffer",
+}
+
+options(
+  "is-main": false,
+)
