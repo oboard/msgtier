@@ -13,4 +13,4 @@ pnpm i
 pnpm build
 
 rm -rf ../dist.zip
-zip -r ../dist.zip dist
+zip -r -9 ../dist.zip dist
