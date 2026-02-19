@@ -40,6 +40,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libcurl4-openssl-dev
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Build Web
+        run: |
+          cd web
+          chmod +x update.sh
+          ./update.sh
+
       - name: Install MoonBit
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/${{ matrix.install_script }} | bash

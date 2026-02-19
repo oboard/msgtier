@@ -5,7 +5,7 @@ if [ -d "msgtier-web" ]; then
   cd msgtier-web
   git pull
 else
-  git clone git@github.com:oboard/msgtier-web
+  git clone https://github.com/oboard/msgtier-web.git
   cd msgtier-web
 fi
 
