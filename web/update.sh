@@ -11,6 +11,6 @@ fi
 
 bun i
 bun run build
-
-rm -rf ../dist.zip
-zip -r -9 ../dist.zip dist
+cd dist
+rm -rf ../../dist.zip
+zip -r -9 ../../dist.zip *

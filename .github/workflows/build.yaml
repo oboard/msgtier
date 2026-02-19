@@ -56,8 +56,10 @@ jobs:
           cd web/msgtier-web
           bun install
           bun run build
-          rm -rf ../dist.zip
-          zip -r -9 ../dist.zip dist
+          cd dist
+          rm -rf ../../dist.zip
+          zip -r -9 ../../dist.zip *
+
 
       - name: Install MoonBit
         run: |
