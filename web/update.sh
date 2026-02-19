@@ -1,0 +1,1 @@
+wget https://nightly.link/oboard/msgtier-web/workflows/build/main/dist.zip

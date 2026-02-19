@@ -1,0 +1,13 @@
+import {
+  "oboard/msgtier/zipc",
+}
+
+options(
+  "pre-build": [
+    {
+      "command": ":embed -i $input -o $output --binary",
+      "input": "dist.zip",
+      "output": "dist.zip.mbt",
+    },
+  ],
+)

@@ -13,7 +13,6 @@ async fn main {
         print_usage()
         return
       }
-      ["web", "update"] => handle_web_update()
       ["--version"] => {
         log_info("Version: \{VERSION}")
         return

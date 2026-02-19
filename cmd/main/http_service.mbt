@@ -473,35 +473,25 @@ async fn serve_static_handler(
   conn : @http.ServerConnection,
   path : String,
 ) -> Unit {
-  let static_root = "web/dist"
-  let path = if path == "/" { "/index.html" } else { path }
-
+  let path = if path == "/" { "index.html" } else { path }
   // Basic security check
   if path.contains("..") {
     notfound_handler(conn)
     return
   }
-  let full_path = static_root + path
-  if @fs.exists(full_path) {
-    serve_file(conn, full_path, path)
+  if @web.dist.get(path[1:]) is Some(bytes) {
+    serve_file(conn, bytes, path)
   } else {
-    serve_file(conn, static_root + "/index.html", "/index.html")
+    serve_file(conn, @web.dist["index.html"], "index.html")
   }
 }
 
 ///|
 async fn serve_file(
   conn : @http.ServerConnection,
-  file_path : String,
+  file : Bytes,
   path : String,
 ) -> Unit {
-  let file = @fs.open(file_path, mode=ReadOnly) catch {
-    _ => {
-      notfound_handler(conn)
-      return
-    }
-  }
-  defer file.close()
   try {
     let content_type = match path {
       _ as p if p.has_suffix(".html") => "text/html"
@@ -516,12 +506,46 @@ async fn serve_file(
     }
     conn
     ..send_response(200, "OK", extra_headers={ "Content-Type": content_type })
-    ..write_reader(file)
+    ..write(file)
     .end_response()
   } catch {
     _ => ()
   }
 }
+
+///|
+// async fn serve_file(
+//   conn : @http.ServerConnection,
+//   file_path : String,
+//   path : String,
+// ) -> Unit {
+//   let file = @fs.open(file_path, mode=ReadOnly) catch {
+//     _ => {
+//       notfound_handler(conn)
+//       return
+//     }
+//   }
+//   defer file.close()
+//   try {
+//     let content_type = match path {
+//       _ as p if p.has_suffix(".html") => "text/html"
+//       _ as p if p.has_suffix(".css") => "text/css"
+//       _ as p if p.has_suffix(".js") => "text/javascript"
+//       _ as p if p.has_suffix(".json") => "application/json"
+//       _ as p if p.has_suffix(".png") => "image/png"
+//       _ as p if p.has_suffix(".jpg") || p.has_suffix(".jpeg") => "image/jpeg"
+//       _ as p if p.has_suffix(".svg") => "image/svg+xml"
+//       _ as p if p.has_suffix(".ico") => "image/x-icon"
+//       _ => "application/octet-stream"
+//     }
+//     conn
+//     ..send_response(200, "OK", extra_headers={ "Content-Type": content_type })
+//     ..write_reader(file)
+//     .end_response()
+//   } catch {
+//     _ => ()
+//   }
+// }
 
 ///|
 async fn get_config_handler(conn : @http.ServerConnection) -> Unit {
