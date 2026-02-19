@@ -45,11 +45,19 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Checkout msgtier-web
+        uses: actions/checkout@v4
+        with:
+          repository: oboard/msgtier-web
+          path: web/msgtier-web
+
       - name: Build Web
         run: |
-          cd web
-          chmod +x update.sh
-          ./update.sh
+          cd web/msgtier-web
+          bun install
+          bun run build
+          rm -rf ../dist.zip
+          zip -r -9 ../dist.zip dist
 
       - name: Install MoonBit
         run: |
