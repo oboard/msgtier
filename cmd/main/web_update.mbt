@@ -15,6 +15,9 @@ async fn handle_web_update() -> Unit {
 ///|
 async fn update_web_dist(archive : @zipc.Archive) -> Unit {
   let output_root = "web/dist"
+  if @fs.exists(output_root) {
+    @fs.rmdir(output_root, recursive=true)
+  }
   ensure_dir(output_root)
   let mut written = 0
   let mut skipped = 0
