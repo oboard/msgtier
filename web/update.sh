@@ -5,12 +5,12 @@ if [ -d "msgtier-web" ]; then
   cd msgtier-web
   git pull
 else
-  git clone https://github.com/oboard/msgtier-web.git
+  git clone git@github.com:oboard/msgtier-web
   cd msgtier-web
 fi
 
-pnpm i
-pnpm build
+bun i
+bun run build
 
 rm -rf ../dist.zip
 zip -r -9 ../dist.zip dist
