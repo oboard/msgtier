@@ -43,9 +43,9 @@ async fn run_with_config(
   for peer_url in config.peers {
     add_known_peer(peer_url)
   }
-  init_foreign_network_manager(config)
+  init_foreign_network_manager()
   start_listeners(root, config.listeners, id)
-  start_http_api(root, config.web_api, config)
+  start_http_api(root, config.web_api)
 }
 
 ///|
@@ -102,15 +102,11 @@ fn create_transport(scheme : String, host : String) -> &Transport raise {
 }
 
 ///|
-fn start_http_api(
-  root : @async.TaskGroup[Unit],
-  web_api : String?,
-  config : Config,
-) -> Unit {
+fn start_http_api(root : @async.TaskGroup[Unit], web_api : String?) -> Unit {
   if web_api is Some(addr) {
     let _ : @async.Task[Unit] = root.spawn(async fn() {
       log_info("HTTP API listening on http://\{addr}")
-      start_http_service(addr, config)
+      start_http_service(addr)
     })
   }
 }

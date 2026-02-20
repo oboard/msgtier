@@ -205,7 +205,8 @@ async fn handle_object_upload(
   conn : @http.ServerConnection,
 ) -> Unit {
   let bytes = body.read_all().binary()
-  let id = save_object(bytes)
+  let id = @uuidm.v4().to_string_simple()
+  save_object(id, bytes)
 
   let m = Map::new()
   m["id"] = id.to_json()
@@ -276,41 +277,62 @@ async fn handle_object_download(
       match peer_id {
         Some(pid) => {
           log_info("ObjectStore: fetching object id=\{id} from peer=\{pid}")
-          let req_id = @uuidm.v4().to_string()
-          add_pending_request(req_id)
 
-          let msg = Message::new(
-            kind="object_request",
-            source_id=get_config().id,
-            target_id=pid,
-            payload=req_id,
-            body=@msgpack.string(id),
-            relay=1,
-          )
-          add_pending_message(msg)
+          // Start streaming response
+          conn.send_response(200, "OK", extra_headers={
+            "Content-Type": "application/octet-stream",
+            // No Content-Length implies chunked transfer or connection close
+          })
 
-          match wait_for_response(req_id, 10000) {
-            Some((data, _)) => {
-              log_info(
-                "ObjectStore: fetched object id=\{id} size=\{data.length()}",
-              )
-              // Save to local store for future requests
-              // let _ = save_object(data, id~)
+          let chunk_size = 65536
+          let mut offset = 0L
 
-              conn
-              ..send_response(200, "OK", extra_headers={
-                "Content-Type": "application/octet-stream",
-                "Content-Length": data.length().to_string(),
-              })
-              ..write(data)
-              .end_response()
+          for {
+            let req_id = @uuidm.v4().to_string()
+            add_pending_request(req_id)
+
+            let m : Map[String, @msgpack.Value] = Map::new()
+            m["id"] = @msgpack.string(id)
+            m["offset"] = @msgpack.int64(offset)
+            m["size"] = @msgpack.int(chunk_size)
+
+            let msg = Message::new(
+              kind="file_chunk_request",
+              source_id=get_config().id,
+              target_id=pid,
+              payload=req_id,
+              body=@msgpack.map(m),
+              relay=1,
+            )
+            add_pending_message(msg)
+
+            match wait_for_response(req_id, 10000) {
+              Some((data, headers)) => {
+                if headers.get("status") == Some("404") {
+                  // If first chunk 404, we might want to error differently, 
+                  // but we already sent 200 OK. 
+                  // So we just stop.
+                  break
+                }
+
+                if data.length() == 0 {
+                  break
+                }
+
+                conn.write(data)
+                offset = offset + data.length().to_int64()
+
+                if data.length() < chunk_size {
+                  break
+                }
+              }
+              None => {
+                log_warn("ObjectStore: timeout fetching chunk offset=\{offset}")
+                break
+              }
             }
-            None =>
-              conn
-              ..send_response(404, "Not Found", extra_headers={})
-              ..write("Object not found on peer (timeout)")
-              .end_response()
           }
+          conn.end_response()
         }
         None =>
           conn
@@ -494,9 +516,9 @@ async fn handle_http_request(
 }
 
 ///|
-async fn start_http_service(addr : String, config : Config) -> Unit {
+async fn start_http_service(addr : String) -> Unit {
   // Store the config globally for handlers to access
-  global_config.val = Some(config)
+  init_upload_dir()
   for {
     try {
       let server = @http.Server::new(@socket.Addr::parse(addr), reuse_addr=true)

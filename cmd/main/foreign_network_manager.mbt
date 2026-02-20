@@ -44,8 +44,8 @@ pub fn get_global_foreign_network_manager() -> ForeignNetworkManager {
 }
 
 ///|
-fn init_foreign_network_manager(config : Config) -> Unit {
-  let limit = config.foreign_relay_bps_limit.unwrap_or(0)
+fn init_foreign_network_manager() -> Unit {
+  let limit = get_config().foreign_relay_bps_limit.unwrap_or(0)
   global_foreign_network_manager.val = ForeignNetworkManager::new(
     relay_bps_limit=limit,
   )

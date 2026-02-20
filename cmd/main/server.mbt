@@ -1203,6 +1203,44 @@ async fn handle_incoming_message(
         })
       }
     }
+    { kind: "file_chunk_request", body: Map(m), .. } => {
+      let object_id = match m.get("id") {
+        Some(String(s)) => s
+        _ => ""
+      }
+      let offset = match m.get("offset") {
+        Some(Int64(i)) => i
+        Some(Int(i)) => i.to_int64()
+        Some(UInt64(i)) => i.reinterpret_as_int64()
+        _ => 0L
+      }
+      let size = match m.get("size") {
+        Some(Int(i)) => i
+        Some(Int64(i)) => i.to_int()
+        _ => 65536 // Default 64KB
+      }
+      root.spawn_bg(async fn() {
+        match get_object_chunk(object_id, offset, size) {
+          Some(data) =>
+            send_response_message(
+              id,
+              local_addr,
+              msg.source_id,
+              msg.payload.unwrap_or(msg.id),
+              @msgpack.binary(data),
+            )
+          None =>
+            // Send empty binary to indicate EOF or error
+            send_response_message(
+              id,
+              local_addr,
+              msg.source_id,
+              msg.payload.unwrap_or(msg.id),
+              @msgpack.binary(b""),
+            )
+        }
+      })
+    }
     { kind: "file_request", body, .. } => {
       let object_id = match body {
         String(s) => s

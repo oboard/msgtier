@@ -2,7 +2,7 @@
   "name": "oboard/msgtier",
   "version": "0.1.0",
   "deps": {
-    "moonbitlang/async": "0.16.4",
+    "moonbitlang/async": "0.16.6",
     "tonyfettes/unicode": "0.3.0",
     "moonbitlang/x": "0.4.40",
     "gmlewis/flate": "0.36.2",

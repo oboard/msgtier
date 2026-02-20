@@ -11,7 +11,7 @@ let global_object_store : ObjectStore = { objects: {} }
 pub fn register_object(path : String, id? : String) -> String {
   let object_id = match id {
     Some(id) => id
-    None => @uuidm.v4().to_string()
+    None => @uuidm.v4().to_string_simple()
   }
   global_object_store.objects[object_id] = path
   object_id
@@ -45,8 +45,19 @@ pub async fn handle_object_request(msg : Message) -> Unit {
         "ObjectStore: sent response for object id=\{object_id} to=\{msg.source_id}",
       )
     }
-    None => log_warn("ObjectStore: requested object id=\{object_id} not found")
-    // Optionally send 404 response
+    None => {
+      log_warn("ObjectStore: requested object id=\{object_id} not found")
+      // Send 404 response
+      let response_msg = Message::new(
+        kind="object_response",
+        source_id=get_config().id,
+        target_id=msg.source_id,
+        payload=msg.payload.unwrap_or(""),
+        body=@msgpack.string("not_found"),
+        relay=1,
+      )
+      add_pending_message(response_msg)
+    }
   }
 }
 
@@ -57,26 +68,85 @@ pub fn handle_object_response(msg : Message) -> Unit {
     return
   }
 
-  let data = match msg.body {
-    Binary(b) => b
+  let (data, headers) = match msg.body {
+    Binary(b) => (b, {})
+    String("not_found") => (b"", { "status": "404" })
     _ => return
   }
 
   log_info(
-    "ObjectStore: received response for request id=\{request_id} size=\{data.length()}",
+    "ObjectStore: received response for request id=\{request_id} size=\{data.length()} headers=\{headers}",
   )
-  resolve_request(request_id, {}, data)
+  resolve_request(request_id, headers, data)
+}
+
+///|
+let default_upload_dir : Ref[String] = Ref::new("")
+
+///|
+async fn init_upload_dir() -> Unit {
+  default_upload_dir.val = @fs.tmpdir(prefix="msgtier")
+}
+
+///|
+fn get_upload_dir() -> String {
+  match get_config().upload_dir {
+    Some(dir) => dir
+    None => default_upload_dir.val
+  }
+}
+
+///|
+pub async fn get_object_path(id : String) -> String? {
+  let dir = get_upload_dir()
+  let path = dir + "/" + id
+  if @fs.exists(path) {
+    Some(path)
+  } else {
+    None
+  }
 }
 
 ///|
 pub async fn get_object(id : String) -> Bytes? {
-  match global_object_store.objects.get(id) {
+  match get_object_path(id) {
+    Some(path) => Some(@fs.read_file(path).binary()) catch { _ => None }
+    None => None
+  }
+}
+
+///|
+fn slice_bytes(b : Bytes, start : Int, end : Int) -> Bytes {
+  let len = end - start
+  if len <= 0 {
+    return b""
+  }
+  let arr = Array::make(len, b'\x00')
+  for i = 0; i < len; i = i + 1 {
+    arr[i] = b[start + i]
+  }
+  Bytes::from_array(arr)
+}
+
+///|
+async fn get_object_chunk(id : String, offset : Int64, size : Int) -> Bytes? {
+  match get_object_path(id) {
     Some(path) =>
       try {
-        if @fs.exists(path) {
-          Some(@fs.read_file(path).binary())
-        } else {
+        // Temporary implementation using read_file until fs API is confirmed
+        let all_data = @fs.read_file(path).binary()
+        let len = all_data.length().to_int64()
+        if offset >= len {
           None
+        } else {
+          let end = offset + size.to_int64()
+          let actual_end = if end > len { len } else { end }
+          let chunk = slice_bytes(
+            all_data,
+            offset.to_int(),
+            actual_end.to_int(),
+          )
+          Some(chunk)
         }
       } catch {
         _ => None
@@ -86,27 +156,13 @@ pub async fn get_object(id : String) -> Bytes? {
 }
 
 ///|
-pub async fn save_object(data : Bytes, id? : String) -> String {
-  let object_id = match id {
-    Some(id) => id
-    None => @uuidm.v4().to_string()
+pub async fn save_object(id : String, data : Bytes) -> Unit {
+  let dir = get_upload_dir()
+  if not(@fs.exists(dir)) {
+    @fs.mkdir(dir, permission=0o644)
   }
-
-  let upload_dir = get_config().upload_dir.unwrap_or("uploads")
-  // Ensure uploads directory exists
-  if !@fs.exists(upload_dir) {
-    @fs.mkdir(upload_dir, permission=493)
-  }
-
-  let path = upload_dir + "/" + object_id
-  try {
-    @fs.write_file(path, data)
-    global_object_store.objects[object_id] = path
-  } catch {
-    _ => log_error("Failed to save object to " + path)
-  }
-
-  object_id
+  let path = dir + "/" + id
+  @fs.write_file(path, data, create=0o644)
 }
 
 ///|

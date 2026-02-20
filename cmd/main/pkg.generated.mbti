@@ -19,6 +19,8 @@ pub fn get_global_foreign_network_manager() -> ForeignNetworkManager
 
 pub async fn get_object(String) -> Bytes?
 
+pub async fn get_object_path(String) -> String?
+
 pub async fn handle_object_request(Message) -> Unit
 
 pub fn handle_object_response(Message) -> Unit
@@ -31,7 +33,7 @@ pub fn register_object(String, id? : String) -> String
 
 pub async fn relay_message(&Transport, String, Message, String, allow_queueing? : Bool) -> Bool noraise
 
-pub async fn save_object(Bytes, id? : String) -> String
+pub async fn save_object(String, Bytes) -> Unit
 
 pub fn set_pending_message_broadcast(String) -> Unit
 
