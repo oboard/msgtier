@@ -1,0 +1,3 @@
+[submodule "web/msgtier-web"]
+	path = web/msgtier-web
+	url = https://github.com/oboard/msgtier-web.git

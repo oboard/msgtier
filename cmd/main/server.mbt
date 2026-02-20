@@ -495,31 +495,7 @@ async fn handle_pending_messages(
           }
         }
         if sent {
-          let required_protocols = []
-          match get_global_peer_manager().get_peer(target_peer_id) {
-            Some(peer) =>
-              for addr in peer.addresses {
-                let mut parsed : Address? = None
-                try {
-                  parsed = Some(Address::parse(addr))
-                } catch {
-                  _ => ()
-                }
-                match parsed {
-                  Some(parsed_addr) => {
-                    let proto = parsed_addr.protocol.to_string()
-                    if !required_protocols.contains(proto) {
-                      required_protocols.push(proto)
-                    }
-                  }
-                  None => ()
-                }
-              }
-            None => ()
-          }
-          if required_protocols.is_empty() {
-            required_protocols.push(transport.protocol())
-          }
+          let required_protocols = [transport.protocol()]
           log_debug(
             "DEBUG: pending mark sent id=\{pending_msg.id} protocol=\{transport.protocol()}",
           )

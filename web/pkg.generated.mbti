@@ -2,7 +2,7 @@
 package "oboard/msgtier/web"
 
 // Values
-pub let dist : Map[String, Bytes]
+pub let dist : Map[StringView, Bytes]
 
 // Errors
 

@@ -220,6 +220,44 @@ async fn handle_object_upload(
 }
 
 ///|
+async fn handle_object_registration(
+  body : &@io.Reader,
+  conn : @http.ServerConnection,
+) -> Unit {
+  let bytes = body.read_all().binary()
+  let json_str = @utf8.decode(bytes)
+  let json_val = @json.parse(json_str) catch {
+    _ => {
+      conn.send_response(400, "Bad Request")
+      return
+    }
+  }
+
+  let path = match json_val {
+    Object({ "path": String(s), .. }) => s
+    _ => ""
+  }
+
+  if path == "" {
+    conn.send_response(400, "Missing path")
+    return
+  }
+
+  let id = register_object(path)
+
+  let m = Map::new()
+  m["id"] = id.to_json()
+  let resp_json = m.to_json().stringify()
+
+  conn
+  ..send_response(200, "OK", extra_headers={
+    "Content-Type": "application/json",
+  })
+  ..write(resp_json)
+  .end_response()
+}
+
+///|
 async fn handle_object_download(
   id : String,
   peer_id : String?,
@@ -257,7 +295,7 @@ async fn handle_object_download(
                 "ObjectStore: fetched object id=\{id} size=\{data.length()}",
               )
               // Save to local store for future requests
-              let _ = save_object(data, id~)
+              // let _ = save_object(data, id~)
 
               conn
               ..send_response(200, "OK", extra_headers={
@@ -291,6 +329,10 @@ async fn handle_http_request(
 ) -> Unit {
   if request.meth == Post && request.path == "/api/object" {
     handle_object_upload(request, body, conn)
+    return
+  }
+  if request.meth == Post && request.path == "/api/object/register" {
+    handle_object_registration(body, conn)
     return
   }
   if request.meth == Get && request.path.has_prefix("/api/object/") {

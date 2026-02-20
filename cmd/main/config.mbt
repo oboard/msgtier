@@ -12,6 +12,7 @@ struct Config {
   relay_network_whitelist : Array[String]?
   relay_all_peer_rpc : Bool?
   foreign_relay_bps_limit : Int?
+  upload_dir : String?
 } derive(Show, ToJson, FromJson)
 
 ///|
@@ -37,6 +38,7 @@ fn get_config() -> Config {
         relay_network_whitelist: None,
         relay_all_peer_rpc: None,
         foreign_relay_bps_limit: None,
+        upload_dir: None,
       }
   }
 }

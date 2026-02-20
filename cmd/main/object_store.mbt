@@ -1,24 +1,20 @@
 ///|
 struct ObjectStore {
-  mut root_dir : String
+  // Mapping from object ID to local file path
+  objects : Map[String, String]
 }
 
 ///|
-let global_object_store : ObjectStore = { root_dir: "data/objects" }
+let global_object_store : ObjectStore = { objects: {} }
 
 ///|
-pub async fn init_object_store(dir? : String) -> Unit {
-  match dir {
-    Some(d) => global_object_store.root_dir = d
-    None => ()
+pub fn register_object(path : String, id? : String) -> String {
+  let object_id = match id {
+    Some(id) => id
+    None => @uuidm.v4().to_string()
   }
-
-  let d = global_object_store.root_dir
-  if not(@fs.exists(d)) {
-    @fs.mkdir(d, permission=0o755) catch {
-      _ => log_warn("Failed to create object store directory: \{d}")
-    }
-  }
+  global_object_store.objects[object_id] = path
+  object_id
 }
 
 ///|
@@ -74,15 +70,18 @@ pub fn handle_object_response(msg : Message) -> Unit {
 
 ///|
 pub async fn get_object(id : String) -> Bytes? {
-  let path = global_object_store.root_dir + "/" + id
-  try {
-    if @fs.exists(path) {
-      Some(@fs.read_file(path).binary())
-    } else {
-      None
-    }
-  } catch {
-    _ => None
+  match global_object_store.objects.get(id) {
+    Some(path) =>
+      try {
+        if @fs.exists(path) {
+          Some(@fs.read_file(path).binary())
+        } else {
+          None
+        }
+      } catch {
+        _ => None
+      }
+    None => None
   }
 }
 
@@ -93,15 +92,24 @@ pub async fn save_object(data : Bytes, id? : String) -> String {
     None => @uuidm.v4().to_string()
   }
 
-  let path = global_object_store.root_dir + "/" + object_id
-  @fs.write_file(path, data) catch {
-    e => log_warn("Failed to save object: \{e}")
+  let upload_dir = get_config().upload_dir.unwrap_or("uploads")
+  // Ensure uploads directory exists
+  if !@fs.exists(upload_dir) {
+    @fs.mkdir(upload_dir, permission=493)
   }
+
+  let path = upload_dir + "/" + object_id
+  try {
+    @fs.write_file(path, data)
+    global_object_store.objects[object_id] = path
+  } catch {
+    _ => log_error("Failed to save object to " + path)
+  }
+
   object_id
 }
 
 ///|
-pub async fn has_object(id : String) -> Bool {
-  let path = global_object_store.root_dir + "/" + id
-  @fs.exists(path)
+pub fn has_object(id : String) -> Bool {
+  global_object_store.objects.contains(id)
 }

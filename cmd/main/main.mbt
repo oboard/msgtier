@@ -39,7 +39,6 @@ async fn run_with_config(
   log_debug(config.to_json().stringify(indent=2))
   log_debug("DEBUG: My Public Key: \{bytes_to_hex(get_public_key())}")
   let id = config.id
-  init_object_store(dir="data/objects_" + id)
   compute_and_store_shared_secret(id, get_public_key())
   for peer_url in config.peers {
     add_known_peer(peer_url)

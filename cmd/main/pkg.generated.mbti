@@ -23,11 +23,11 @@ pub async fn handle_object_request(Message) -> Unit
 
 pub fn handle_object_response(Message) -> Unit
 
-pub async fn has_object(String) -> Bool
+pub fn has_object(String) -> Bool
 
 pub fn hash_secret(String) -> Bytes
 
-pub async fn init_object_store(dir? : String) -> Unit
+pub fn register_object(String, id? : String) -> String
 
 pub async fn relay_message(&Transport, String, Message, String, allow_queueing? : Bool) -> Bool noraise
 

@@ -33,7 +33,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      
+        with:
+          submodules: recursive
+
       - name: Install system dependencies (Linux)
         if: matrix.build_target == 'native' && matrix.os == 'ubuntu-latest'
         run: |
@@ -44,12 +46,6 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
-      - name: Checkout msgtier-web
-        uses: actions/checkout@v4
-        with:
-          repository: oboard/msgtier-web
-          path: web/msgtier-web
 
       - name: Build Web
         run: |

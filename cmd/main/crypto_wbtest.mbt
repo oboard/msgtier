@@ -93,6 +93,7 @@ test "pk_persistence_fallback" {
     relay_network_whitelist: None,
     relay_all_peer_rpc: None,
     foreign_relay_bps_limit: None,
+    upload_dir: None,
   })
 
   // 1. Initialize local keypair (needed for ECDH)
