@@ -10,7 +10,7 @@ pub struct Url {
   mut path : Path
   mut query : String?
   mut fragment : String?
-}
+} derive(Debug)
 
 ///|
 pub impl ToJson for Url with to_json(self) -> Json {

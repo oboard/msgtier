@@ -1,6 +1,6 @@
 ///|
 /// Represents an IPv6 address as 8 16-bit pieces
-struct IPv6(FixedArray[UInt16])
+struct IPv6(FixedArray[UInt16]) derive(Debug)
 
 ///|
 /// Serialize IPv6 address per WHATWG URL spec

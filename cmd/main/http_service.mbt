@@ -262,27 +262,31 @@ async fn handle_object_registration(
 async fn handle_object_download(
   id : String,
   peer_id : String?,
+  filename : String?,
   conn : @http.ServerConnection,
 ) -> Unit {
+  let headers = { "Content-Type": "application/octet-stream" }
+  match filename {
+    Some(fname) =>
+      headers["Content-Disposition"] = "attachment; filename=\"\{fname}\""
+    None => ()
+  }
+
   match get_object(id) {
-    Some(data) =>
+    Some(data) => {
+      headers["Content-Length"] = data.length().to_string()
       conn
-      ..send_response(200, "OK", extra_headers={
-        "Content-Type": "application/octet-stream",
-        "Content-Length": data.length().to_string(),
-      })
+      ..send_response(200, "OK", extra_headers=headers)
       ..write(data)
       .end_response()
+    }
     None =>
       match peer_id {
         Some(pid) => {
           log_info("ObjectStore: fetching object id=\{id} from peer=\{pid}")
 
           // Start streaming response
-          conn.send_response(200, "OK", extra_headers={
-            "Content-Type": "application/octet-stream",
-            // No Content-Length implies chunked transfer or connection close
-          })
+          conn.send_response(200, "OK", extra_headers=headers)
 
           let chunk_size = 65536
           let mut offset = 0L
@@ -312,6 +316,9 @@ async fn handle_object_download(
                   // If first chunk 404, we might want to error differently, 
                   // but we already sent 200 OK. 
                   // So we just stop.
+                  log_warn(
+                    "ObjectStore: chunk not found (404) from peer=\{pid}",
+                  )
                   break
                 }
 
@@ -349,46 +356,34 @@ async fn handle_http_request(
   body : &@io.Reader,
   conn : @http.ServerConnection,
 ) -> Unit {
-  if request.meth == Post && request.path == "/api/object" {
+  if request is { meth: Post, path: "/api/object", .. } {
     handle_object_upload(request, body, conn)
     return
   }
-  if request.meth == Post && request.path == "/api/object/register" {
+  if request is { meth: Post, path: "/api/object/register", .. } {
     handle_object_registration(body, conn)
     return
   }
-  if request.meth == Get && request.path.has_prefix("/api/object/") {
-    let path_suffix = request.path[12:].to_string()
-    let mut id = path_suffix
-    let mut query = ""
+  
+  if request is { meth: Get, path, .. } &&
+    @url.Url::parse("http://localhost" +path)
+    is Some({ path: Segments(["api", "object", id]), query, .. }) {
 
-    // Find '?' index manually since index_of is missing
-    let mut q_idx = -1
-    for i = 0; i < path_suffix.length(); i = i + 1 {
-      if path_suffix[i] == '?' {
-        q_idx = i
-        break
-      }
-    }
-
-    if q_idx != -1 {
-      id = path_suffix[:q_idx].to_string()
-      query = path_suffix[q_idx + 1:].to_string()
-    }
-
-    let mut peer_id : String? = None
-    if query != "" {
-      // Simple query parser for "peer=..."
+    let mut peer_id = None
+    let mut filename = None
+    if query is Some(query) {
       let parts = query.split("&")
       for part in parts {
-        if part.has_prefix("peer=") {
-          peer_id = Some(part[5:].to_string())
-          break
+        let part_str = part.to_string()
+        if part_str.has_prefix("peer=") {
+          peer_id = Some(part_str[5:].to_string())
+        } else if part_str.has_prefix("filename=") {
+          filename = Some(part_str[9:].to_string())
         }
       }
     }
 
-    handle_object_download(id, peer_id, conn)
+    handle_object_download(id, peer_id, filename, conn)
     return
   }
 

@@ -10,3 +10,6 @@ config
 references/
 examples/
 web/dist/
+
+cache.json
+msgtier-*

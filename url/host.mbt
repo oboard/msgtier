@@ -6,7 +6,7 @@ pub enum Host {
   IPv4(IPv4)
   IPv6(IPv6)
   Opaque(String)
-} derive(ToJson)
+} derive(Debug, ToJson)
 
 ///|
 pub impl FromJson for Host with from_json(json, path) raise @json.JsonDecodeError {

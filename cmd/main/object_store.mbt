@@ -62,6 +62,64 @@ pub async fn handle_object_request(msg : Message) -> Unit {
 }
 
 ///|
+pub async fn handle_file_chunk_request(msg : Message) -> Unit {
+  let (id, offset, size) = match msg.body {
+    Map(m) => {
+      let id = match m.get("id") {
+        Some(String(s)) => s
+        _ => return
+      }
+      let offset = match m.get("offset") {
+        Some(Int64(i)) => i
+        Some(UInt64(i)) => i.reinterpret_as_int64()
+        Some(Int(i)) => i.to_int64()
+        _ => 0L
+      }
+      let size = match m.get("size") {
+        Some(Int(i)) => i
+        Some(Int64(i)) => i.to_int()
+        Some(UInt64(i)) => i.reinterpret_as_int64().to_int()
+        _ => 65536
+      }
+      (id, offset, size)
+    }
+    _ => return
+  }
+
+  log_info(
+    "ObjectStore: received chunk request for object id=\{id} offset=\{offset} size=\{size} from=\{msg.source_id}",
+  )
+
+  let data_opt = get_object_chunk(id, offset, size)
+
+  match data_opt {
+    Some(data) => {
+      let response_msg = Message::new(
+        kind="object_response",
+        source_id=get_config().id,
+        target_id=msg.source_id,
+        payload=msg.payload.unwrap_or(""),
+        body=@msgpack.binary(data),
+        relay=1,
+      )
+      add_pending_message(response_msg)
+    }
+    None => {
+      log_warn("ObjectStore: requested chunk for object id=\{id} not found")
+      let response_msg = Message::new(
+        kind="object_response",
+        source_id=get_config().id,
+        target_id=msg.source_id,
+        payload=msg.payload.unwrap_or(""),
+        body=@msgpack.string("not_found"),
+        relay=1,
+      )
+      add_pending_message(response_msg)
+    }
+  }
+}
+
+///|
 pub fn handle_object_response(msg : Message) -> Unit {
   let request_id = msg.payload.unwrap_or("")
   if request_id == "" {

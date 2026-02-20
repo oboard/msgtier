@@ -1,8 +1,8 @@
 ///|
-enum Path {
+pub enum Path {
   Opaque(String)
   Segments(Array[String])
-}
+} derive(Debug)
 
 ///|
 /// Serialize path per WHATWG URL spec

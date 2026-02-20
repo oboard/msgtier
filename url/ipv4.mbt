@@ -1,6 +1,6 @@
 ///|
 /// Represents an IPv4 address as a 32-bit unsigned integer
-struct IPv4(UInt)
+struct IPv4(UInt) derive(Debug)
 
 ///|
 /// Serialize IPv4 address to dotted-decimal notation (e.g., "192.168.1.1")

@@ -747,6 +747,11 @@ async fn handle_incoming_message(
       root.spawn_bg(async fn() { handle_object_request(msg) })
     } else if msg.kind == "object_response" {
       handle_object_response(msg)
+    } else if msg.kind == "file_chunk_request" {
+      root.spawn_bg(async fn() { handle_file_chunk_request(msg) })
+    } else if msg.kind == "file_request" {
+      // Reserved for future use
+      ()
     } else {
       root.spawn_bg(async fn() { emit_ws_message(msg) })
     }
