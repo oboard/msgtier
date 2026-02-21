@@ -206,8 +206,22 @@ fn handle_script_message(
 }
 
 ///|
-fn register_app_handlers(dispatcher : MessageDispatcher) -> Unit {
+fn script_message_plugin() -> MessagePlugin {
+  { register: register_script_handlers }
+}
+
+///|
+fn object_message_plugin() -> MessagePlugin {
+  { register: register_object_handlers }
+}
+
+///|
+fn register_script_handlers(dispatcher : MessageDispatcher) -> Unit {
   dispatcher.register("script", handle_script_plugin)
+}
+
+///|
+fn register_object_handlers(dispatcher : MessageDispatcher) -> Unit {
   dispatcher.register("object_get", handle_object_get_message)
 }
 

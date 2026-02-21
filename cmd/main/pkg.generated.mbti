@@ -96,6 +96,8 @@ type MessageContext
 
 type MessageDispatcher
 
+type MessagePlugin
+
 type NatType
 pub impl Eq for NatType
 pub impl Show for NatType

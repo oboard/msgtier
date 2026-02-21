@@ -15,6 +15,11 @@ struct MessageDispatcher {
 }
 
 ///|
+struct MessagePlugin {
+  register : (MessageDispatcher) -> Unit
+}
+
+///|
 fn MessageDispatcher::new() -> MessageDispatcher {
   { handlers: {} }
 }
@@ -42,10 +47,28 @@ fn dispatch_message(
 
 ///|
 fn build_message_dispatcher() -> MessageDispatcher {
+  build_message_dispatcher_with_plugins(get_default_plugins())
+}
+
+///|
+fn build_message_dispatcher_with_plugins(
+  plugins : Array[MessagePlugin],
+) -> MessageDispatcher {
   let dispatcher = MessageDispatcher::new()
-  register_core_handlers(dispatcher)
-  register_app_handlers(dispatcher)
+  for plugin in plugins {
+    (plugin.register)(dispatcher)
+  }
   dispatcher
+}
+
+///|
+fn get_default_plugins() -> Array[MessagePlugin] {
+  [core_message_plugin(), script_message_plugin(), object_message_plugin()]
+}
+
+///|
+fn core_message_plugin() -> MessagePlugin {
+  { register: register_core_handlers }
 }
 
 ///|
