@@ -84,6 +84,8 @@ pub fn nil() -> Value
 
 pub fn string(String) -> Value
 
+pub fn uint32(UInt) -> Value
+
 pub fn uint64(UInt64) -> Value
 
 // Errors
@@ -100,6 +102,7 @@ pub enum Value {
   Bool(Bool)
   Int(Int)
   Int64(Int64)
+  UInt32(UInt)
   UInt64(UInt64)
   Float32(Float)
   Float64(Double)

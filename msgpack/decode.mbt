@@ -32,11 +32,11 @@ pub fn decode(data : Bytes) -> Value raise MsgPackError {
       if data.length() < 5 {
         raise InvalidData("Incomplete uint32")
       }
-      let value = (data[1].to_int() << 24) |
-        (data[2].to_int() << 16) |
-        (data[3].to_int() << 8) |
-        data[4].to_int()
-      Int(value)
+      let value = (data[1].to_uint() << 24) |
+        (data[2].to_uint() << 16) |
+        (data[3].to_uint() << 8) |
+        data[4].to_uint()
+      UInt32(value)
     }
     0xd0 => {
       // int8

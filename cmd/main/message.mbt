@@ -15,7 +15,7 @@ struct Message {
   secret_hash : String? // Hash of network secret for authentication
   encrypted : Bool // Whether the data field is encrypted
   timestamp : UInt64 // Creation timestamp for TTL and deduplication
-  timeout_ms : UInt64? // Optional custom timeout in milliseconds
+  timeout_ms : UInt? // Optional custom timeout in milliseconds
 } derive(Show, Eq)
 
 ///|
@@ -43,7 +43,7 @@ fn Message::new(
   secret_hash? : String,
   encrypted? : Bool = false,
   timestamp? : UInt64,
-  timeout_ms? : UInt64,
+  timeout_ms? : UInt,
 ) -> Message {
   message_id_counter.val += 1
   {
@@ -124,7 +124,7 @@ fn Message::to_msgpack(self : Message) -> Bytes {
     },
     @msgpack.uint64(self.timestamp),
     match self.timeout_ms {
-      Some(t) => @msgpack.uint64(t)
+      Some(t) => @msgpack.uint32(t)
       None => @msgpack.nil()
     },
   ]
@@ -280,8 +280,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
       let timeout_ms_pos = timestamp_pos + 1
       let timeout_ms = if arr.length() > timeout_ms_pos {
         match arr[timeout_ms_pos] {
-          UInt64(v) => Some(v)
-          Int(v) => Some(v.to_uint64())
+          UInt32(v) => Some(v)
           Nil => None
           _ => None
         }

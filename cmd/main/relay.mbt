@@ -17,7 +17,7 @@ pub fn can_direct_connect(peer_id : String) -> Bool {
 }
 
 ///|
-let message_timeout_ms : UInt64 = 30000
+let message_timeout_ms : UInt = 30000
 
 ///|
 pub async fn relay_message(
@@ -30,7 +30,8 @@ pub async fn relay_message(
   // Check for timeout
   let now = @env.now()
   let timeout = msg.timeout_ms.unwrap_or(message_timeout_ms)
-  if now > msg.timestamp && now - msg.timestamp > timeout {
+  let timeout_u64 = timeout.to_uint64()
+  if now > msg.timestamp && now - msg.timestamp > timeout_u64 {
     log_warn(
       "Message \{msg.id} timed out during relay (age: \{now - msg.timestamp}ms), dropped",
     )

@@ -145,7 +145,7 @@ fn handle_ws_incoming(text : String) -> Unit {
         body~,
         relay=1,
         version=VERSION,
-        timeout_ms=30000UL,
+        timeout_ms=30000,
       )
 
       let target_display = target_id_opt.unwrap_or("broadcast")
@@ -285,6 +285,7 @@ async fn handle_object_download(
         Some(pid) => {
           log_info("ObjectStore: fetching object id=\{id} from peer=\{pid}")
 
+          let timeout_ms = 60000U
           let req_id = @uuidm.v4().to_string()
           add_pending_request(req_id)
 
@@ -298,12 +299,12 @@ async fn handle_object_download(
             version=VERSION,
             body=@msgpack.map(body_map),
             encrypted=is_encrypted,
-            timeout_ms=10000UL,
+            timeout_ms~,
           )
           let msg = { ..msg, target_id: Some(pid), payload: Some(req_id) }
           add_pending_message(msg)
 
-          match wait_for_response(req_id, 10000) {
+          match wait_for_response(req_id, timeout_ms) {
             Some((data, headers)) =>
               if headers.get("status") == Some("404") {
                 conn
@@ -399,10 +400,12 @@ async fn handle_http_request(
       }
 
       // Extract timeout from headers (default 10000ms)
-      let timeout_ms = match request.headers.get("timeout") {
-        Some(t) => @strconv.parse_uint64(t) catch { _ => 10000UL }
-        None => 10000UL
+      let timeout_ms_int = match request.headers.get("timeout") {
+        Some(t) => @strconv.parse_int(t) catch { _ => 10000 }
+        None => 10000
       }
+      let timeout_ms = if timeout_ms_int < 0 { 10000 } else { timeout_ms_int }
+      let timeout_ms_uint = timeout_ms.reinterpret_as_uint()
       let kind = match request.headers.get("kind") {
         Some(k) => k
         None => "script"
@@ -430,7 +433,7 @@ async fn handle_http_request(
         target_id~,
         body=data_val,
         encrypted=is_encrypted,
-        timeout_ms~,
+        timeout_ms=timeout_ms_uint,
       )
       // Set payload as correlation ID for response tracking
       let msg = { ..msg, payload: Some(msg.id) }
@@ -463,7 +466,7 @@ async fn handle_http_request(
           log_debug("HTTP /send: Registered request id=\{msg.id}")
 
           // Wait for response with timeout
-          match wait_for_response(msg.id, timeout_ms.to_int()) {
+          match wait_for_response(msg.id, timeout_ms_uint) {
             Some((response, headers)) =>
               // Ensure Content-Type is set if missing
               conn

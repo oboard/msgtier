@@ -12,6 +12,8 @@ pub enum Value {
   Int(Int)
   // 64-bit signed integer
   Int64(Int64)
+  // 32-bit unsigned integer
+  UInt32(UInt)
   // 64-bit unsigned integer
   UInt64(UInt64)
   // Single precision floating point
@@ -37,6 +39,7 @@ pub impl ToJson for Value with to_json(self) {
     Float32(i) => Json::number(i.to_double())
     Float64(i) => Json::number(i)
     Int64(i) => Json::number(i.to_double())
+    UInt32(i) => Json::number(i.to_double())
     UInt64(i) => Json::number(i.to_double())
     String(s) => Json::string(s)
     Array(arr) => Json::array(arr.map(fn(x) { x.to_json() }))
@@ -169,6 +172,11 @@ pub fn int(i : Int) -> Value {
 ///|
 pub fn int64(i : Int64) -> Value {
   Int64(i)
+}
+
+///|
+pub fn uint32(u : UInt) -> Value {
+  UInt32(u)
 }
 
 ///|

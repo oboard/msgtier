@@ -384,13 +384,17 @@ async fn handle_pending_messages(
         if pending_msg.kind == "response" {
           continue
         }
+        let allow_non_string_body = pending_msg.kind == "file" ||
+          pending_msg.kind == "image"
         if pending_msg.kind != "ping" &&
           pending_msg.kind != "pong" &&
           pending_msg.kind != "hello" &&
           pending_msg.kind != "sync" {
-          match pending_msg.body {
-            String(_) => ()
-            _ => continue
+          if !allow_non_string_body {
+            match pending_msg.body {
+              String(_) => ()
+              _ => continue
+            }
           }
         }
       }

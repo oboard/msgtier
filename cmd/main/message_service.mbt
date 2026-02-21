@@ -134,8 +134,9 @@ async fn send_message(
 ) -> Bool noraise {
   // Check if message is expired
   let now = @env.now()
-  let timeout = msg.timeout_ms.unwrap_or(30000UL)
-  if now > msg.timestamp && now - msg.timestamp > timeout {
+  let timeout = msg.timeout_ms.unwrap_or(30000)
+  let timeout_u64 = timeout.to_uint64()
+  if now > msg.timestamp && now - msg.timestamp > timeout_u64 {
     log_warn(
       "send_message: dropped expired message \{msg.id} (age: \{now - msg.timestamp}ms)",
     )

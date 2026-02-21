@@ -57,11 +57,11 @@ fn resolve_request(
 ///|
 async fn wait_for_response(
   id : String,
-  timeout_ms : Int,
+  timeout_ms : UInt,
 ) -> (Bytes, Map[String, String])? {
   match global_request_tracker.pending.get(id) {
     Some(req) => {
-      let result = @async.with_timeout_opt(timeout_ms, async fn() {
+      let result = @async.with_timeout_opt(timeout_ms.reinterpret_as_int(), async fn() {
         for {
           match req.response {
             Some(r) => break (r, req.headers)

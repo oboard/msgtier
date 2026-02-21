@@ -50,6 +50,11 @@ fn encode_to_buffer(buffer : @buffer.Buffer, value : Value) -> Unit {
       buffer.write_byte(INT64_CODE)
       buffer.write_int64_be(i64)
     }
+    UInt32(u32) => {
+      // Encode UInt32 as uint32 format
+      buffer.write_byte(UINT32_CODE)
+      buffer.write_uint_be(u32)
+    }
     UInt64(u64) => {
       // Encode UInt64 as uint64 format
       buffer.write_byte(UINT64_CODE)
