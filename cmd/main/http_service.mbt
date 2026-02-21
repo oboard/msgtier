@@ -285,61 +285,53 @@ async fn handle_object_download(
         Some(pid) => {
           log_info("ObjectStore: fetching object id=\{id} from peer=\{pid}")
 
-          // Start streaming response
-          conn.send_response(200, "OK", extra_headers=headers)
+          let req_id = @uuidm.v4().to_string()
+          add_pending_request(req_id)
 
-          let chunk_size = 65536
-          let mut offset = 0L
+          let body_map : Map[String, @msgpack.Value] = Map::new()
+          body_map["id"] = @msgpack.string(id)
+          let is_encrypted = get_shared_secret(pid) is Some(_)
+          let msg = Message::new(
+            kind="object_get",
+            source_id=get_config().id,
+            relay=1,
+            version=VERSION,
+            body=@msgpack.map(body_map),
+            encrypted=is_encrypted,
+            timeout_ms=10000UL,
+          )
+          let msg = { ..msg, target_id: Some(pid), payload: Some(req_id) }
+          add_pending_message(msg)
 
-          for {
-            let req_id = @uuidm.v4().to_string()
-            add_pending_request(req_id)
-
-            let m : Map[String, @msgpack.Value] = Map::new()
-            m["id"] = @msgpack.string(id)
-            m["offset"] = @msgpack.int64(offset)
-            m["size"] = @msgpack.int(chunk_size)
-
-            let msg = Message::new(
-              kind="file_chunk_request",
-              source_id=get_config().id,
-              target_id=pid,
-              payload=req_id,
-              body=@msgpack.map(m),
-              relay=1,
-            )
-            add_pending_message(msg)
-
-            match wait_for_response(req_id, 10000) {
-              Some((data, headers)) => {
-                if headers.get("status") == Some("404") {
-                  // If first chunk 404, we might want to error differently, 
-                  // but we already sent 200 OK. 
-                  // So we just stop.
-                  log_warn(
-                    "ObjectStore: chunk not found (404) from peer=\{pid}",
-                  )
-                  break
+          match wait_for_response(req_id, 10000) {
+            Some((data, headers)) =>
+              if headers.get("status") == Some("404") {
+                conn
+                ..send_response(404, "Not Found", extra_headers={})
+                ..write("Object not found")
+                .end_response()
+              } else {
+                let resp_headers = headers
+                if !resp_headers.contains("Content-Type") {
+                  resp_headers["Content-Type"] = "application/octet-stream"
                 }
-
-                if data.length() == 0 {
-                  break
+                match filename {
+                  Some(fname) =>
+                    resp_headers["Content-Disposition"] = "attachment; filename=\"\{fname}\""
+                  None => ()
                 }
-
-                conn.write(data)
-                offset = offset + data.length().to_int64()
-
-                if data.length() < chunk_size {
-                  break
-                }
+                resp_headers["Content-Length"] = data.length().to_string()
+                conn
+                ..send_response(200, "OK", extra_headers=resp_headers)
+                ..write(data)
+                .end_response()
               }
-              None => {
-                log_warn("ObjectStore: timeout fetching chunk offset=\{offset}")
-                break
-              }
-            }
+            None =>
+              conn
+              ..send_response(504, "Gateway Timeout", extra_headers={})
+              ..write("Timeout fetching object from peer")
+              .end_response()
           }
-          conn.end_response()
         }
         None =>
           conn
@@ -364,11 +356,10 @@ async fn handle_http_request(
     handle_object_registration(body, conn)
     return
   }
-  
-  if request is { meth: Get, path, .. } &&
-    @url.Url::parse("http://localhost" +path)
-    is Some({ path: Segments(["api", "object", id]), query, .. }) {
 
+  if request is { meth: Get, path, .. } &&
+    @url.Url::parse("http://localhost" + path)
+    is Some({ path: Segments(["api", "object", id]), query, .. }) {
     let mut peer_id = None
     let mut filename = None
     if query is Some(query) {
