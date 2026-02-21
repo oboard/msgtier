@@ -285,7 +285,8 @@ async fn handle_object_download(
         Some(pid) => {
           log_info("ObjectStore: fetching object id=\{id} from peer=\{pid}")
 
-          let timeout_ms = 60000U
+          let timeout_ms = 60000
+          let timeout_ms_uint = timeout_ms.reinterpret_as_uint()
           let req_id = @uuidm.v4().to_string()
           add_pending_request(req_id)
 
@@ -299,12 +300,12 @@ async fn handle_object_download(
             version=VERSION,
             body=@msgpack.map(body_map),
             encrypted=is_encrypted,
-            timeout_ms~,
+            timeout_ms=timeout_ms_uint,
           )
           let msg = { ..msg, target_id: Some(pid), payload: Some(req_id) }
           add_pending_message(msg)
 
-          match wait_for_response(req_id, timeout_ms) {
+          match wait_for_response(req_id, timeout_ms_uint) {
             Some((data, headers)) =>
               if headers.get("status") == Some("404") {
                 conn

@@ -33,7 +33,7 @@ fn take_pending_messages(predicate : (Message) -> Bool) -> Array[PendingEntry] {
     while i >= 0 {
       let entry = messages[i]
       // TTL Check (30s or custom timeout)
-      let timeout = entry.msg.timeout_ms.unwrap_or(30000)
+      let timeout = entry.msg.timeout_ms.unwrap_or(30000U)
       let timeout_u64 = timeout.to_uint64()
       if now > entry.msg.timestamp && now - entry.msg.timestamp > timeout_u64 {
         log_debug(

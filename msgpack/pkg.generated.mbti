@@ -114,6 +114,7 @@ pub enum Value {
 pub fn Value::to_bool(Self) -> Result[Bool, MsgPackError]
 pub fn Value::to_int(Self) -> Result[Int, MsgPackError]
 pub fn Value::to_string(Self) -> Result[String, MsgPackError]
+pub fn Value::to_uint32(Self) -> Result[UInt, MsgPackError]
 pub impl Eq for Value
 pub impl Show for Value
 pub impl ToJson for Value

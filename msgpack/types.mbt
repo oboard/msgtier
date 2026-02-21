@@ -12,7 +12,6 @@ pub enum Value {
   Int(Int)
   // 64-bit signed integer
   Int64(Int64)
-  // 32-bit unsigned integer
   UInt32(UInt)
   // 64-bit unsigned integer
   UInt64(UInt64)
@@ -229,6 +228,14 @@ pub fn Value::to_int(self : Value) -> Result[Int, MsgPackError] {
   match self {
     Int(i) => Ok(i)
     _ => Err(TypeMismatch("Expected int"))
+  }
+}
+
+///|
+pub fn Value::to_uint32(self : Value) -> Result[UInt, MsgPackError] {
+  match self {
+    UInt32(i) => Ok(i)
+    _ => Err(TypeMismatch("Expected uint32"))
   }
 }
 
