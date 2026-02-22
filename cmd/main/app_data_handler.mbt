@@ -2,7 +2,7 @@
 let processed_messages_cache : Ref[Map[String, UInt64]] = Ref::new({})
 
 ///|
-let response_chunk_size : Int = 16777216
+let response_chunk_size : Int = 4194304
 
 ///|
 let http_proxy_no_encrypt_threshold : Int = 1048576
@@ -482,7 +482,7 @@ fn send_response_message(
   }
   match response_data {
     Binary(b) =>
-      if b.length() > response_chunk_size {
+      if b.length() >= response_chunk_size {
         send_chunked(b, None, None)
       } else {
         send_one(response_data)
@@ -499,7 +499,7 @@ fn send_response_message(
       }
       match (status, data) {
         (Some(status), Some(data)) =>
-          if data.length() > response_chunk_size {
+          if data.length() >= response_chunk_size {
             send_chunked(data, Some(status), headers)
           } else {
             send_one(response_data)
@@ -581,7 +581,7 @@ async fn send_response_message_direct(
   }
   match response_data {
     Binary(b) =>
-      if b.length() > response_chunk_size {
+      if b.length() >= response_chunk_size {
         send_chunked(b, None, None)
       } else {
         send_one(response_data)
@@ -598,7 +598,7 @@ async fn send_response_message_direct(
       }
       match (status, data) {
         (Some(status), Some(data)) =>
-          if data.length() > response_chunk_size {
+          if data.length() >= response_chunk_size {
             send_chunked(data, Some(status), headers)
           } else {
             send_one(response_data)

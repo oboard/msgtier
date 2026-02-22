@@ -8,7 +8,8 @@ struct PendingRequest {
 
 ///|
 struct StreamRequest {
-  queue : Array[Bytes]
+  mut queue : Array[Bytes]
+  mut queue_head : Int
   chunks : Map[Int, Bytes]
   mut next_index : Int
   mut total : Int?
@@ -71,6 +72,7 @@ fn add_stream_request(id : String) -> Unit {
   }
   streams[id] = {
     queue: [],
+    queue_head: 0,
     chunks: {},
     next_index: 0,
     total: None,
@@ -156,16 +158,25 @@ fn take_stream_chunk(id : String) -> (Bytes, Bool, Map[String, String]?)? {
   let streams = global_stream_requests.val
   match streams.get(id) {
     Some(req) =>
-      if req.queue.length() > 0 {
-        let chunk = req.queue[0]
-        req.queue.remove(0) |> ignore
+      if req.queue.length() > req.queue_head {
+        let chunk = req.queue[req.queue_head]
+        req.queue_head = req.queue_head + 1
+        if req.queue_head > 64 && req.queue_head * 2 > req.queue.length() {
+          let remaining = req.queue.length() - req.queue_head
+          let new_queue = Array::make(remaining, b"")
+          for i = 0; i < remaining; i = i + 1 {
+            new_queue[i] = req.queue[req.queue_head + i]
+          }
+          req.queue = new_queue
+          req.queue_head = 0
+        }
         let headers = if !req.headers_sent {
           req.headers_sent = true
           req.headers
         } else {
           None
         }
-        let done = req.closed && req.queue.length() == 0
+        let done = req.closed && req.queue.length() <= req.queue_head
         if done {
           streams.remove(id)
         }
