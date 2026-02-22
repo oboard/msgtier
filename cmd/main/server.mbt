@@ -381,11 +381,12 @@ async fn handle_pending_messages(
     for entry in pending {
       let pending_msg = entry.msg
       if transport.protocol() == "udp" {
-        if pending_msg.kind == "response" {
+        if pending_msg.kind == "response" || pending_msg.kind == "http_proxy" {
           continue
         }
         let allow_non_string_body = pending_msg.kind == "file" ||
-          pending_msg.kind == "image"
+          pending_msg.kind == "image" ||
+          pending_msg.kind == "http_proxy"
         if pending_msg.kind != "ping" &&
           pending_msg.kind != "pong" &&
           pending_msg.kind != "hello" &&
