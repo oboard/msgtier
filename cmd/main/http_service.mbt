@@ -22,7 +22,10 @@ let last_emitted_order : Ref[Array[String]] = Ref::new([])
 
 ///|
 async fn emit_ws_message(msg : Message) -> Unit {
-  if msg.kind != "text" && msg.kind != "file" && msg.kind != "image" {
+  if msg.kind != "text" &&
+    msg.kind != "file" &&
+    msg.kind != "image" &&
+    msg.kind != "video" {
     return
   }
 
@@ -90,11 +93,11 @@ async fn emit_ws_message(msg : Message) -> Unit {
 }
 
 ///|
-fn handle_ws_incoming(text : String) -> Unit {
+fn handle_ws_incoming(text : String) -> String? {
   let json_val = @json.parse(text) catch {
     _ => {
       log_warn("WS: invalid json payload")
-      return
+      return None
     }
   }
 
@@ -115,7 +118,7 @@ fn handle_ws_incoming(text : String) -> Unit {
       }
 
       if kind == "ping" || kind == "pong" || kind == "sync" {
-        return
+        return Some(kind)
       }
 
       let body = match (kind, content_val) {
@@ -153,8 +156,12 @@ fn handle_ws_incoming(text : String) -> Unit {
         "WS: Received chat message kind=\{kind} target=\{target_display}",
       )
       add_pending_message(msg)
+      Some(kind)
     }
-    _ => log_warn("WS: invalid payload format (expected Object)")
+    _ => {
+      log_warn("WS: invalid payload format (expected Object)")
+      None
+    }
   }
 }
 
@@ -180,7 +187,15 @@ async fn handle_ws_connection(
         Text => {
           let text = msg.read_all().text()
           if text != "" {
-            handle_ws_incoming(text)
+            match handle_ws_incoming(text) {
+              Some(kind) =>
+                if kind == "ping" {
+                  ws.send_text("{\"kind\":\"pong\"}") catch {
+                    _ => ()
+                  }
+                }
+              None => ()
+            }
           }
         }
         Binary => {
@@ -188,7 +203,15 @@ async fn handle_ws_connection(
           let bytes = msg.read_all().binary()
           let content = @utf8.decode(bytes)
           if content != "" {
-            handle_ws_incoming(content)
+            match handle_ws_incoming(content) {
+              Some(kind) =>
+                if kind == "ping" {
+                  ws.send_text("{\"kind\":\"pong\"}") catch {
+                    _ => ()
+                  }
+                }
+              None => ()
+            }
           }
         }
       }
