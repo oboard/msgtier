@@ -79,6 +79,7 @@ fn register_core_handlers(dispatcher : MessageDispatcher) -> Unit {
   dispatcher.register("ping", handle_ping_message)
   dispatcher.register("pong", handle_pong_message)
   dispatcher.register("sync", handle_sync_message)
+  dispatcher.register("ack", handle_ack_message)
 }
 
 ///|
@@ -309,6 +310,14 @@ fn handle_pong_message(ctx : MessageContext) -> Unit {
     update_global_connection_manager(fn(manager) {
       manager.update_connection_last_seen(conn.id, current_time)
     })
+  }
+}
+
+///|
+fn handle_ack_message(ctx : MessageContext) -> Unit {
+  match ctx.msg.payload {
+    Some(id) => remove_pending_message_by_id(id) |> ignore
+    None => ()
   }
 }
 

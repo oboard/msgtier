@@ -5,6 +5,23 @@ const CONNECTION_TIMEOUT_MS : UInt64 = 60000 // 60 seconds timeout
 let last_sync_broadcast_time : Ref[UInt64] = Ref::new(0)
 
 ///|
+let received_message_cache : Ref[Map[String, UInt64]] = Ref::new({})
+
+///|
+fn check_and_mark_received(id : String, timestamp : UInt64) -> Bool {
+  let now = @env.now()
+  if now > timestamp && now - timestamp > 30000 {
+    return true
+  }
+  let cache = received_message_cache.val
+  if cache.contains(id) {
+    return true
+  }
+  cache[id] = now
+  false
+}
+
+///|
 fn parse_port_from_addr(addr : String, protocol : String) -> Int? {
   let addr_str = if addr.contains("://") {
     addr
@@ -433,6 +450,10 @@ async fn handle_pending_messages(
           }
           continue
         }
+        if transport.protocol() == "udp" &&
+          !should_send_message(pending_msg.id, target_peer_id, "udp", 200UL) {
+          continue
+        }
         let target_connections = cm.get_peer_connections(target_peer_id)
         if target_connections.is_empty() {
           match pick_peer_lan_address(target_peer_id, transport.protocol()) {
@@ -453,13 +474,17 @@ async fn handle_pending_messages(
                 )
                 if success {
                   sent = true
-                  mark_pending_message_sent(
-                    pending_msg.id,
-                    target_peer_id,
-                    transport.protocol(),
-                    [transport.protocol()],
-                  )
-                  |> ignore
+                  if transport.protocol() == "udp" {
+                    record_message_sent(pending_msg.id, target_peer_id, "udp")
+                  } else {
+                    mark_pending_message_sent(
+                      pending_msg.id,
+                      target_peer_id,
+                      transport.protocol(),
+                      [transport.protocol()],
+                    )
+                    |> ignore
+                  }
                 }
               }
             }
@@ -485,14 +510,17 @@ async fn handle_pending_messages(
               )
               if relayed {
                 sent = true
-                // Mark as sent for this protocol
-                mark_pending_message_sent(
-                  pending_msg.id,
-                  target_peer_id,
-                  transport.protocol(),
-                  [transport.protocol()], // Just this protocol
-                )
-                |> ignore
+                if transport.protocol() == "udp" {
+                  record_message_sent(pending_msg.id, target_peer_id, "udp")
+                } else {
+                  mark_pending_message_sent(
+                    pending_msg.id,
+                    target_peer_id,
+                    transport.protocol(),
+                    [transport.protocol()],
+                  )
+                  |> ignore
+                }
               }
             }
             None =>
@@ -510,6 +538,10 @@ async fn handle_pending_messages(
         }
         if entry.sent_targets.get(target_peer_id) is Some(m) &&
           m.contains(transport.protocol()) {
+          continue
+        }
+        if transport.protocol() == "udp" &&
+          !should_send_message(pending_msg.id, target_peer_id, "udp", 200UL) {
           continue
         }
         match get_global_peer_manager().get_peer(target_peer_id) {
@@ -558,13 +590,16 @@ async fn handle_pending_messages(
               )
               if success {
                 sent = true
+                if transport.protocol() == "udp" {
+                  record_message_sent(pending_msg.id, target_peer_id, "udp")
+                }
                 break
               }
             }
           }
           None => ()
         }
-        if sent {
+        if sent && transport.protocol() != "udp" {
           let required_protocols = [transport.protocol()]
           log_debug(
             "DEBUG: pending mark sent id=\{pending_msg.id} protocol=\{transport.protocol()}",
@@ -813,6 +848,31 @@ async fn handle_incoming_message(
   }
   let msg = decrypt_message_body(transport, id, local_addr, msg)
   guard msg is Some(msg) else { return }
+  let should_ack = transport.protocol() == "udp" &&
+    msg.kind != "ack" &&
+    msg.kind != "response" &&
+    msg.kind != "ping" &&
+    msg.kind != "pong" &&
+    msg.kind != "hello" &&
+    msg.kind != "sync" &&
+    msg.target_id is Some(target_id) &&
+    target_id == id
+  if should_ack {
+    let ack_msg = Message::new(
+      kind="ack",
+      source_id=id,
+      source_addr=local_addr,
+      target_id=msg.source_id,
+      payload=msg.id,
+      encrypted=msg.encrypted,
+    )
+    ignore(send_message(transport, sender_addr, ack_msg))
+  }
+  if transport.protocol() == "udp" && msg.kind != "ack" {
+    if check_and_mark_received(msg.id, msg.timestamp) {
+      return
+    }
+  }
   if !msg.encrypted {
     root.spawn_bg(async fn() { emit_ws_message(msg) })
   }

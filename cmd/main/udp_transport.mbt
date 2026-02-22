@@ -13,14 +13,17 @@ fn UdpTransport::new(addr_str : String) -> UdpTransport raise {
 
 ///|
 impl Transport for UdpTransport with send(self, target, data) {
-  try {
-    let target = target.strip_prefix("udp://").unwrap_or(target).to_string()
-    let target_addr = @socket.Addr::parse(target)
-    self.server.sendto(data, target_addr)
-    true
-  } catch {
-    _ => false
+  let target = target.strip_prefix("udp://").unwrap_or(target).to_string()
+  let target_addr = @socket.Addr::parse(target) catch { _ => return false }
+  for i = 0; i < 3; i = i + 1 {
+    try {
+      self.server.sendto(data, target_addr)
+      return true
+    } catch {
+      _ => if i < 2 { @async.sleep(5) }
+    }
   }
+  false
 }
 
 ///|

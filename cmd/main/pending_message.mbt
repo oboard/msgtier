@@ -8,6 +8,57 @@ pub struct PendingEntry {
 let global_pending_messages : Array[PendingEntry] = []
 
 ///|
+let pending_send_times : Ref[Map[String, UInt64]] = Ref::new({})
+
+///|
+fn make_send_key(
+  msg_id : String,
+  peer_id : String,
+  protocol : String,
+) -> String {
+  msg_id + "|" + peer_id + "|" + protocol
+}
+
+///|
+fn should_send_message(
+  msg_id : String,
+  peer_id : String,
+  protocol : String,
+  min_interval_ms : UInt64,
+) -> Bool {
+  let now = @env.now()
+  let key = make_send_key(msg_id, peer_id, protocol)
+  match pending_send_times.val.get(key) {
+    Some(last) => if now > last { now - last >= min_interval_ms } else { true }
+    None => true
+  }
+}
+
+///|
+fn record_message_sent(
+  msg_id : String,
+  peer_id : String,
+  protocol : String,
+) -> Unit {
+  let key = make_send_key(msg_id, peer_id, protocol)
+  pending_send_times.val[key] = @env.now()
+}
+
+///|
+fn clear_message_send_state(msg_id : String) -> Unit {
+  let times = pending_send_times.val
+  let keys = []
+  for k, _ in times {
+    if k.has_prefix(msg_id + "|") {
+      keys.push(k)
+    }
+  }
+  for k in keys {
+    times.remove(k)
+  }
+}
+
+///|
 fn add_pending_message(msg : Message) -> Unit {
   let messages = global_pending_messages
   // Optimization: If adding a "sync" message, remove any existing "sync" messages
@@ -59,6 +110,7 @@ fn remove_pending_message_by_id(id : String) -> Bool {
   let len_before = global_pending_messages.length()
   global_pending_messages.retain(entry => entry.msg.id != id)
   let len_after = global_pending_messages.length()
+  clear_message_send_state(id)
   len_before != len_after
 }
 
