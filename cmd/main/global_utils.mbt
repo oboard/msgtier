@@ -101,6 +101,8 @@ fn get_all_known_peers() -> Array[String] {
 fn pick_peer_address(peer_id : String, protocol : String) -> String? {
   match get_global_peer_manager().get_peer(peer_id) {
     Some(peer) => {
+      let known_peers = get_all_known_peers()
+      let mut fallback : String? = None
       for addr_str in peer.addresses {
         if addr_str.is_empty() || is_bind_all_address(addr_str) {
           continue
@@ -114,12 +116,18 @@ fn pick_peer_address(peer_id : String, protocol : String) -> String? {
         match parsed {
           Some(addr) =>
             if addr.protocol.to_string() == protocol {
-              return Some(addr_str)
+              if known_peers.contains(addr_str) {
+                return Some(addr_str)
+              }
+              match fallback {
+                Some(_) => ()
+                None => fallback = Some(addr_str)
+              }
             }
           None => ()
         }
       }
-      None
+      fallback
     }
     None => None
   }
@@ -129,6 +137,8 @@ fn pick_peer_address(peer_id : String, protocol : String) -> String? {
 fn pick_peer_lan_address(peer_id : String, protocol : String) -> String? {
   match get_global_peer_manager().get_peer(peer_id) {
     Some(peer) => {
+      let known_peers = get_all_known_peers()
+      let mut fallback : String? = None
       for addr_str in peer.addresses {
         if addr_str.is_empty() ||
           addr_str == "routed" ||
@@ -146,13 +156,19 @@ fn pick_peer_lan_address(peer_id : String, protocol : String) -> String? {
             if addr.protocol.to_string() == protocol {
               let host = extract_host(addr_str)
               if is_private(host) || is_loopback(host) {
-                return Some(addr_str)
+                if known_peers.contains(addr_str) {
+                  return Some(addr_str)
+                }
+                match fallback {
+                  Some(_) => ()
+                  None => fallback = Some(addr_str)
+                }
               }
             }
           None => ()
         }
       }
-      None
+      fallback
     }
     None => None
   }

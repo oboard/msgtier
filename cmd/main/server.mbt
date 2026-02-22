@@ -450,6 +450,14 @@ async fn handle_pending_messages(
           }
           continue
         }
+        if (pending_msg.kind == "response" || pending_msg.kind == "http_proxy") &&
+          transport.protocol() != "tcp" {
+          let has_tcp_addr = pick_peer_address(target_peer_id, "tcp") is Some(_) ||
+            pick_peer_lan_address(target_peer_id, "tcp") is Some(_)
+          if has_tcp_addr {
+            continue
+          }
+        }
         if transport.protocol() == "udp" &&
           !should_send_message(pending_msg.id, target_peer_id, "udp", 200UL) {
           continue
