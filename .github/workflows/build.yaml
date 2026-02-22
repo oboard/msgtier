@@ -50,6 +50,7 @@ jobs:
       - name: Build Web
         run: |
           cd web/msgtier-web
+          git submodule update --init --recursive
           bun install
           bun run build
           cd dist
