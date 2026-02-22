@@ -2,7 +2,7 @@
 let processed_messages_cache : Ref[Map[String, UInt64]] = Ref::new({})
 
 ///|
-let response_chunk_size : Int = 4194304
+let response_chunk_size : Int = 8388608
 
 ///|
 let http_proxy_no_encrypt_threshold : Int = 1048576
@@ -339,7 +339,7 @@ fn handle_object_get_message(ctx : MessageContext) -> Unit {
       ctx.local_addr,
       msg.source_id,
       msg.payload.unwrap_or(msg.id),
-      @msgpack.map(resp_map),
+      ResponseSource::MsgPack(@msgpack.map(resp_map)),
       Some(msg.encrypted),
     )
   })
@@ -406,26 +406,45 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
     let (status_code, resp_headers, resp_body) = handle_internal_http_request(
       http_method, path, headers, body,
     )
-    let resp_map : Map[String, @msgpack.Value] = Map::new()
-    resp_map["status"] = @msgpack.string(status_code.to_string())
-    resp_map["headers"] = headers_to_msgpack(resp_headers)
-    resp_map["data"] = @msgpack.binary(resp_body)
-    let use_encryption = if resp_body.length() >=
-      http_proxy_no_encrypt_threshold {
-      false
-    } else {
-      msg.encrypted
+    match resp_body {
+      Bytes(b) => {
+        let resp_map : Map[String, @msgpack.Value] = Map::new()
+        resp_map["status"] = @msgpack.string(status_code.to_string())
+        resp_map["headers"] = headers_to_msgpack(resp_headers)
+        resp_map["data"] = @msgpack.binary(b)
+        let use_encryption = if b.length() >=
+          http_proxy_no_encrypt_threshold {
+          false
+        } else {
+          msg.encrypted
+        }
+        send_response_message_direct(
+          ctx.transport,
+          ctx.sender_addr,
+          ctx.my_id,
+          ctx.local_addr,
+          msg.source_id,
+          msg.payload.unwrap_or(msg.id),
+          ResponseSource::MsgPack(@msgpack.map(resp_map)),
+          Some(use_encryption),
+        )
+      }
+      File(path) =>
+        send_response_message_direct(
+          ctx.transport,
+          ctx.sender_addr,
+          ctx.my_id,
+          ctx.local_addr,
+          msg.source_id,
+          msg.payload.unwrap_or(msg.id),
+          ResponseSource::FileStream(
+            path,
+            status_code.to_string(),
+            resp_headers,
+          ),
+          Some(false),
+        )
     }
-    send_response_message_direct(
-      ctx.transport,
-      ctx.sender_addr,
-      ctx.my_id,
-      ctx.local_addr,
-      msg.source_id,
-      msg.payload.unwrap_or(msg.id),
-      @msgpack.map(resp_map),
-      Some(use_encryption),
-    )
   })
 }
 
@@ -469,13 +488,15 @@ fn send_response_message(
       m["chunk_index"] = @msgpack.int(i)
       m["chunk_total"] = @msgpack.int(total)
       m["chunk_data"] = @msgpack.binary(chunk)
-      match status {
-        Some(s) => m["status"] = @msgpack.string(s)
-        None => ()
-      }
-      match headers {
-        Some(h) => m["headers"] = headers_to_msgpack(h)
-        None => ()
+      if i == 0 {
+        match status {
+          Some(s) => m["status"] = @msgpack.string(s)
+          None => ()
+        }
+        match headers {
+          Some(h) => m["headers"] = headers_to_msgpack(h)
+          None => ()
+        }
       }
       send_one(@msgpack.map(m))
     }
@@ -515,6 +536,12 @@ fn send_response_message(
 }
 
 ///|
+enum ResponseSource {
+  MsgPack(@msgpack.Value)
+  FileStream(String, String, Map[String, String]) // path, status, headers
+}
+
+///|
 async fn send_response_message_direct(
   transport : &Transport,
   target_addr : String,
@@ -522,7 +549,7 @@ async fn send_response_message_direct(
   source_addr : String,
   target_id : String,
   correlation_id : String,
-  response_data : @msgpack.Value,
+  response_source : ResponseSource,
   encrypted_override : Bool?,
 ) -> Unit {
   let is_encrypted = match encrypted_override {
@@ -568,45 +595,100 @@ async fn send_response_message_direct(
       m["chunk_index"] = @msgpack.int(i)
       m["chunk_total"] = @msgpack.int(total)
       m["chunk_data"] = @msgpack.binary(chunk)
-      match status {
-        Some(s) => m["status"] = @msgpack.string(s)
-        None => ()
-      }
-      match headers {
-        Some(h) => m["headers"] = headers_to_msgpack(h)
-        None => ()
+      if i == 0 {
+        match status {
+          Some(s) => m["status"] = @msgpack.string(s)
+          None => ()
+        }
+        match headers {
+          Some(h) => m["headers"] = headers_to_msgpack(h)
+          None => ()
+        }
       }
       send_one(@msgpack.map(m))
     }
   }
-  match response_data {
-    Binary(b) =>
-      if b.length() >= response_chunk_size {
-        send_chunked(b, None, None)
-      } else {
-        send_one(response_data)
-      }
-    Map(m) => {
-      let status = match m.get("status") {
-        Some(String(s)) => Some(s)
-        _ => None
-      }
-      let headers = parse_headers_map(m)
-      let data = match m.get("data") {
-        Some(Binary(b)) => Some(b)
-        _ => None
-      }
-      match (status, data) {
-        (Some(status), Some(data)) =>
-          if data.length() >= response_chunk_size {
-            send_chunked(data, Some(status), headers)
+
+  match response_source {
+    ResponseSource::MsgPack(response_data) =>
+      match response_data {
+        Binary(b) =>
+          if b.length() >= response_chunk_size {
+            send_chunked(b, None, None)
           } else {
             send_one(response_data)
           }
+        Map(m) => {
+          let status = match m.get("status") {
+            Some(String(s)) => Some(s)
+            _ => None
+          }
+          let headers = parse_headers_map(m)
+          let data = match m.get("data") {
+            Some(Binary(b)) => Some(b)
+            _ => None
+          }
+          match (status, data) {
+            (Some(status), Some(data)) =>
+              if data.length() >= response_chunk_size {
+                send_chunked(data, Some(status), headers)
+              } else {
+                send_one(response_data)
+              }
+            _ => send_one(response_data)
+          }
+        }
         _ => send_one(response_data)
       }
-    }
-    _ => send_one(response_data)
+    ResponseSource::FileStream(path, status, headers) =>
+      try {
+        let file = @fs.open(path, mode=ReadOnly)
+        defer file.close()
+        let file_size = file.size()
+        let chunk_size_64 = response_chunk_size.to_int64()
+        let total_64 = (file_size + chunk_size_64 - 1) / chunk_size_64
+        let total = total_64.to_int()
+
+        for i = 0; i < total; i = i + 1 {
+          let offset = i.to_int64() * chunk_size_64
+          let expected_len = if offset + chunk_size_64 > file_size {
+            (file_size - offset).to_int()
+          } else {
+            response_chunk_size
+          }
+          let chunk_buf = FixedArray::make(expected_len, b'\x00')
+          let bytes_read = file.read_at(chunk_buf, position=offset)
+
+          if bytes_read > 0 {
+             let chunk_full = Bytes::from_array(chunk_buf)
+             let chunk = if bytes_read < expected_len {
+               slice_bytes(chunk_full, 0, bytes_read)
+             } else {
+               chunk_full
+             }
+
+             let m : Map[String, @msgpack.Value] = Map::new()
+             m["chunk_index"] = @msgpack.int(i)
+             m["chunk_total"] = @msgpack.int(total)
+             m["chunk_data"] = @msgpack.binary(chunk)
+             if i == 0 {
+                m["status"] = @msgpack.string(status)
+                m["headers"] = headers_to_msgpack(headers)
+             }
+             send_one(@msgpack.map(m))
+          }
+        }
+      } catch {
+        e => {
+          log_error("File stream error: " + e.to_string())
+          let resp_map : Map[String, @msgpack.Value] = Map::new()
+          resp_map["status"] = @msgpack.string("500")
+          resp_map["data"] = @msgpack.binary(
+            @utf8.encode("Internal Server Error: " + e.to_string()),
+          )
+          send_one(@msgpack.map(resp_map))
+        }
+      }
   }
   log_info(
     "DataResponse: direct correlation=\{correlation_id} to=\{target_id} encrypted=\{is_encrypted}",

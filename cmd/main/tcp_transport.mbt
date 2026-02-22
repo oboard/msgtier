@@ -109,17 +109,14 @@ impl Transport for TcpTransport with send(self, target, data) {
               }
             }
           }
-          // Combine header and data to ensure atomic write
-          // This prevents interleaving of header/data when multiple threads share the connection
-          let full_packet = header + data
-
           // Spinlock to prevent concurrent writes
           while wrapper.sending.val {
             @async.sleep(1)
           }
           wrapper.sending.val = true
           try {
-            conn.write(full_packet)
+            conn.write(header)
+            conn.write(data)
             wrapper.sending.val = false
             return true
           } catch {

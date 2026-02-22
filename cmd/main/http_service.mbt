@@ -555,12 +555,19 @@ async fn proxy_http_request_stream(
 }
 
 ///|
+///|
+enum ResponseBody {
+  Bytes(Bytes)
+  File(String)
+}
+
+///|
 async fn handle_internal_http_request(
   http_method : String,
   path : String,
   headers : Map[String, String],
   body : Bytes,
-) -> (Int, Map[String, String], Bytes) {
+) -> (Int, Map[String, String], ResponseBody) {
   if http_method == "GET" &&
     @url.Url::parse("http://localhost" + path)
     is Some({ path: Segments(["api", "object", id]), query, .. }) {
@@ -574,12 +581,33 @@ async fn handle_internal_http_request(
         }
       }
     }
-    match get_object(id) {
-      Some(data) => build_object_download_response(data, filename, headers)
-      None => {
-        let resp_headers : Map[String, String] = {}
-        (404, resp_headers, @utf8.encode("Object not found"))
+    match get_object_path(id) {
+              Some(path) => {
+                log_info("HTTP: Serving object \{id} via zero-copy file stream: \{path}")
+                let resp_headers : Map[String, String] = {
+                  "Content-Type": "application/octet-stream",
+                  "Accept-Ranges": "bytes",
+                }
+        match filename {
+          Some(fname) =>
+            resp_headers["Content-Disposition"] = "attachment; filename=\"\{fname}\""
+          None => ()
+        }
+        (200, resp_headers, ResponseBody::File(path))
       }
+      None =>
+        match get_object(id) {
+          Some(data) => {
+            let (status_code, resp_headers, body) = build_object_download_response(
+              data, filename, headers,
+            )
+            (status_code, resp_headers, ResponseBody::Bytes(body))
+          }
+          None => {
+            let resp_headers : Map[String, String] = {}
+            (404, resp_headers, ResponseBody::Bytes(@utf8.encode("Object not found")))
+          }
+        }
     }
   } else if http_method == "POST" && path == "/api/object" {
     let id = @uuidm.v4().to_string_simple()
@@ -590,13 +618,13 @@ async fn handle_internal_http_request(
     let resp_headers : Map[String, String] = {
       "Content-Type": "application/json",
     }
-    (200, resp_headers, @utf8.encode(json_str))
+    (200, resp_headers, ResponseBody::Bytes(@utf8.encode(json_str)))
   } else if http_method == "POST" && path == "/api/object/register" {
     let json_str = @utf8.decode(body)
     let json_val = @json.parse(json_str) catch {
       _ => {
         let resp_headers : Map[String, String] = {}
-        return (400, resp_headers, @utf8.encode("Bad Request"))
+        return (400, resp_headers, ResponseBody::Bytes(@utf8.encode("Bad Request")))
       }
     }
     let path = match json_val {
@@ -605,7 +633,7 @@ async fn handle_internal_http_request(
     }
     if path == "" {
       let resp_headers : Map[String, String] = {}
-      return (400, resp_headers, @utf8.encode("Missing path"))
+      return (400, resp_headers, ResponseBody::Bytes(@utf8.encode("Missing path")))
     }
     let id = register_object(path)
     let m = Map::new()
@@ -614,16 +642,20 @@ async fn handle_internal_http_request(
     let resp_headers : Map[String, String] = {
       "Content-Type": "application/json",
     }
-    (200, resp_headers, @utf8.encode(resp_json))
+    (200, resp_headers, ResponseBody::Bytes(@utf8.encode(resp_json)))
   } else if http_method == "GET" && path == "/api/config" {
     let config = get_config()
     let resp_headers : Map[String, String] = {
       "Content-Type": "application/json",
     }
-    (200, resp_headers, @utf8.encode(config.to_json().stringify()))
+    (
+      200,
+      resp_headers,
+      ResponseBody::Bytes(@utf8.encode(config.to_json().stringify())),
+    )
   } else {
     let resp_headers : Map[String, String] = {}
-    (404, resp_headers, @utf8.encode("Not Found"))
+    (404, resp_headers, ResponseBody::Bytes(@utf8.encode("Not Found")))
   }
 }
 
