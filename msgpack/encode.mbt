@@ -107,10 +107,7 @@ fn encode_to_buffer(buffer : @buffer.Buffer, value : Value) -> Unit {
         buffer.write_byte(BIN32_CODE)
         buffer.write_uint_be(len.reinterpret_as_uint())
       }
-      // Write binary bytes
-      for i = 0; i < len; i = i + 1 {
-        buffer.write_byte(b[i])
-      }
+      buffer.write_bytes(b)
     }
     Array(arr) => {
       let len = arr.length()

@@ -9,6 +9,11 @@ import urllib.parse
 import urllib.request
 
 
+def log(msg):
+    ts = time.strftime("%H:%M:%S")
+    print(f"[{ts}] {msg}", flush=True)
+
+
 def cleanup():
     subprocess.run(["pkill", "-f", "moon run cmd/main"], stderr=subprocess.DEVNULL)
     time.sleep(1)
@@ -47,16 +52,18 @@ def get_bytes(url, timeout=60):
 
 
 def wait_http_ready(url, attempts=60, delay=0.2):
-    for _ in range(attempts):
+    for i in range(attempts):
         status, _, _ = get_bytes(url, timeout=2)
         if status == 200:
             return True
+        if i % 10 == 0:
+            log(f"waiting http ready: {url} attempt={i + 1}")
         time.sleep(delay)
     return False
 
 
 def wait_peer_connected(status_url, peer_id, attempts=120, delay=0.5):
-    for _ in range(attempts):
+    for i in range(attempts):
         status, body, _ = get_bytes(status_url, timeout=2)
         if status == 200 and body:
             try:
@@ -66,6 +73,8 @@ def wait_peer_connected(status_url, peer_id, attempts=120, delay=0.5):
                         return True
             except Exception:
                 pass
+        if i % 10 == 0:
+            log(f"waiting peer: {peer_id} status={status} attempt={i + 1}")
         time.sleep(delay)
     return False
 
@@ -86,6 +95,7 @@ def format_mbps(bytes_count, seconds):
 
 
 def benchmark(payload_size, rounds, peer_id, node1_url, node2_url):
+    log("cleanup")
     cleanup()
     p1 = None
     p2 = None
@@ -93,15 +103,20 @@ def benchmark(payload_size, rounds, peer_id, node1_url, node2_url):
     f2 = None
 
     try:
+        log("start node1")
         p1, f1 = run_node("config/1.jsonc", "tests/node1.log")
+        log("wait node1 http ready")
         if not wait_http_ready(f"{node1_url}/api/config"):
             print("FAILURE: Node 1 HTTP not ready")
             return False
 
+        log("start node2")
         p2, f2 = run_node("config/2.jsonc", "tests/node2.log")
+        log("wait node2 http ready")
         if not wait_http_ready(f"{node2_url}/api/config"):
             print("FAILURE: Node 2 HTTP not ready")
             return False
+        log("wait peer connected")
         if not wait_peer_connected(f"{node2_url}/api/status", peer_id):
             print(f"FAILURE: peer {peer_id} not connected on node2")
             return False
@@ -113,6 +128,7 @@ def benchmark(payload_size, rounds, peer_id, node1_url, node2_url):
         download_times = []
 
         for i in range(1, rounds + 1):
+            log(f"round {i} upload start")
             t0 = time.perf_counter()
             status, body, _ = post_bytes(upload_url, payload, timeout=60)
             t1 = time.perf_counter()
@@ -131,6 +147,7 @@ def benchmark(payload_size, rounds, peer_id, node1_url, node2_url):
                 print("FAILURE: missing id in upload response")
                 return False
 
+            log(f"round {i} download start")
             download_url = (
                 f"{node2_url}/api/object/"
                 + urllib.parse.quote(object_id)
@@ -141,12 +158,18 @@ def benchmark(payload_size, rounds, peer_id, node1_url, node2_url):
             status = 0
             t2 = 0.0
             t3 = 0.0
-            for _ in range(30):
+            for attempt in range(30):
+                if attempt % 5 == 0:
+                    log(f"round {i} download attempt {attempt + 1}")
                 t2 = time.perf_counter()
-                status, downloaded, _ = get_bytes(download_url, timeout=120)
+                status, downloaded, _ = get_bytes(download_url, timeout=10)
                 t3 = time.perf_counter()
                 if status == 200 and len(downloaded) == len(payload):
                     break
+                if attempt % 5 == 0:
+                    log(
+                        f"round {i} download retry status={status} size={len(downloaded)}"
+                    )
                 time.sleep(0.2)
             if status != 200 or len(downloaded) != len(payload):
                 print(

@@ -2,7 +2,10 @@
 let processed_messages_cache : Ref[Map[String, UInt64]] = Ref::new({})
 
 ///|
-let response_chunk_size : Int = 4194304
+let response_chunk_size : Int = 16777216
+
+///|
+let http_proxy_no_encrypt_threshold : Int = 1048576
 
 ///|
 struct ResponseChunkState {
@@ -362,7 +365,7 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
     false
   }
   if should_skip_quic {
-    return
+    log_debug("http_proxy: quic received with non-quic peer=\{msg.source_id}")
   }
   if check_and_mark_processed(msg.id, msg.timestamp) {
     log_warn("Duplicate or expired message \{msg.id} ignored")
@@ -407,6 +410,12 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
     resp_map["status"] = @msgpack.string(status_code.to_string())
     resp_map["headers"] = headers_to_msgpack(resp_headers)
     resp_map["data"] = @msgpack.binary(resp_body)
+    let use_encryption = if resp_body.length() >=
+      http_proxy_no_encrypt_threshold {
+      false
+    } else {
+      msg.encrypted
+    }
     send_response_message_direct(
       ctx.transport,
       ctx.sender_addr,
@@ -415,7 +424,7 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
       msg.source_id,
       msg.payload.unwrap_or(msg.id),
       @msgpack.map(resp_map),
-      Some(msg.encrypted),
+      Some(use_encryption),
     )
   })
 }

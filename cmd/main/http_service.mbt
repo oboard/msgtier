@@ -484,7 +484,9 @@ async fn proxy_http_request_stream(
   let msg = { ..msg, target_id: Some(peer_id), payload: Some(req_id) }
   add_pending_message(msg)
   let start = @env.now()
+  let mut last_log = start
   let mut response_sent = false
+  let mut logged_first = false
   let mut resp_headers : Map[String, String] = {}
   let mut status_code = 200
   for {
@@ -501,6 +503,10 @@ async fn proxy_http_request_stream(
     }
     match take_stream_chunk(req_id) {
       Some((chunk, done, headers_opt)) => {
+        if !logged_first {
+          log_info("http_proxy_stream first_chunk peer=\{peer_id} path=\{path}")
+          logged_first = true
+        }
         if !response_sent {
           match headers_opt {
             Some(h) => resp_headers = h
@@ -536,7 +542,14 @@ async fn proxy_http_request_stream(
           return
         }
       }
-      None => @async.sleep(5)
+      None => {
+        let now = @env.now()
+        if now - last_log > 2000UL {
+          log_debug("http_proxy_stream waiting peer=\{peer_id} path=\{path}")
+          last_log = now
+        }
+        @async.sleep(5)
+      }
     }
   }
 }
