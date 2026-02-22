@@ -452,6 +452,96 @@ async fn proxy_http_request(
 }
 
 ///|
+async fn proxy_http_request_stream(
+  peer_id : String,
+  http_method : String,
+  path : String,
+  headers : Map[String, String],
+  body : Bytes,
+  timeout_ms : Int,
+  filename : String?,
+  conn : @http.ServerConnection,
+) -> Unit {
+  let timeout_ms_uint = timeout_ms.reinterpret_as_uint()
+  let timeout_ms_u64 = timeout_ms.to_uint64()
+  let req_id = @uuidm.v4().to_string()
+  add_stream_request(req_id)
+  let body_map : Map[String, @msgpack.Value] = Map::new()
+  body_map["method"] = @msgpack.string(http_method)
+  body_map["path"] = @msgpack.string(path)
+  body_map["headers"] = headers_to_msgpack(headers)
+  body_map["body"] = @msgpack.binary(body)
+  let is_encrypted = get_shared_secret(peer_id) is Some(_)
+  let msg = Message::new(
+    kind="http_proxy",
+    source_id=get_config().id,
+    relay=1,
+    version=VERSION,
+    body=@msgpack.map(body_map),
+    encrypted=is_encrypted,
+    timeout_ms=timeout_ms_uint,
+  )
+  let msg = { ..msg, target_id: Some(peer_id), payload: Some(req_id) }
+  add_pending_message(msg)
+  let start = @env.now()
+  let mut response_sent = false
+  let mut resp_headers : Map[String, String] = {}
+  let mut status_code = 200
+  for {
+    if @env.now() - start > timeout_ms_u64 {
+      if !response_sent {
+        conn
+        ..send_response(504, "Gateway Timeout", extra_headers={})
+        ..write("Timeout fetching object from peer")
+        .end_response()
+      } else {
+        conn.end_response()
+      }
+      return
+    }
+    match take_stream_chunk(req_id) {
+      Some((chunk, done, headers_opt)) => {
+        if !response_sent {
+          match headers_opt {
+            Some(h) => resp_headers = h
+            None => resp_headers = {}
+          }
+          status_code = match resp_headers.get("status") {
+            Some(s) => parse_decimal_int(s, 200)
+            None => 200
+          }
+          resp_headers.remove("status")
+          if !resp_headers.contains("Content-Type") {
+            resp_headers["Content-Type"] = "application/octet-stream"
+          }
+          match filename {
+            Some(fname) =>
+              if !resp_headers.contains("Content-Disposition") {
+                resp_headers["Content-Disposition"] = "attachment; filename=\"\{fname}\""
+              }
+            None => ()
+          }
+          conn.send_response(
+            status_code,
+            status_text(status_code),
+            extra_headers=resp_headers,
+          )
+          response_sent = true
+        }
+        if chunk.length() > 0 {
+          conn.write(chunk)
+        }
+        if done {
+          conn.end_response()
+          return
+        }
+      }
+      None => @async.sleep(5)
+    }
+  }
+}
+
+///|
 async fn handle_internal_http_request(
   http_method : String,
   path : String,
@@ -532,6 +622,40 @@ async fn handle_object_download(
   request_headers : Map[String, String],
   conn : @http.ServerConnection,
 ) -> Unit {
+  let has_range = match request_headers.get("Range") {
+    Some(_) => true
+    None =>
+      match request_headers.get("range") {
+        Some(_) => true
+        None => false
+      }
+  }
+  match get_object_path(id) {
+    Some(path) =>
+      if !has_range {
+        try {
+          let file = @fs.open(path, mode=ReadOnly)
+          defer file.close()
+          let headers : Map[String, String] = {
+            "Content-Type": "application/octet-stream",
+            "Accept-Ranges": "bytes",
+          }
+          match filename {
+            Some(fname) =>
+              headers["Content-Disposition"] = "attachment; filename=\"\{fname}\""
+            None => ()
+          }
+          conn
+          ..send_response(200, "OK", extra_headers=headers)
+          ..write_reader(file)
+          .end_response()
+          return
+        } catch {
+          _ => ()
+        }
+      }
+    None => ()
+  }
   match get_object(id) {
     Some(data) => {
       let (status_code, headers, body) = build_object_download_response(
@@ -566,40 +690,10 @@ async fn handle_object_download(
               }
           }
           let timeout_ms = 60000
-          match
-            proxy_http_request(
-              pid, "GET", path, forward_headers, b"", timeout_ms,
-            ) {
-            Some((status_code, headers, data)) => {
-              let resp_headers = headers
-              if !resp_headers.contains("Content-Type") {
-                resp_headers["Content-Type"] = "application/octet-stream"
-              }
-              match filename {
-                Some(fname) =>
-                  if !resp_headers.contains("Content-Disposition") {
-                    resp_headers["Content-Disposition"] = "attachment; filename=\"\{fname}\""
-                  }
-                None => ()
-              }
-              if !resp_headers.contains("Content-Length") {
-                resp_headers["Content-Length"] = data.length().to_string()
-              }
-              conn
-              ..send_response(
-                status_code,
-                status_text(status_code),
-                extra_headers=resp_headers,
-              )
-              ..write(data)
-              .end_response()
-            }
-            None =>
-              conn
-              ..send_response(504, "Gateway Timeout", extra_headers={})
-              ..write("Timeout fetching object from peer")
-              .end_response()
-          }
+          proxy_http_request_stream(
+            pid, "GET", path, forward_headers, b"", timeout_ms, filename, conn,
+          )
+          return
         }
         None =>
           conn

@@ -185,6 +185,8 @@ pub impl ToJson for ScriptOutput
 type StatusInfo
 pub impl ToJson for StatusInfo
 
+type StreamRequest
+
 type TcpConnection
 
 type TcpTransport

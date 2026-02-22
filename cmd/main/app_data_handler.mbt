@@ -613,6 +613,67 @@ fn handle_data_response(
   log_debug(
     "DataResponse: resolve correlation=\{correlation_id} from=\{source_id}",
   )
+  if is_stream_request(correlation_id) {
+    match response_data {
+      Binary(b) => push_stream_data(correlation_id, b, None)
+      Array(arr) => {
+        let strings = []
+        for v in arr {
+          if v is String(s) {
+            strings.push(s)
+          }
+        }
+        push_stream_data(
+          correlation_id,
+          @utf8.encode(strings.to_json().stringify()),
+          None,
+        )
+      }
+      Map(m) =>
+        match parse_response_chunk(m) {
+          Some((index, total, data, status, headers)) => {
+            let merged_headers = match status {
+              Some(s) => Some(ensure_status_header(s, headers))
+              None => headers
+            }
+            push_stream_chunk(
+              correlation_id, index, total, data, merged_headers,
+            )
+          }
+          None => {
+            let status = match m.get("status") {
+              Some(String(s)) => Some(s)
+              _ => None
+            }
+            let headers = parse_headers_map(m)
+            let data = match m.get("data") {
+              Some(Binary(b)) => Some(b)
+              _ => None
+            }
+            match (status, data) {
+              (Some(status), Some(data)) => {
+                let merged_headers = Some(ensure_status_header(status, headers))
+                push_stream_data(correlation_id, data, merged_headers)
+              }
+              _ => {
+                let output = match m.get("output") {
+                  Some(String(s)) => s
+                  _ => response_data.to_string().unwrap_or("error")
+                }
+                push_stream_data(correlation_id, @utf8.encode(output), None)
+              }
+            }
+          }
+        }
+      _ =>
+        push_stream_data(
+          correlation_id,
+          @utf8.encode(response_data.to_string().unwrap_or("error")),
+          None,
+        )
+    }
+    return
+  }
   match response_data {
     Binary(b) => resolve_request(correlation_id, {}, b)
     Array(arr) => {
