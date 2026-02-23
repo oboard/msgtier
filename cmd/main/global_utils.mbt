@@ -99,35 +99,100 @@ fn get_all_known_peers() -> Array[String] {
 
 ///|
 fn pick_peer_address(peer_id : String, protocol : String) -> String? {
+  // Try to find best address from connection stats first
+  let conns = get_global_connection_manager().get_peer_connections(peer_id)
+  let combined_stats : Map[String, AddressStats] = {}
+  
+  for conn in conns {
+    if conn.relay == 1 {
+      match conn.get_best_address(protocol) {
+        Some(addr) => return Some(addr)
+        None => ()
+      }
+      // Collect stats for fallback logic
+      for k, v in conn.address_stats {
+        combined_stats[k] = v
+      }
+    }
+  }
+
   match get_global_peer_manager().get_peer(peer_id) {
     Some(peer) => {
       let known_peers = get_all_known_peers()
-      let mut fallback : String? = None
+      
+      // Categorize candidates
+      let good_candidates : Array[String] = [] // Have received pongs
+      let neutral_candidates : Array[String] = [] // No stats yet
+      let bad_candidates : Array[String] = [] // Sent > 3 pings, 0 pongs
+      
       for addr_str in peer.addresses {
         if addr_str.is_empty() || is_bind_all_address(addr_str) {
           continue
         }
+        
         let mut parsed : Address? = None
         try {
           parsed = Some(Address::parse(addr_str))
         } catch {
           _ => ()
         }
+        
         match parsed {
           Some(addr) =>
             if addr.protocol.to_string() == protocol {
-              if known_peers.contains(addr_str) {
-                return Some(addr_str)
+              // Normalize address string to match stats keys
+              // Stats keys are usually full URLs
+              let full_url = if addr_str.contains("://") {
+                 addr_str
+              } else {
+                 protocol + "://" + addr_str
               }
-              match fallback {
-                Some(_) => ()
-                None => fallback = Some(addr_str)
+              
+              match combined_stats.get(full_url) {
+                Some(stats) => {
+                  if stats.packets_received > 0 {
+                    good_candidates.push(addr_str)
+                  } else if stats.packets_sent > 3 {
+                    bad_candidates.push(addr_str)
+                  } else {
+                    neutral_candidates.push(addr_str)
+                  }
+                }
+                None => {
+                  neutral_candidates.push(addr_str)
+                }
               }
             }
           None => ()
         }
       }
-      fallback
+      
+      // Select best candidate based on priority
+      if good_candidates.length() > 0 {
+        // Pick the one with lowest loss rate or best latency if possible
+        // For now, just pick the first one, or prefer known peers
+        for c in good_candidates {
+           if known_peers.contains(c) { return Some(c) }
+        }
+        return Some(good_candidates[0])
+      }
+      
+      if neutral_candidates.length() > 0 {
+         for c in neutral_candidates {
+           if known_peers.contains(c) { return Some(c) }
+        }
+        return Some(neutral_candidates[0])
+      }
+      
+      // Only fallback to bad candidates if absolutely nothing else
+      // But user said "only use ports that can receive ping and pong"
+      // So maybe we should return None here? 
+      // If we return None, we might block communication completely until a ping succeeds.
+      // Given "connection completely failed" report, maybe returning None is too strict if pings are also failing.
+      // But if pings are failing, data transfer will likely fail too.
+      // Let's avoid bad candidates to prevent timeouts.
+      
+      None
     }
     None => None
   }

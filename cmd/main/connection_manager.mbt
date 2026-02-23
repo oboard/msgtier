@@ -103,6 +103,59 @@ fn ConnectionManager::update_connection_ports(
 }
 
 ///|
+fn ConnectionManager::update_connection_address_ping(
+  self : ConnectionManager,
+  conn_id : String,
+  addr : String,
+  time : UInt64,
+) -> ConnectionManager {
+  let connections = self.connections
+  match connections.get(conn_id) {
+    Some(conn) => {
+      let updated_conn = conn.update_address_ping(addr, time)
+      connections[conn_id] = updated_conn
+      { connections, peer_connections: self.peer_connections }
+    }
+    None => self
+  }
+}
+
+///|
+fn ConnectionManager::update_connection_address_pong(
+  self : ConnectionManager,
+  conn_id : String,
+  addr : String,
+  time : UInt64,
+) -> ConnectionManager {
+  let connections = self.connections
+  match connections.get(conn_id) {
+    Some(conn) => {
+      let updated_conn = conn.update_address_pong(addr, time)
+      connections[conn_id] = updated_conn
+      { connections, peer_connections: self.peer_connections }
+    }
+    None => self
+  }
+}
+
+///|
+fn ConnectionManager::mark_connection_address_packet_lost(
+  self : ConnectionManager,
+  conn_id : String,
+  addr : String,
+) -> ConnectionManager {
+  let connections = self.connections
+  match connections.get(conn_id) {
+    Some(conn) => {
+      let updated_conn = conn.mark_address_packet_lost(addr)
+      connections[conn_id] = updated_conn
+      { connections, peer_connections: self.peer_connections }
+    }
+    None => self
+  }
+}
+
+///|
 fn ConnectionManager::prune_connection_ports(
   self : ConnectionManager,
   conn_id : String,

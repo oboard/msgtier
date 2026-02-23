@@ -22,7 +22,18 @@ struct Connection {
   ports_last_seen : Map[String, UInt64]
   version : String // Version of the peer
   nat_type : NatType
+  address_stats : Map[String, AddressStats]
 } derive(Show, ToJson, FromJson)
+
+///|
+struct AddressStats {
+  last_ping_time : UInt64?
+  last_pong_time : UInt64?
+  packets_sent : Int
+  packets_lost : Int
+  packets_received : Int
+  latency_ms : Int?
+} derive(Show, ToJson, FromJson, Eq)
 
 ///|
 struct PortMapping {
@@ -78,7 +89,133 @@ fn Connection::new(my_id : String, peer_id : String) -> Connection {
     ports_last_seen: {},
     version: "",
     nat_type: Unknown,
+    address_stats: {},
   }
+}
+
+///|
+fn Connection::update_address_ping(
+  self : Connection,
+  addr : String,
+  time : UInt64,
+) -> Connection {
+  let stats = self.address_stats
+  let entry = match stats.get(addr) {
+    Some(s) =>
+      AddressStats::{
+        ..s,
+        last_ping_time: Some(time),
+        packets_sent: s.packets_sent + 1,
+      }
+    None =>
+      AddressStats::{
+        last_ping_time: Some(time),
+        last_pong_time: None,
+        packets_sent: 1,
+        packets_lost: 0,
+        packets_received: 0,
+        latency_ms: None,
+      }
+  }
+  stats[addr] = entry
+  { ..self, address_stats: stats }
+}
+
+///|
+fn Connection::update_address_pong(
+  self : Connection,
+  addr : String,
+  time : UInt64,
+) -> Connection {
+  let stats = self.address_stats
+  let entry = match stats.get(addr) {
+    Some(s) => {
+      let latency = match s.last_ping_time {
+        Some(ping_time) =>
+          if time >= ping_time {
+            Some((time - ping_time).to_int())
+          } else {
+            s.latency_ms
+          }
+        None => s.latency_ms
+      }
+      AddressStats::{
+        ..s,
+        last_pong_time: Some(time),
+        latency_ms: latency,
+        packets_received: s.packets_received + 1,
+      }
+    }
+    None =>
+      AddressStats::{
+        last_ping_time: None,
+        last_pong_time: Some(time),
+        packets_sent: 0,
+        packets_lost: 0,
+        packets_received: 1,
+        latency_ms: None,
+      }
+  }
+  stats[addr] = entry
+  { ..self, address_stats: stats }
+}
+
+///|
+fn Connection::mark_address_packet_lost(
+  self : Connection,
+  addr : String,
+) -> Connection {
+  let stats = self.address_stats
+  match stats.get(addr) {
+    Some(s) => {
+      let entry = AddressStats::{ ..s, packets_lost: s.packets_lost + 1 }
+      stats[addr] = entry
+      { ..self, address_stats: stats }
+    }
+    None => self
+  }
+}
+
+///|
+fn Connection::get_best_address(
+  self : Connection,
+  protocol : String,
+) -> String? {
+  let mut best_addr : String? = None
+  let mut best_score = -1.0
+  let now = @env.now()
+  for addr, stats in self.address_stats {
+    // Check protocol match (assuming addr is URL)
+    if !addr.has_prefix(protocol + "://") {
+      continue
+    }
+
+    // Must have received a pong recently (e.g., within 30s)
+    let last_pong = stats.last_pong_time.unwrap_or(0UL)
+    if now - last_pong > 30000UL {
+      continue
+    }
+
+    // Calculate score: lower packet loss is better, lower latency is better
+    // Score = 1000 - (loss_rate * 10) - latency_ms
+    let loss_rate = if stats.packets_sent > 0 {
+      let unacked = stats.packets_sent -
+        stats.packets_lost -
+        stats.packets_received
+      let effective_loss = stats.packets_lost +
+        (if unacked > 0 { unacked } else { 0 })
+      effective_loss * 100 / stats.packets_sent
+    } else {
+      100
+    }
+    let latency = stats.latency_ms.unwrap_or(1000)
+    let score = 1000.0 - loss_rate.to_double() * 10.0 - latency.to_double()
+    if score > best_score {
+      best_score = score
+      best_addr = Some(addr)
+    }
+  }
+  best_addr
 }
 
 ///|
@@ -333,6 +470,29 @@ fn Connection::to_msgpack(self : Connection) -> @msgpack.Value {
     },
     @msgpack.string(self.version),
     @msgpack.string(self.nat_type.to_string()),
+    {
+      let m = {}
+      for k, v in self.address_stats {
+        m[k] = @msgpack.array([
+          match v.last_ping_time {
+            Some(t) => @msgpack.uint64(t)
+            None => @msgpack.nil()
+          },
+          match v.last_pong_time {
+            Some(t) => @msgpack.uint64(t)
+            None => @msgpack.nil()
+          },
+          @msgpack.int(v.packets_sent),
+          @msgpack.int(v.packets_lost),
+          match v.latency_ms {
+            Some(l) => @msgpack.int(l)
+            None => @msgpack.nil()
+          },
+          @msgpack.int(v.packets_received),
+        ])
+      }
+      @msgpack.map(m)
+    },
   ])
 }
 
@@ -361,6 +521,7 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         last_ping_time_val,
         String(version),
         String(nat_type_str),
+        address_stats_val,
       ]
     ) => {
       let nat_type = match nat_type_str {
@@ -403,6 +564,60 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
       let last_ping_time = match last_ping_time_val {
         UInt64(t) => Some(t)
         _ => None
+      }
+      let address_stats = match address_stats_val {
+        Map(m) => {
+          let stats = {}
+          for k, v in m {
+            match v {
+              Array(arr) =>
+                if arr.length() >= 5 {
+                  let ping_val = arr[0]
+                  let pong_val = arr[1]
+                  let sent = match arr[2] {
+                    Int(i) => i
+                    _ => 0
+                  }
+                  let lost = match arr[3] {
+                    Int(i) => i
+                    _ => 0
+                  }
+                  let latency_val = arr[4]
+                  let received = if arr.length() >= 6 {
+                    match arr[5] {
+                      Int(i) => i
+                      _ => 0
+                    }
+                  } else {
+                    0
+                  }
+                  let last_ping_time = match ping_val {
+                    UInt64(t) => Some(t)
+                    _ => None
+                  }
+                  let last_pong_time = match pong_val {
+                    UInt64(t) => Some(t)
+                    _ => None
+                  }
+                  let latency_ms = match latency_val {
+                    Int(l) => Some(l)
+                    _ => None
+                  }
+                  stats[k] = AddressStats::{
+                    last_ping_time,
+                    last_pong_time,
+                    packets_sent: sent,
+                    packets_lost: lost,
+                    packets_received: received,
+                    latency_ms,
+                  }
+                }
+              _ => ()
+            }
+          }
+          stats
+        }
+        _ => {}
       }
       let ports = match protocol_val {
         Array(port_entries) => {
@@ -477,6 +692,7 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         ports_last_seen: {},
         version,
         nat_type,
+        address_stats,
       })
     }
     _ => None

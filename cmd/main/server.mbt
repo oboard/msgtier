@@ -685,27 +685,64 @@ async fn handle_heartbeat(
           source_addr=ping_local_addr,
           version=VERSION,
         )
-        match pick_peer_address(peer_id, transport.protocol()) {
-          Some(addr) => {
-            let target_addr = if addr.contains("://") {
-              addr
-            } else {
-              transport.protocol() + "://" + addr
+
+        // Get all candidate addresses for this peer and protocol
+        let candidate_addrs : Array[String] = []
+        match get_global_peer_manager().get_peer(peer_id) {
+          Some(peer_node) => {
+            for addr in peer_node.addresses {
+              let target_addr = if addr.contains("://") {
+                addr
+              } else {
+                transport.protocol() + "://" + addr
+              }
+              match @url.Url::parse(target_addr) {
+                 Some(u) => {
+                    if u.scheme == transport.protocol() {
+                      candidate_addrs.push(target_addr)
+                    }
+                 }
+                 None => ()
+               }
             }
+          }
+          None => ()
+        }
+        
+        // Also include the currently connected address if known
+        // (though it should be in peer_node.addresses usually)
+        
+        if candidate_addrs.is_empty() {
+             // Fallback to pick_peer_address if no addresses found (e.g. routed?)
+             match pick_peer_address(peer_id, transport.protocol()) {
+                Some(addr) => candidate_addrs.push(addr)
+                None => ()
+             }
+        }
+
+        for target_addr in candidate_addrs {
             if target_addr != "routed" {
+              update_global_connection_manager(fn(manager) {
+                manager.update_connection_address_ping(conn.id, target_addr, current_time)
+              })
+              // We also update the main ping time for backward compatibility/general health
               update_global_connection_manager(fn(manager) {
                 manager.update_connection_ping_time(conn.id, Some(current_time))
               })
               update_global_connection_manager(fn(manager) {
                 manager.update_connection_packet_loss(conn.id, 1, 0)
               })
+              
               let ok = send_message(transport, target_addr, ping_msg)
+              if !ok {
+                 update_global_connection_manager(fn(manager) {
+                    manager.mark_connection_address_packet_lost(conn.id, target_addr)
+                 })
+              }
               log_debug(
                 "DEBUG: ping send protocol=\{transport.protocol()} peer=\{peer_id} addr=\{target_addr} ok=\{ok}",
               )
             }
-          }
-          None => ()
         }
 
         if conn.relay == 1 {

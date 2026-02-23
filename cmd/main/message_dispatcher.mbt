@@ -298,6 +298,11 @@ fn handle_pong_message(ctx : MessageContext) -> Unit {
     "DEBUG: pong recv protocol=\{ctx.transport.protocol()} from=\{ctx.sender_addr} peer=\{peer_id}",
   )
   let peer_conns = get_global_connection_manager().get_peer_connections(peer_id)
+  let addr_key = if ctx.sender_addr.contains("://") {
+    ctx.sender_addr
+  } else {
+    ctx.transport.protocol() + "://" + ctx.sender_addr
+  }
   for conn in peer_conns {
     let current_time = @env.now()
     match conn.last_ping_time {
@@ -309,6 +314,9 @@ fn handle_pong_message(ctx : MessageContext) -> Unit {
       }
       None => ()
     }
+    update_global_connection_manager(fn(manager) {
+      manager.update_connection_address_pong(conn.id, addr_key, current_time)
+    })
     update_global_connection_manager(fn(manager) {
       manager.update_connection_pong_time(conn.id, Some(current_time))
     })
@@ -346,13 +354,15 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
         let (conn_val, pk_bytes) = match entry {
           Array(arr) =>
             if arr.length() >= 21 {
-              let pk_val = arr[20]
+              // The last element is the public key, the rest is the Connection msgpack
+              let len = arr.length()
+              let pk_val = arr[len - 1]
               let pk = match pk_val {
                 Binary(b) => b
                 _ => []
               }
               let conn_arr = []
-              for i = 0; i < 20; i = i + 1 {
+              for i = 0; i < len - 1; i = i + 1 {
                 conn_arr.push(arr[i])
               }
               (@msgpack.array(conn_arr), pk)
