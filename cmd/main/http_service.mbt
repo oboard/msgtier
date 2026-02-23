@@ -551,9 +551,11 @@ async fn proxy_http_request_stream(
         }
         // Retry logic: if no chunk received for 5 seconds, resend the request
         if !response_sent && now - last_chunk_time > 5000UL {
-           log_warn("http_proxy_stream: no response for 5s, retrying request... peer=\{peer_id}")
-           add_pending_message(msg)
-           last_chunk_time = now // Reset timer to avoid spamming
+          log_warn(
+            "http_proxy_stream: no response for 5s, retrying request... peer=\{peer_id}",
+          )
+          add_pending_message(msg)
+          last_chunk_time = now // Reset timer to avoid spamming
         }
         @async.sleep(5)
       }
@@ -562,6 +564,7 @@ async fn proxy_http_request_stream(
 }
 
 ///|
+
 ///|
 enum ResponseBody {
   Bytes(Bytes)
@@ -589,12 +592,14 @@ async fn handle_internal_http_request(
       }
     }
     match get_object_path(id) {
-              Some(path) => {
-                log_info("HTTP: Serving object \{id} via zero-copy file stream: \{path}")
-                let resp_headers : Map[String, String] = {
-                  "Content-Type": "application/octet-stream",
-                  "Accept-Ranges": "bytes",
-                }
+      Some(path) => {
+        log_info(
+          "HTTP: Serving object \{id} via zero-copy file stream: \{path}",
+        )
+        let resp_headers : Map[String, String] = {
+          "Content-Type": "application/octet-stream",
+          "Accept-Ranges": "bytes",
+        }
         match filename {
           Some(fname) =>
             resp_headers["Content-Disposition"] = "attachment; filename=\"\{fname}\""
@@ -612,7 +617,11 @@ async fn handle_internal_http_request(
           }
           None => {
             let resp_headers : Map[String, String] = {}
-            (404, resp_headers, ResponseBody::Bytes(@utf8.encode("Object not found")))
+            (
+              404,
+              resp_headers,
+              ResponseBody::Bytes(@utf8.encode("Object not found")),
+            )
           }
         }
     }
@@ -631,7 +640,11 @@ async fn handle_internal_http_request(
     let json_val = @json.parse(json_str) catch {
       _ => {
         let resp_headers : Map[String, String] = {}
-        return (400, resp_headers, ResponseBody::Bytes(@utf8.encode("Bad Request")))
+        return (
+          400,
+          resp_headers,
+          ResponseBody::Bytes(@utf8.encode("Bad Request")),
+        )
       }
     }
     let path = match json_val {
@@ -640,7 +653,11 @@ async fn handle_internal_http_request(
     }
     if path == "" {
       let resp_headers : Map[String, String] = {}
-      return (400, resp_headers, ResponseBody::Bytes(@utf8.encode("Missing path")))
+      return (
+        400,
+        resp_headers,
+        ResponseBody::Bytes(@utf8.encode("Missing path")),
+      )
     }
     let id = register_object(path)
     let m = Map::new()
@@ -655,7 +672,11 @@ async fn handle_internal_http_request(
     let body_str = @utf8.decode(body).trim().to_string()
     if body_str == "" {
       let resp_headers : Map[String, String] = {}
-      (400, resp_headers, ResponseBody::Bytes(@utf8.encode("Missing file path")))
+      (
+        400,
+        resp_headers,
+        ResponseBody::Bytes(@utf8.encode("Missing file path")),
+      )
     } else {
       let id = register_object(body_str)
       let m = Map::new()

@@ -261,7 +261,12 @@ fn handle_response_message(ctx : MessageContext) -> Unit {
         Binary(raw) => decode_binary_payload(raw)
         _ => ctx.msg.body
       }
-      handle_data_response(correlation_id, final_data, ctx.msg.source_id)
+      handle_data_response(
+        correlation_id,
+        final_data,
+        ctx.msg.attachment,
+        ctx.msg.source_id,
+      )
     }
     None =>
       log_warn(

@@ -43,12 +43,17 @@ impl Transport for TcpTransport with send(self, target, data) {
 
   // Framing: 4 bytes length + data
   let len = data.length()
-  let header : Bytes = [
-    (len >> 24).to_byte(),
-    (len >> 16).to_byte(),
-    (len >> 8).to_byte(),
-    len.to_byte(),
-  ]
+  let packet = FixedArray::make(len + 4, b'\x00')
+  packet[0] = (len >> 24).to_byte()
+  packet[1] = (len >> 16).to_byte()
+  packet[2] = (len >> 8).to_byte()
+  packet[3] = len.to_byte()
+
+  // Copy data to packet to ensure atomic write
+  for i = 0; i < len; i = i + 1 {
+    packet[4 + i] = data[i]
+  }
+  let packet_bytes = packet.unsafe_reinterpret_as_bytes()
 
   // Retry loop (max 2 attempts)
   for i = 0; i < 2; i = i + 1 {
@@ -115,8 +120,7 @@ impl Transport for TcpTransport with send(self, target, data) {
           }
           wrapper.sending.val = true
           try {
-            conn.write(header)
-            conn.write(data)
+            conn.write(packet_bytes)
             wrapper.sending.val = false
             return true
           } catch {

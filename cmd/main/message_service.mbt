@@ -173,7 +173,37 @@ async fn send_message(
       msg
     }
     let msgpack_bytes = msg_to_send.to_msgpack()
-    transport.send(target_addr, msgpack_bytes)
+    let msgpack_len = msgpack_bytes.length()
+    let attachment_len = match msg.attachment {
+      Some(a) => a.length()
+      None => 0
+    }
+    let total_len = 4 + msgpack_len + attachment_len
+    let payload_arr = FixedArray::make(total_len, b'\x00')
+
+    // Write MsgPack Len (Big Endian)
+    payload_arr[0] = (msgpack_len >> 24).to_byte()
+    payload_arr[1] = (msgpack_len >> 16).to_byte()
+    payload_arr[2] = (msgpack_len >> 8).to_byte()
+    payload_arr[3] = msgpack_len.to_byte()
+
+    // Copy MsgPack Bytes
+    for i = 0; i < msgpack_len; i = i + 1 {
+      payload_arr[4 + i] = msgpack_bytes[i]
+    }
+
+    // Copy Attachment Bytes
+    match msg.attachment {
+      Some(a) =>
+        for i = 0; i < attachment_len; i = i + 1 {
+          payload_arr[4 + msgpack_len + i] = a[i]
+        }
+      None => ()
+    }
+
+    // log_debug("DEBUG: send_message id=\{msg.id} total_len=\{total_len} msgpack_len=\{msgpack_len} attachment_len=\{attachment_len} payload_0=\{payload_arr[0].to_int()}")
+
+    transport.send(target_addr, payload_arr.unsafe_reinterpret_as_bytes())
   } catch {
     _ => {
       log_warn("Failed to send message to \{target_addr}")

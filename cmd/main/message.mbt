@@ -16,6 +16,7 @@ struct Message {
   encrypted : Bool // Whether the data field is encrypted
   timestamp : UInt64 // Creation timestamp for TTL and deduplication
   timeout_ms : UInt? // Optional custom timeout in milliseconds
+  attachment : Bytes? // Zero-copy attachment
 } derive(Show, Eq)
 
 ///|
@@ -44,6 +45,7 @@ fn Message::new(
   encrypted? : Bool = false,
   timestamp? : UInt64,
   timeout_ms? : UInt,
+  attachment? : Bytes,
 ) -> Message {
   message_id_counter.val += 1
   {
@@ -69,6 +71,7 @@ fn Message::new(
     encrypted,
     timestamp: timestamp.unwrap_or(@env.now()),
     timeout_ms,
+    attachment,
   }
 }
 
@@ -304,6 +307,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         encrypted,
         timestamp,
         timeout_ms,
+        attachment: None,
       }
     }
     _ => fail("Expected msgpack array, got \{msgpack.to_json().stringify()}")

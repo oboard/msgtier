@@ -80,7 +80,57 @@ fn parse_response_chunk(
     _ => None
   }
   let headers = parse_headers_map(m)
-  if index < 0 || total <= 0 || index >= total || data.length() == 0 {
+  if index < 0 || total <= 0 || index >= total {
+    None
+  } else {
+    Some((index, total, data, status, headers))
+  }
+}
+
+///|
+fn parse_response_chunk_array(
+  arr : Array[@msgpack.Value],
+) -> (Int, Int, Bytes, String?, Map[String, String]?)? {
+  if arr.length() < 3 {
+    return None
+  }
+  let index = match arr[0] {
+    Int(i) => i
+    Int64(i) => i.to_int()
+    UInt64(i) => i.reinterpret_as_int64().to_int()
+    _ => -1
+  }
+  let total = match arr[1] {
+    Int(i) => i
+    Int64(i) => i.to_int()
+    UInt64(i) => i.reinterpret_as_int64().to_int()
+    _ => -1
+  }
+  let data = match arr[2] {
+    Binary(b) => b
+    _ => b""
+  }
+  let status = if arr.length() > 3 {
+    match arr[3] {
+      String(s) => Some(s)
+      _ => None
+    }
+  } else {
+    None
+  }
+  let headers = if arr.length() > 4 {
+    match arr[4] {
+      Map(m) => {
+        let wrapper = Map::new()
+        wrapper["headers"] = @msgpack.map(m)
+        parse_headers_map(wrapper)
+      }
+      _ => None
+    }
+  } else {
+    None
+  }
+  if index < 0 || total <= 0 || index >= total {
     None
   } else {
     Some((index, total, data, status, headers))
@@ -412,8 +462,7 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
         resp_map["status"] = @msgpack.string(status_code.to_string())
         resp_map["headers"] = headers_to_msgpack(resp_headers)
         resp_map["data"] = @msgpack.binary(b)
-        let use_encryption = if b.length() >=
-          http_proxy_no_encrypt_threshold {
+        let use_encryption = if b.length() >= http_proxy_no_encrypt_threshold {
           false
         } else {
           msg.encrypted
@@ -457,17 +506,32 @@ fn send_response_message(
   response_data : @msgpack.Value,
 ) -> Unit {
   let is_encrypted = get_shared_secret(target_id) is Some(_)
-  let send_one = fn(body : @msgpack.Value) {
-    let response_msg = Message::new(
-      kind="response",
-      source_id~,
-      source_addr~,
-      target_id~,
-      relay=1,
-      body~,
-      encrypted=is_encrypted,
-      payload=correlation_id,
-    )
+  let send_one = fn(body : @msgpack.Value, attachment : Bytes?) {
+    let response_msg = match attachment {
+      Some(a) =>
+        Message::new(
+          kind="response",
+          source_id~,
+          source_addr~,
+          target_id~,
+          relay=1,
+          body~,
+          encrypted=is_encrypted,
+          payload=correlation_id,
+          attachment=a,
+        )
+      None =>
+        Message::new(
+          kind="response",
+          source_id~,
+          source_addr~,
+          target_id~,
+          relay=1,
+          body~,
+          encrypted=is_encrypted,
+          payload=correlation_id,
+        )
+    }
     add_pending_message(response_msg)
   }
   let send_chunked = fn(
@@ -484,21 +548,21 @@ fn send_response_message(
         start + response_chunk_size
       }
       let chunk = slice_bytes(data, start, end)
-      let m : Map[String, @msgpack.Value] = Map::new()
-      m["chunk_index"] = @msgpack.int(i)
-      m["chunk_total"] = @msgpack.int(total)
-      m["chunk_data"] = @msgpack.binary(chunk)
+      let arr : Array[@msgpack.Value] = []
+      arr.push(@msgpack.int(i))
+      arr.push(@msgpack.int(total))
+      arr.push(@msgpack.binary(b""))
       if i == 0 {
         match status {
-          Some(s) => m["status"] = @msgpack.string(s)
-          None => ()
+          Some(s) => arr.push(@msgpack.string(s))
+          None => if headers is Some(_) { arr.push(@msgpack.nil()) }
         }
         match headers {
-          Some(h) => m["headers"] = headers_to_msgpack(h)
+          Some(h) => arr.push(headers_to_msgpack(h))
           None => ()
         }
       }
-      send_one(@msgpack.map(m))
+      send_one(@msgpack.array(arr), Some(chunk))
     }
   }
   match response_data {
@@ -506,7 +570,7 @@ fn send_response_message(
       if b.length() >= response_chunk_size {
         send_chunked(b, None, None)
       } else {
-        send_one(response_data)
+        send_one(response_data, None)
       }
     Map(m) => {
       let status = match m.get("status") {
@@ -523,12 +587,12 @@ fn send_response_message(
           if data.length() >= response_chunk_size {
             send_chunked(data, Some(status), headers)
           } else {
-            send_one(response_data)
+            send_one(response_data, None)
           }
-        _ => send_one(response_data)
+        _ => send_one(response_data, None)
       }
     }
-    _ => send_one(response_data)
+    _ => send_one(response_data, None)
   }
   log_info(
     "DataResponse: queued correlation=\{correlation_id} to=\{target_id} encrypted=\{is_encrypted}",
@@ -539,6 +603,184 @@ fn send_response_message(
 enum ResponseSource {
   MsgPack(@msgpack.Value)
   FileStream(String, String, Map[String, String]) // path, status, headers
+}
+
+///|
+async fn send_one_helper(
+  transport : &Transport,
+  resolved_addr : String,
+  source_id : String,
+  source_addr : String,
+  target_id : String,
+  correlation_id : String,
+  is_encrypted : Bool,
+  body : @msgpack.Value,
+  attachment : Bytes?,
+) -> Bool {
+  let response_msg = match attachment {
+    Some(a) =>
+      Message::new(
+        kind="response",
+        source_id~,
+        source_addr~,
+        target_id~,
+        relay=1,
+        body~,
+        encrypted=is_encrypted,
+        payload=correlation_id,
+        attachment=a,
+      )
+    None =>
+      Message::new(
+        kind="response",
+        source_id~,
+        source_addr~,
+        target_id~,
+        relay=1,
+        body~,
+        encrypted=is_encrypted,
+        payload=correlation_id,
+      )
+  }
+  let ok = send_message(transport, resolved_addr, response_msg)
+  if !ok {
+    add_pending_message(response_msg)
+  }
+  ok
+}
+
+///|
+async fn send_chunked_helper(
+  transport : &Transport,
+  resolved_addr : String,
+  source_id : String,
+  source_addr : String,
+  target_id : String,
+  correlation_id : String,
+  is_encrypted : Bool,
+  data : Bytes,
+  status : String?,
+  headers : Map[String, String]?,
+) -> Unit {
+  let total = (data.length() + response_chunk_size - 1) / response_chunk_size
+  for i = 0; i < total; i = i + 1 {
+    let start = i * response_chunk_size
+    let end = if start + response_chunk_size > data.length() {
+      data.length()
+    } else {
+      start + response_chunk_size
+    }
+    let chunk = slice_bytes(data, start, end)
+    let arr : Array[@msgpack.Value] = []
+    arr.push(@msgpack.int(i))
+    arr.push(@msgpack.int(total))
+    arr.push(@msgpack.binary(b""))
+    if i == 0 {
+      match status {
+        Some(s) => arr.push(@msgpack.string(s))
+        None => if headers is Some(_) { arr.push(@msgpack.nil()) }
+      }
+      match headers {
+        Some(h) => arr.push(headers_to_msgpack(h))
+        None => ()
+      }
+    }
+    let _ = send_one_helper(
+      transport,
+      resolved_addr,
+      source_id,
+      source_addr,
+      target_id,
+      correlation_id,
+      is_encrypted,
+      @msgpack.array(arr),
+      Some(chunk),
+    )
+  }
+}
+
+///|
+async fn send_file_stream_helper(
+  transport : &Transport,
+  resolved_addr : String,
+  source_id : String,
+  source_addr : String,
+  target_id : String,
+  correlation_id : String,
+  is_encrypted : Bool,
+  path : String,
+  status : String,
+  headers : Map[String, String]?,
+) -> Unit {
+  try {
+    let file = @fs.open(path, mode=ReadOnly)
+    defer file.close()
+    let file_size = file.size()
+    let chunk_size_64 = response_chunk_size.to_int64()
+    let total_64 = (file_size + chunk_size_64 - 1) / chunk_size_64
+    let total = total_64.to_int()
+
+    for i = 0; i < total; i = i + 1 {
+      let offset = i.to_int64() * chunk_size_64
+      let expected_len = if offset + chunk_size_64 > file_size {
+        (file_size - offset).to_int()
+      } else {
+        response_chunk_size
+      }
+      let chunk_buf = FixedArray::make(expected_len, b'\x00')
+      let bytes_read = file.read_at(chunk_buf, position=offset)
+
+      if bytes_read > 0 {
+        let chunk_full = chunk_buf.unsafe_reinterpret_as_bytes()
+        let chunk = if bytes_read < expected_len {
+          slice_bytes(chunk_full, 0, bytes_read)
+        } else {
+          chunk_full
+        }
+
+        let arr : Array[@msgpack.Value] = []
+        arr.push(@msgpack.int(i))
+        arr.push(@msgpack.int(total))
+        arr.push(@msgpack.binary(b""))
+        if i == 0 {
+          arr.push(@msgpack.string(status))
+          arr.push(headers_to_msgpack(headers.unwrap_or({})))
+        }
+        let _ = send_one_helper(
+          transport,
+          resolved_addr,
+          source_id,
+          source_addr,
+          target_id,
+          correlation_id,
+          is_encrypted,
+          @msgpack.array(arr),
+          Some(chunk),
+        )
+      }
+    }
+  } catch {
+    e => {
+      log_error("File stream error: " + e.to_string())
+      let resp_map : Map[String, @msgpack.Value] = Map::new()
+      resp_map["status"] = @msgpack.string("500")
+      resp_map["headers"] = headers_to_msgpack(headers.unwrap_or({}))
+      resp_map["data"] = @msgpack.binary(
+        @utf8.encode("Internal Server Error: " + e.to_string()),
+      )
+      let _ = send_one_helper(
+        transport,
+        resolved_addr,
+        source_id,
+        source_addr,
+        target_id,
+        correlation_id,
+        is_encrypted,
+        @msgpack.map(resp_map),
+        None,
+      )
+    }
+  }
 }
 
 ///|
@@ -561,62 +803,35 @@ async fn send_response_message_direct(
   } else {
     target_addr
   }
-  let send_one = async fn(body : @msgpack.Value) {
-    let response_msg = Message::new(
-      kind="response",
-      source_id~,
-      source_addr~,
-      target_id~,
-      relay=1,
-      body~,
-      encrypted=is_encrypted,
-      payload=correlation_id,
-    )
-    let ok = send_message(transport, resolved_addr, response_msg)
-    if !ok {
-      add_pending_message(response_msg)
-    }
-  }
-  let send_chunked = async fn(
-    data : Bytes,
-    status : String?,
-    headers : Map[String, String]?,
-  ) {
-    let total = (data.length() + response_chunk_size - 1) / response_chunk_size
-    for i = 0; i < total; i = i + 1 {
-      let start = i * response_chunk_size
-      let end = if start + response_chunk_size > data.length() {
-        data.length()
-      } else {
-        start + response_chunk_size
-      }
-      let chunk = slice_bytes(data, start, end)
-      let m : Map[String, @msgpack.Value] = Map::new()
-      m["chunk_index"] = @msgpack.int(i)
-      m["chunk_total"] = @msgpack.int(total)
-      m["chunk_data"] = @msgpack.binary(chunk)
-      if i == 0 {
-        match status {
-          Some(s) => m["status"] = @msgpack.string(s)
-          None => ()
-        }
-        match headers {
-          Some(h) => m["headers"] = headers_to_msgpack(h)
-          None => ()
-        }
-      }
-      send_one(@msgpack.map(m))
-    }
-  }
-
   match response_source {
     ResponseSource::MsgPack(response_data) =>
       match response_data {
         Binary(b) =>
           if b.length() >= response_chunk_size {
-            send_chunked(b, None, None)
+            send_chunked_helper(
+              transport,
+              resolved_addr,
+              source_id,
+              source_addr,
+              target_id,
+              correlation_id,
+              is_encrypted,
+              b,
+              None,
+              None,
+            )
           } else {
-            send_one(response_data)
+            let _ = send_one_helper(
+              transport,
+              resolved_addr,
+              source_id,
+              source_addr,
+              target_id,
+              correlation_id,
+              is_encrypted,
+              response_data,
+              None,
+            )
           }
         Map(m) => {
           let status = match m.get("status") {
@@ -631,64 +846,73 @@ async fn send_response_message_direct(
           match (status, data) {
             (Some(status), Some(data)) =>
               if data.length() >= response_chunk_size {
-                send_chunked(data, Some(status), headers)
+                send_chunked_helper(
+                  transport,
+                  resolved_addr,
+                  source_id,
+                  source_addr,
+                  target_id,
+                  correlation_id,
+                  is_encrypted,
+                  data,
+                  Some(status),
+                  headers,
+                )
               } else {
-                send_one(response_data)
+                let _ = send_one_helper(
+                  transport,
+                  resolved_addr,
+                  source_id,
+                  source_addr,
+                  target_id,
+                  correlation_id,
+                  is_encrypted,
+                  response_data,
+                  None,
+                )
               }
-            _ => send_one(response_data)
+            _ => {
+              let _ = send_one_helper(
+                transport,
+                resolved_addr,
+                source_id,
+                source_addr,
+                target_id,
+                correlation_id,
+                is_encrypted,
+                response_data,
+                None,
+              )
+            }
           }
         }
-        _ => send_one(response_data)
+        _ => {
+          let _ = send_one_helper(
+            transport,
+            resolved_addr,
+            source_id,
+            source_addr,
+            target_id,
+            correlation_id,
+            is_encrypted,
+            response_data,
+            None,
+          )
+        }
       }
     ResponseSource::FileStream(path, status, headers) =>
-      try {
-        let file = @fs.open(path, mode=ReadOnly)
-        defer file.close()
-        let file_size = file.size()
-        let chunk_size_64 = response_chunk_size.to_int64()
-        let total_64 = (file_size + chunk_size_64 - 1) / chunk_size_64
-        let total = total_64.to_int()
-
-        for i = 0; i < total; i = i + 1 {
-          let offset = i.to_int64() * chunk_size_64
-          let expected_len = if offset + chunk_size_64 > file_size {
-            (file_size - offset).to_int()
-          } else {
-            response_chunk_size
-          }
-          let chunk_buf = FixedArray::make(expected_len, b'\x00')
-          let bytes_read = file.read_at(chunk_buf, position=offset)
-
-          if bytes_read > 0 {
-             let chunk_full = chunk_buf.unsafe_reinterpret_as_bytes()
-             let chunk = if bytes_read < expected_len {
-               slice_bytes(chunk_full, 0, bytes_read)
-             } else {
-               chunk_full
-             }
-
-             let m : Map[String, @msgpack.Value] = Map::new()
-             m["chunk_index"] = @msgpack.int(i)
-             m["chunk_total"] = @msgpack.int(total)
-             m["chunk_data"] = @msgpack.binary(chunk)
-             if i == 0 {
-                m["status"] = @msgpack.string(status)
-                m["headers"] = headers_to_msgpack(headers)
-             }
-             send_one(@msgpack.map(m))
-          }
-        }
-      } catch {
-        e => {
-          log_error("File stream error: " + e.to_string())
-          let resp_map : Map[String, @msgpack.Value] = Map::new()
-          resp_map["status"] = @msgpack.string("500")
-          resp_map["data"] = @msgpack.binary(
-            @utf8.encode("Internal Server Error: " + e.to_string()),
-          )
-          send_one(@msgpack.map(resp_map))
-        }
-      }
+      send_file_stream_helper(
+        transport,
+        resolved_addr,
+        source_id,
+        source_addr,
+        target_id,
+        correlation_id,
+        is_encrypted,
+        path,
+        status,
+        Some(headers),
+      )
   }
   log_info(
     "DataResponse: direct correlation=\{correlation_id} to=\{target_id} encrypted=\{is_encrypted}",
@@ -696,9 +920,10 @@ async fn send_response_message_direct(
 }
 
 ///|
-fn handle_data_response(
+pub fn handle_data_response(
   correlation_id : String,
   response_data : @msgpack.Value,
+  attachment : Bytes?,
   source_id : String,
 ) -> Unit {
   log_debug(
@@ -707,19 +932,35 @@ fn handle_data_response(
   if is_stream_request(correlation_id) {
     match response_data {
       Binary(b) => push_stream_data(correlation_id, b, None)
-      Array(arr) => {
-        let strings = []
-        for v in arr {
-          if v is String(s) {
-            strings.push(s)
+      Array(arr) =>
+        match parse_response_chunk_array(arr) {
+          Some((index, total, data, status, headers)) => {
+            let real_data = match attachment {
+              Some(b) => b
+              None => data
+            }
+            let merged_headers = match status {
+              Some(s) => Some(ensure_status_header(s, headers))
+              None => headers
+            }
+            push_stream_chunk(
+              correlation_id, index, total, real_data, merged_headers,
+            )
+          }
+          None => {
+            let strings = []
+            for v in arr {
+              if v is String(s) {
+                strings.push(s)
+              }
+            }
+            push_stream_data(
+              correlation_id,
+              @utf8.encode(strings.to_json().stringify()),
+              None,
+            )
           }
         }
-        push_stream_data(
-          correlation_id,
-          @utf8.encode(strings.to_json().stringify()),
-          None,
-        )
-      }
       Map(m) =>
         match parse_response_chunk(m) {
           Some((index, total, data, status, headers)) => {
@@ -767,19 +1008,45 @@ fn handle_data_response(
   }
   match response_data {
     Binary(b) => resolve_request(correlation_id, {}, b)
-    Array(arr) => {
-      let strings = []
-      for v in arr {
-        if v is String(s) {
-          strings.push(s)
+    Array(arr) =>
+      match parse_response_chunk_array(arr) {
+        Some((index, total, data, status, headers)) => {
+          let real_data = match attachment {
+            Some(b) => b
+            None => data
+          }
+          match
+            store_response_chunk(
+              correlation_id, index, total, real_data, status, headers,
+            ) {
+            Some((full_data, status, headers)) => {
+              let merged_headers = match status {
+                Some(s) => ensure_status_header(s, headers)
+                None =>
+                  match headers {
+                    Some(h) => h
+                    None => {}
+                  }
+              }
+              resolve_request(correlation_id, merged_headers, full_data)
+            }
+            None => ()
+          }
+        }
+        None => {
+          let strings = []
+          for v in arr {
+            if v is String(s) {
+              strings.push(s)
+            }
+          }
+          resolve_request(
+            correlation_id,
+            {},
+            @utf8.encode(strings.to_json().stringify()),
+          )
         }
       }
-      resolve_request(
-        correlation_id,
-        {},
-        @utf8.encode(strings.to_json().stringify()),
-      )
-    }
     Map(m) =>
       match parse_response_chunk(m) {
         Some((index, total, data, status, headers)) =>

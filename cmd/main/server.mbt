@@ -833,16 +833,48 @@ async fn handle_incoming_message(
   transport : &Transport,
   dispatcher : Ref[MessageDispatcher],
 ) -> Unit noraise {
-  let msgpack_value = @msgpack.decode(bytes) catch {
+  if bytes.length() < 4 {
+    log_warn("Received message too short: \{bytes.length()} bytes")
+    return
+  }
+
+  // Parse MsgPack length
+  let msgpack_len = (bytes[0].to_int() << 24) |
+    (bytes[1].to_int() << 16) |
+    (bytes[2].to_int() << 8) |
+    bytes[3].to_int()
+
+  log_warn("DEBUG: incoming bytes=\{bytes.length()} msgpack_len=\{msgpack_len}")
+
+  if msgpack_len < 0 || msgpack_len > bytes.length() - 4 {
+    // Fallback for backward compatibility or malformed?
+    // Let's assume strict protocol for now.
+    log_warn(
+      "Invalid MsgPack length prefix: \{msgpack_len} (total: \{bytes.length()})",
+    )
+    // Try to decode as raw MsgPack if it looks like one?
+    // MsgPack arrays start with 0x9_ or 0xdc/0xdd.
+    // Length prefix might be interpreted as such? Unlikely.
+    return
+  }
+
+  let msgpack_bytes = slice_bytes(bytes, 4, 4 + msgpack_len)
+  let attachment_bytes = if 4 + msgpack_len < bytes.length() {
+    Some(slice_bytes(bytes, 4 + msgpack_len, bytes.length()))
+  } else {
+    None
+  }
+
+  let msgpack_value = @msgpack.decode(msgpack_bytes) catch {
     e => {
       let error_msg = e.to_string()
       log_debug(
-        "DEBUG: Msgpack decode error - \{error_msg}, sender: \{sender_addr}, bytes: \{bytes.length()}",
+        "DEBUG: Msgpack decode error - \{error_msg}, sender: \{sender_addr}, bytes: \{msgpack_bytes.length()}",
       )
       return
     }
   }
-  let msg : Message = Message::from_msgpack(msgpack_value) catch {
+  let msg_temp = Message::from_msgpack(msgpack_value) catch {
     _ => {
       log_warn(
         "Failed to decode message: \{msgpack_value.to_json().stringify()}",
@@ -850,6 +882,8 @@ async fn handle_incoming_message(
       return
     }
   }
+  let msg = { ..msg_temp, attachment: attachment_bytes }
+
   // Skip messages from self, unless target is self
   if msg.source_id == id && msg.target_id != Some(id) {
     return

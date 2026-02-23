@@ -3,8 +3,10 @@ package "oboard/msgtier/cmd/main"
 
 import {
   "moonbitlang/async",
+  "moonbitlang/async/io",
   "moonbitlang/async/socket",
   "moonbitlang/core/json",
+  "oboard/msgtier/msgpack",
   "oboard/msgtier/quic",
 }
 
@@ -21,6 +23,8 @@ pub async fn get_object(String) -> Bytes?
 
 pub async fn get_object_path(String) -> String?
 
+pub fn handle_data_response(String, @msgpack.Value, Bytes?, String) -> Unit
+
 pub fn has_object(String) -> Bool
 
 pub fn hash_secret(String) -> Bytes
@@ -30,6 +34,8 @@ pub fn register_object(String, id? : String) -> String
 pub async fn relay_message(&Transport, String, Message, String, allow_queueing? : Bool) -> Bool noraise
 
 pub async fn save_object(String, Bytes) -> Unit
+
+pub async fn save_object_from_reader(String, &@io.Reader) -> Unit
 
 pub fn set_pending_message_broadcast(String) -> Unit
 
@@ -169,7 +175,11 @@ pub struct RequestTracker {
   pending : Map[String, PendingRequest]
 }
 
+type ResponseBody
+
 type ResponseChunkState
+
+type ResponseSource
 
 type Route
 pub impl Show for Route
