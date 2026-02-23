@@ -443,6 +443,7 @@ async fn process_pending_message(
     }
     if transport.protocol() == "udp" &&
       !should_send_message(pending_msg.id, target_peer_id, "udp", 200UL) {
+      add_pending_message(pending_msg)
       continue
     }
     let target_connections = cm.get_peer_connections(target_peer_id)
@@ -501,6 +502,7 @@ async fn process_pending_message(
             sent = true
             if transport.protocol() == "udp" {
               record_message_sent(pending_msg.id, target_peer_id, "udp")
+              add_pending_message(pending_msg)
             } else {
               mark_pending_message_sent(
                 pending_msg.id,
@@ -512,10 +514,12 @@ async fn process_pending_message(
             }
           }
         }
-        None =>
+        None => {
           log_debug(
             "DEBUG: pending no connections and no route protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.id}",
           )
+          add_pending_message(pending_msg)
+        }
       }
       continue
     }
@@ -531,6 +535,7 @@ async fn process_pending_message(
     }
     if transport.protocol() == "udp" &&
       !should_send_message(pending_msg.id, target_peer_id, "udp", 200UL) {
+      add_pending_message(pending_msg)
       continue
     }
     match get_global_peer_manager().get_peer(target_peer_id) {
@@ -579,6 +584,7 @@ async fn process_pending_message(
             sent = true
             if transport.protocol() == "udp" {
               record_message_sent(pending_msg.id, target_peer_id, "udp")
+              add_pending_message(pending_msg)
             }
             break
           }
@@ -603,7 +609,7 @@ async fn process_pending_message(
       log_debug(
         "DEBUG: pending failed to send on any connection protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.id}",
       )
-      ()
+      add_pending_message(pending_msg)
     }
   }
 }
