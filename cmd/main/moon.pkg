@@ -17,7 +17,7 @@ import {
   "moonbitlang/async/websocket",
   "moonbitlang/async/io",
   "moonbitlang/async/process",
-  "oboard/msgtier/uuidm",
+  "oboard/msgtier/nanoid",
   "oboard/msgtier/web",
   "moonbitlang/x/json5",
   "oboard/msgtier/quic",

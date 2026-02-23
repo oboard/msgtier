@@ -49,13 +49,7 @@ fn Message::new(
 ) -> Message {
   message_id_counter.val += 1
   {
-    id: id.unwrap_or(
-      @uuidm.v4_with_rng(
-        @uuidm.SimpleRng::new(
-          @env.now().reinterpret_as_int64() + message_id_counter.val.to_int64(),
-        ),
-      ).to_string_simple(),
-    ),
+    id: id.unwrap_or(@nanoid.nanoid().unwrap_or(@env.now().to_string())),
     kind,
     source_id,
     source_addr,

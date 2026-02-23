@@ -11,7 +11,7 @@ let global_object_store : ObjectStore = { objects: {} }
 pub fn register_object(path : String, id? : String) -> String {
   let object_id = match id {
     Some(id) => id
-    None => @uuidm.v4().to_string_simple()
+    None => @nanoid.nanoid().unwrap_or(@env.now().to_string())
   }
   global_object_store.objects[object_id] = path
   object_id

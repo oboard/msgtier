@@ -631,7 +631,9 @@ async fn handle_pending_messages(
       root.spawn_bg(async fn() {
         process_pending_message(
           transport, my_id, local_addr, entry, root, dispatcher,
-        )
+        ) catch {
+          e => log_warn("Pending message processing error: \{e}")
+        }
         in_queue.remove(entry.msg.id)
       })
     }

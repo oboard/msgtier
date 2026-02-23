@@ -227,12 +227,11 @@ async fn handle_object_upload(
   body : &@io.Reader,
   conn : @http.ServerConnection,
 ) -> Unit {
-  let id = @uuidm.v4().to_string_simple()
+  let id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
   save_object_from_reader(id, body)
 
-  let m = Map::new()
-  m["id"] = id.to_json()
-  let json_str = m.to_json().stringify()
+  let m : Json = { "id": id }
+  let json_str = m.stringify()
 
   conn
   ..send_response(200, "OK", extra_headers={
@@ -417,7 +416,7 @@ async fn proxy_http_request(
   timeout_ms : Int,
 ) -> (Int, Map[String, String], Bytes)? {
   let timeout_ms_uint = timeout_ms.reinterpret_as_uint()
-  let req_id = @uuidm.v4().to_string()
+  let req_id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
   add_pending_request(req_id)
   let body_map : Map[String, @msgpack.Value] = Map::new()
   body_map["method"] = @msgpack.string(http_method)
@@ -463,7 +462,7 @@ async fn proxy_http_request_stream(
 ) -> Unit {
   let timeout_ms_uint = timeout_ms.reinterpret_as_uint()
   let timeout_ms_u64 = timeout_ms.to_uint64()
-  let req_id = @uuidm.v4().to_string()
+  let req_id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
   add_stream_request(req_id)
   let body_map : Map[String, @msgpack.Value] = Map::new()
   body_map["method"] = @msgpack.string(http_method)
@@ -626,7 +625,7 @@ async fn handle_internal_http_request(
         }
     }
   } else if http_method == "POST" && path == "/api/object" {
-    let id = @uuidm.v4().to_string_simple()
+    let id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
     save_object(id, body)
     let m = Map::new()
     m["id"] = id.to_json()
