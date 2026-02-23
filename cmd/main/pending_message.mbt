@@ -164,6 +164,16 @@ pub fn clear_pending_messages() -> Unit {
 }
 
 ///|
+pub fn is_pending_message(id : String) -> Bool {
+  for entry in global_pending_messages {
+    if entry.msg.id == id {
+      return true
+    }
+  }
+  false
+}
+
+///|
 pub fn set_pending_message_broadcast(id : String) -> Unit {
   let messages = global_pending_messages
   for i = 0; i < messages.length(); i = i + 1 {

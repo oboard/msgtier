@@ -23,6 +23,7 @@ import {
   "oboard/msgtier/quic",
   "moonbitlang/async/pipe",
   "moonbitlang/async/cond_var",
+  "moonbitlang/async/aqueue",
   "moonbitlang/x/crypto",
 }
 

@@ -102,7 +102,7 @@ fn pick_peer_address(peer_id : String, protocol : String) -> String? {
   // Try to find best address from connection stats first
   let conns = get_global_connection_manager().get_peer_connections(peer_id)
   let combined_stats : Map[String, AddressStats] = {}
-  
+
   for conn in conns {
     if conn.relay == 1 {
       match conn.get_best_address(protocol) {
@@ -119,37 +119,37 @@ fn pick_peer_address(peer_id : String, protocol : String) -> String? {
   match get_global_peer_manager().get_peer(peer_id) {
     Some(peer) => {
       let known_peers = get_all_known_peers()
-      
+
       // Categorize candidates
       let good_candidates : Array[String] = [] // Have received pongs
       let neutral_candidates : Array[String] = [] // No stats yet
       let bad_candidates : Array[String] = [] // Sent > 3 pings, 0 pongs
-      
+
       for addr_str in peer.addresses {
         if addr_str.is_empty() || is_bind_all_address(addr_str) {
           continue
         }
-        
+
         let mut parsed : Address? = None
         try {
           parsed = Some(Address::parse(addr_str))
         } catch {
           _ => ()
         }
-        
+
         match parsed {
           Some(addr) =>
             if addr.protocol.to_string() == protocol {
               // Normalize address string to match stats keys
               // Stats keys are usually full URLs
               let full_url = if addr_str.contains("://") {
-                 addr_str
+                addr_str
               } else {
-                 protocol + "://" + addr_str
+                protocol + "://" + addr_str
               }
-              
+
               match combined_stats.get(full_url) {
-                Some(stats) => {
+                Some(stats) =>
                   if stats.packets_received > 0 {
                     good_candidates.push(addr_str)
                   } else if stats.packets_sent > 3 {
@@ -157,71 +157,84 @@ fn pick_peer_address(peer_id : String, protocol : String) -> String? {
                   } else {
                     neutral_candidates.push(addr_str)
                   }
-                }
-                None => {
-                  neutral_candidates.push(addr_str)
-                }
+                None => neutral_candidates.push(addr_str)
               }
             }
           None => ()
         }
       }
-      
+
       // Select best candidate based on priority
       if good_candidates.length() > 0 {
         // Sort by quality: known > low loss > low latency
         good_candidates.sort_by(fn(a, b) {
-           let known_a = known_peers.contains(a)
-           let known_b = known_peers.contains(b)
-           if known_a && !known_b { return -1 }
-           if !known_a && known_b { return 1 }
-           
-           // Get stats
-           let url_a = if a.contains("://") { a } else { protocol + "://" + a }
-           let url_b = if b.contains("://") { b } else { protocol + "://" + b }
-           
-           let stats_a = combined_stats.get(url_a)
-           let stats_b = combined_stats.get(url_b)
-           
-           match (stats_a, stats_b) {
-              (Some(sa), Some(sb)) => {
-                 // Calculate loss rate: (sent - received) / sent
-                 // We want lower loss rate.
-                 
-                 let loss_a = if sa.packets_sent > 0 { 
-                    (sa.packets_sent - sa.packets_received).to_double() / sa.packets_sent.to_double() 
-                 } else { 0.0 }
-                 
-                 let loss_b = if sb.packets_sent > 0 { 
-                    (sb.packets_sent - sb.packets_received).to_double() / sb.packets_sent.to_double() 
-                 } else { 0.0 }
-                 
-                 if loss_a < loss_b - 0.01 { return -1 } // Significant difference
-                 if loss_a > loss_b + 0.01 { return 1 }
-                 
-                 // If loss rate similar, check latency
-                 match (sa.latency_ms, sb.latency_ms) {
-                    (Some(la), Some(lb)) => la - lb
-                    (Some(_), None) => -1 // Prefer known latency
-                    (None, Some(_)) => 1
-                    (None, None) => 0
-                 }
+          let known_a = known_peers.contains(a)
+          let known_b = known_peers.contains(b)
+          if known_a && !known_b {
+            return -1
+          }
+          if !known_a && known_b {
+            return 1
+          }
+
+          // Get stats
+          let url_a = if a.contains("://") { a } else { protocol + "://" + a }
+          let url_b = if b.contains("://") { b } else { protocol + "://" + b }
+
+          let stats_a = combined_stats.get(url_a)
+          let stats_b = combined_stats.get(url_b)
+
+          match (stats_a, stats_b) {
+            (Some(sa), Some(sb)) => {
+              // Calculate loss rate: (sent - received) / sent
+              // We want lower loss rate.
+
+              let loss_a = if sa.packets_sent > 0 {
+                (sa.packets_sent - sa.packets_received).to_double() /
+                sa.packets_sent.to_double()
+              } else {
+                0.0
               }
-              (Some(_), None) => -1 // Prefer stats
-              (None, Some(_)) => 1
-              (None, None) => 0
-           }
+
+              let loss_b = if sb.packets_sent > 0 {
+                (sb.packets_sent - sb.packets_received).to_double() /
+                sb.packets_sent.to_double()
+              } else {
+                0.0
+              }
+
+              if loss_a < loss_b - 0.01 {
+                return -1
+              } // Significant difference
+              if loss_a > loss_b + 0.01 {
+                return 1
+              }
+
+              // If loss rate similar, check latency
+              match (sa.latency_ms, sb.latency_ms) {
+                (Some(la), Some(lb)) => la - lb
+                (Some(_), None) => -1 // Prefer known latency
+                (None, Some(_)) => 1
+                (None, None) => 0
+              }
+            }
+            (Some(_), None) => -1 // Prefer stats
+            (None, Some(_)) => 1
+            (None, None) => 0
+          }
         })
         return Some(good_candidates[0])
       }
-      
+
       if neutral_candidates.length() > 0 {
-         for c in neutral_candidates {
-           if known_peers.contains(c) { return Some(c) }
+        for c in neutral_candidates {
+          if known_peers.contains(c) {
+            return Some(c)
+          }
         }
         return Some(neutral_candidates[0])
       }
-      
+
       // Only fallback to bad candidates if absolutely nothing else
       // But user said "only use ports that can receive ping and pong"
       // So maybe we should return None here? 
@@ -229,7 +242,7 @@ fn pick_peer_address(peer_id : String, protocol : String) -> String? {
       // Given "connection completely failed" report, maybe returning None is too strict if pings are also failing.
       // But if pings are failing, data transfer will likely fail too.
       // Let's avoid bad candidates to prevent timeouts.
-      
+
       None
     }
     None => None

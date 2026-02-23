@@ -369,6 +369,246 @@ async fn handle_reconnects(
 }
 
 ///|
+async fn process_pending_message(
+  transport : &Transport,
+  my_id : String,
+  local_addr : String,
+  entry : PendingEntry,
+  root : @async.TaskGroup[Unit],
+  dispatcher : Ref[MessageDispatcher],
+) -> Unit {
+  let pending_msg = entry.msg
+  // Double check if message is still pending (avoid race condition with removal)
+  if !is_pending_message(pending_msg.id) {
+    return
+  }
+  if transport.protocol() == "udp" {
+    if pending_msg.kind == "response" || pending_msg.kind == "http_proxy" {
+      return
+    }
+    let allow_non_string_body = pending_msg.kind == "file" ||
+      pending_msg.kind == "image" ||
+      pending_msg.kind == "http_proxy"
+    if pending_msg.kind != "ping" &&
+      pending_msg.kind != "pong" &&
+      pending_msg.kind != "hello" &&
+      pending_msg.kind != "sync" {
+      if !allow_non_string_body {
+        match pending_msg.body {
+          String(_) => ()
+          _ => return
+        }
+      }
+    }
+  }
+  let cm = get_global_connection_manager()
+  let mut sent = false
+  let target_peer_ids = if pending_msg.is_broadcast() {
+    get_global_peer_manager().get_all_peers().map(p => p.id)
+  } else {
+    match pending_msg.target_id {
+      Some(target_id) => [target_id]
+      None => get_global_peer_manager().get_all_peers().map(p => p.id)
+    }
+  }
+  for target_peer_id in target_peer_ids {
+    // Handle loopback (send to self)
+    if target_peer_id == my_id {
+      // Attempt to remove message atomically (returns true if we removed it)
+      // This prevents multiple transports from handling the same local message
+      if remove_pending_message(pending_msg) {
+        log_info("PendingMessage: handling local loopback id=\{pending_msg.id}")
+        // Use spawn_bg to avoid blocking the pending loop
+        root.spawn_bg(async fn() {
+          handle_incoming_message(
+            pending_msg.to_msgpack(),
+            local_addr,
+            my_id,
+            local_addr,
+            root,
+            transport,
+            dispatcher,
+          )
+        })
+      }
+      continue
+    }
+    if (pending_msg.kind == "response" || pending_msg.kind == "http_proxy") &&
+      transport.protocol() != "tcp" {
+      let has_tcp_addr = pick_peer_address(target_peer_id, "tcp") is Some(_) ||
+        pick_peer_lan_address(target_peer_id, "tcp") is Some(_)
+      if has_tcp_addr {
+        continue
+      }
+    }
+    if transport.protocol() == "udp" &&
+      !should_send_message(pending_msg.id, target_peer_id, "udp", 200UL) {
+      continue
+    }
+    let target_connections = cm.get_peer_connections(target_peer_id)
+    if target_connections.is_empty() {
+      match pick_peer_lan_address(target_peer_id, transport.protocol()) {
+        Some(addr) => {
+          let target_addr = if addr.contains("://") {
+            addr
+          } else {
+            transport.protocol() + "://" + addr
+          }
+          if !target_addr.is_empty() && target_addr != "routed" {
+            let msg = pending_msg
+            log_debug("PendingMessage: lan addr=\{target_addr} id=\{msg.id}")
+            let success = send_message(transport, target_addr, msg)
+            log_debug(
+              "DEBUG: pending lan send protocol=\{transport.protocol()} addr=\{target_addr} id=\{msg.id} ok=\{success}",
+            )
+            if success {
+              sent = true
+              if transport.protocol() == "udp" {
+                record_message_sent(pending_msg.id, target_peer_id, "udp")
+              } else {
+                mark_pending_message_sent(
+                  pending_msg.id,
+                  target_peer_id,
+                  transport.protocol(),
+                  [transport.protocol()],
+                )
+                |> ignore
+              }
+            }
+          }
+        }
+        None => ()
+      }
+      if sent {
+        continue
+      }
+      // For broadcast messages, do not use unicast routing to avoid duplicates and type confusion
+      if pending_msg.is_broadcast() {
+        continue
+      }
+      // Check if we have a route for this peer
+      match get_global_peer_manager().get_route(target_peer_id) {
+        Some(route) => {
+          // Try to relay
+          log_debug(
+            "DEBUG: pending relay to=\{target_peer_id} via=\{route.next_hop}",
+          )
+          // Relay message handles finding connection to next_hop for current transport
+          let relayed = relay_message(
+            transport, my_id, pending_msg, target_peer_id,
+          )
+          if relayed {
+            sent = true
+            if transport.protocol() == "udp" {
+              record_message_sent(pending_msg.id, target_peer_id, "udp")
+            } else {
+              mark_pending_message_sent(
+                pending_msg.id,
+                target_peer_id,
+                transport.protocol(),
+                [transport.protocol()],
+              )
+              |> ignore
+            }
+          }
+        }
+        None =>
+          log_debug(
+            "DEBUG: pending no connections and no route protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.id}",
+          )
+      }
+      continue
+    }
+
+    if pending_msg.kind == "sync" &&
+      entry.sent_targets.get(target_peer_id) is Some(m) &&
+      m.length() > 0 {
+      continue
+    }
+    if entry.sent_targets.get(target_peer_id) is Some(m) &&
+      m.contains(transport.protocol()) {
+      continue
+    }
+    if transport.protocol() == "udp" &&
+      !should_send_message(pending_msg.id, target_peer_id, "udp", 200UL) {
+      continue
+    }
+    match get_global_peer_manager().get_peer(target_peer_id) {
+      Some(peer) => {
+        let lan_addrs : Array[String] = []
+        let wan_addrs : Array[String] = []
+        for addr_str in peer.addresses {
+          if addr_str.is_empty() ||
+            addr_str == "routed" ||
+            is_bind_all_address(addr_str) {
+            continue
+          }
+          let mut parsed : Address? = None
+          try {
+            parsed = Some(Address::parse(addr_str))
+          } catch {
+            _ => ()
+          }
+          match parsed {
+            Some(addr) =>
+              if addr.protocol.to_string() == transport.protocol() {
+                let host = extract_host(addr_str)
+                if is_private(host) || is_loopback(host) {
+                  lan_addrs.push(addr_str)
+                } else {
+                  wan_addrs.push(addr_str)
+                }
+              }
+            None => ()
+          }
+        }
+        let candidates = [..lan_addrs, ..wan_addrs]
+        for addr in candidates {
+          let target_addr = if addr.contains("://") {
+            addr
+          } else {
+            transport.protocol() + "://" + addr
+          }
+          let msg = pending_msg
+          log_debug("PendingMessage: direct addr=\{target_addr} id=\{msg.id}")
+          let success = send_message(transport, target_addr, msg)
+          log_debug(
+            "DEBUG: pending send protocol=\{transport.protocol()} addr=\{target_addr} id=\{msg.id} ok=\{success}",
+          )
+          if success {
+            sent = true
+            if transport.protocol() == "udp" {
+              record_message_sent(pending_msg.id, target_peer_id, "udp")
+            }
+            break
+          }
+        }
+      }
+      None => ()
+    }
+    if sent && transport.protocol() != "udp" {
+      let required_protocols = [transport.protocol()]
+      log_debug(
+        "DEBUG: pending mark sent id=\{pending_msg.id} protocol=\{transport.protocol()}",
+      )
+      mark_pending_message_sent(
+        pending_msg.id,
+        target_peer_id,
+        transport.protocol(),
+        required_protocols,
+      )
+      |> ignore
+    } else if target_connections.length() > 0 {
+      // If we have connections but failed to send on this specific transport
+      log_debug(
+        "DEBUG: pending failed to send on any connection protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.id}",
+      )
+      ()
+    }
+  }
+}
+
+///|
 async fn handle_pending_messages(
   root : @async.TaskGroup[Unit],
   transport : &Transport,
@@ -380,6 +620,23 @@ async fn handle_pending_messages(
   log_debug(
     "DEBUG: handle_pending_messages start protocol=\{transport.protocol()} prefix=\{protocol_prefix}",
   )
+
+  let queue = @aqueue.Queue::new(kind=Unbounded)
+  let in_queue : @set.Set[String] = @set.Set::new()
+
+  root.spawn_bg(async fn() {
+    for {
+      let entry : PendingEntry = queue.get()
+      // Spawn a new task for each message to avoid head-of-line blocking
+      root.spawn_bg(async fn() {
+        process_pending_message(
+          transport, my_id, local_addr, entry, root, dispatcher,
+        )
+        in_queue.remove(entry.msg.id)
+      })
+    }
+  })
+
   for {
     // Check for pending messages every 100ms
     @async.sleep(100)
@@ -396,237 +653,11 @@ async fn handle_pending_messages(
 
     // Process each pending message
     for entry in pending {
-      let pending_msg = entry.msg
-      if transport.protocol() == "udp" {
-        if pending_msg.kind == "response" || pending_msg.kind == "http_proxy" {
-          continue
-        }
-        let allow_non_string_body = pending_msg.kind == "file" ||
-          pending_msg.kind == "image" ||
-          pending_msg.kind == "http_proxy"
-        if pending_msg.kind != "ping" &&
-          pending_msg.kind != "pong" &&
-          pending_msg.kind != "hello" &&
-          pending_msg.kind != "sync" {
-          if !allow_non_string_body {
-            match pending_msg.body {
-              String(_) => ()
-              _ => continue
-            }
-          }
-        }
+      if in_queue.contains(entry.msg.id) {
+        continue
       }
-      let cm = get_global_connection_manager()
-      let mut sent = false
-      let target_peer_ids = if pending_msg.is_broadcast() {
-        get_global_peer_manager().get_all_peers().map(p => p.id)
-      } else {
-        match pending_msg.target_id {
-          Some(target_id) => [target_id]
-          None => get_global_peer_manager().get_all_peers().map(p => p.id)
-        }
-      }
-      for target_peer_id in target_peer_ids {
-        // Handle loopback (send to self)
-        if target_peer_id == my_id {
-          // Attempt to remove message atomically (returns true if we removed it)
-          // This prevents multiple transports from handling the same local message
-          if remove_pending_message(pending_msg) {
-            log_info(
-              "PendingMessage: handling local loopback id=\{pending_msg.id}",
-            )
-            // Use spawn_bg to avoid blocking the pending loop
-            root.spawn_bg(async fn() {
-              handle_incoming_message(
-                pending_msg.to_msgpack(),
-                local_addr,
-                my_id,
-                local_addr,
-                root,
-                transport,
-                dispatcher,
-              )
-            })
-          }
-          continue
-        }
-        if (pending_msg.kind == "response" || pending_msg.kind == "http_proxy") &&
-          transport.protocol() != "tcp" {
-          let has_tcp_addr = pick_peer_address(target_peer_id, "tcp") is Some(_) ||
-            pick_peer_lan_address(target_peer_id, "tcp") is Some(_)
-          if has_tcp_addr {
-            continue
-          }
-        }
-        if transport.protocol() == "udp" &&
-          !should_send_message(pending_msg.id, target_peer_id, "udp", 200UL) {
-          continue
-        }
-        let target_connections = cm.get_peer_connections(target_peer_id)
-        if target_connections.is_empty() {
-          match pick_peer_lan_address(target_peer_id, transport.protocol()) {
-            Some(addr) => {
-              let target_addr = if addr.contains("://") {
-                addr
-              } else {
-                transport.protocol() + "://" + addr
-              }
-              if !target_addr.is_empty() && target_addr != "routed" {
-                let msg = pending_msg
-                log_debug(
-                  "PendingMessage: lan addr=\{target_addr} id=\{msg.id}",
-                )
-                let success = send_message(transport, target_addr, msg)
-                log_debug(
-                  "DEBUG: pending lan send protocol=\{transport.protocol()} addr=\{target_addr} id=\{msg.id} ok=\{success}",
-                )
-                if success {
-                  sent = true
-                  if transport.protocol() == "udp" {
-                    record_message_sent(pending_msg.id, target_peer_id, "udp")
-                  } else {
-                    mark_pending_message_sent(
-                      pending_msg.id,
-                      target_peer_id,
-                      transport.protocol(),
-                      [transport.protocol()],
-                    )
-                    |> ignore
-                  }
-                }
-              }
-            }
-            None => ()
-          }
-          if sent {
-            continue
-          }
-          // For broadcast messages, do not use unicast routing to avoid duplicates and type confusion
-          if pending_msg.is_broadcast() {
-            continue
-          }
-          // Check if we have a route for this peer
-          match get_global_peer_manager().get_route(target_peer_id) {
-            Some(route) => {
-              // Try to relay
-              log_debug(
-                "DEBUG: pending relay to=\{target_peer_id} via=\{route.next_hop}",
-              )
-              // Relay message handles finding connection to next_hop for current transport
-              let relayed = relay_message(
-                transport, my_id, pending_msg, target_peer_id,
-              )
-              if relayed {
-                sent = true
-                if transport.protocol() == "udp" {
-                  record_message_sent(pending_msg.id, target_peer_id, "udp")
-                } else {
-                  mark_pending_message_sent(
-                    pending_msg.id,
-                    target_peer_id,
-                    transport.protocol(),
-                    [transport.protocol()],
-                  )
-                  |> ignore
-                }
-              }
-            }
-            None =>
-              log_debug(
-                "DEBUG: pending no connections and no route protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.id}",
-              )
-          }
-          continue
-        }
-
-        if pending_msg.kind == "sync" &&
-          entry.sent_targets.get(target_peer_id) is Some(m) &&
-          m.length() > 0 {
-          continue
-        }
-        if entry.sent_targets.get(target_peer_id) is Some(m) &&
-          m.contains(transport.protocol()) {
-          continue
-        }
-        if transport.protocol() == "udp" &&
-          !should_send_message(pending_msg.id, target_peer_id, "udp", 200UL) {
-          continue
-        }
-        match get_global_peer_manager().get_peer(target_peer_id) {
-          Some(peer) => {
-            let lan_addrs : Array[String] = []
-            let wan_addrs : Array[String] = []
-            for addr_str in peer.addresses {
-              if addr_str.is_empty() ||
-                addr_str == "routed" ||
-                is_bind_all_address(addr_str) {
-                continue
-              }
-              let mut parsed : Address? = None
-              try {
-                parsed = Some(Address::parse(addr_str))
-              } catch {
-                _ => ()
-              }
-              match parsed {
-                Some(addr) =>
-                  if addr.protocol.to_string() == transport.protocol() {
-                    let host = extract_host(addr_str)
-                    if is_private(host) || is_loopback(host) {
-                      lan_addrs.push(addr_str)
-                    } else {
-                      wan_addrs.push(addr_str)
-                    }
-                  }
-                None => ()
-              }
-            }
-            let candidates = [..lan_addrs, ..wan_addrs]
-            for addr in candidates {
-              let target_addr = if addr.contains("://") {
-                addr
-              } else {
-                transport.protocol() + "://" + addr
-              }
-              let msg = pending_msg
-              log_debug(
-                "PendingMessage: direct addr=\{target_addr} id=\{msg.id}",
-              )
-              let success = send_message(transport, target_addr, msg)
-              log_debug(
-                "DEBUG: pending send protocol=\{transport.protocol()} addr=\{target_addr} id=\{msg.id} ok=\{success}",
-              )
-              if success {
-                sent = true
-                if transport.protocol() == "udp" {
-                  record_message_sent(pending_msg.id, target_peer_id, "udp")
-                }
-                break
-              }
-            }
-          }
-          None => ()
-        }
-        if sent && transport.protocol() != "udp" {
-          let required_protocols = [transport.protocol()]
-          log_debug(
-            "DEBUG: pending mark sent id=\{pending_msg.id} protocol=\{transport.protocol()}",
-          )
-          mark_pending_message_sent(
-            pending_msg.id,
-            target_peer_id,
-            transport.protocol(),
-            required_protocols,
-          )
-          |> ignore
-        } else if target_connections.length() > 0 {
-          // If we have connections but failed to send on this specific transport
-          log_debug(
-            "DEBUG: pending failed to send on any connection protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.id}",
-          )
-          ()
-        }
-      }
+      in_queue.add(entry.msg.id)
+      queue.put(entry)
     }
   }
 }
@@ -689,7 +720,7 @@ async fn handle_heartbeat(
         // Get all candidate addresses for this peer and protocol
         let candidate_addrs : Array[String] = []
         match get_global_peer_manager().get_peer(peer_id) {
-          Some(peer_node) => {
+          Some(peer_node) =>
             for addr in peer_node.addresses {
               let target_addr = if addr.contains("://") {
                 addr
@@ -697,52 +728,57 @@ async fn handle_heartbeat(
                 transport.protocol() + "://" + addr
               }
               match @url.Url::parse(target_addr) {
-                 Some(u) => {
-                    if u.scheme == transport.protocol() {
-                      candidate_addrs.push(target_addr)
-                    }
-                 }
-                 None => ()
-               }
+                Some(u) =>
+                  if u.scheme == transport.protocol() {
+                    candidate_addrs.push(target_addr)
+                  }
+                None => ()
+              }
             }
-          }
           None => ()
         }
-        
+
         // Also include the currently connected address if known
         // (though it should be in peer_node.addresses usually)
-        
+
         if candidate_addrs.is_empty() {
-             // Fallback to pick_peer_address if no addresses found (e.g. routed?)
-             match pick_peer_address(peer_id, transport.protocol()) {
-                Some(addr) => candidate_addrs.push(addr)
-                None => ()
-             }
+          // Fallback to pick_peer_address if no addresses found (e.g. routed?)
+          match pick_peer_address(peer_id, transport.protocol()) {
+            Some(addr) => candidate_addrs.push(addr)
+            None => ()
+          }
         }
 
         for target_addr in candidate_addrs {
-            if target_addr != "routed" {
-              update_global_connection_manager(fn(manager) {
-                manager.update_connection_address_ping(conn.id, target_addr, current_time)
-              })
-              // We also update the main ping time for backward compatibility/general health
-              update_global_connection_manager(fn(manager) {
-                manager.update_connection_ping_time(conn.id, Some(current_time))
-              })
-              update_global_connection_manager(fn(manager) {
-                manager.update_connection_packet_loss(conn.id, 1, 0)
-              })
-              
-              let ok = send_message(transport, target_addr, ping_msg)
-              if !ok {
-                 update_global_connection_manager(fn(manager) {
-                    manager.mark_connection_address_packet_lost(conn.id, target_addr)
-                 })
-              }
-              log_debug(
-                "DEBUG: ping send protocol=\{transport.protocol()} peer=\{peer_id} addr=\{target_addr} ok=\{ok}",
+          if target_addr != "routed" {
+            update_global_connection_manager(fn(manager) {
+              manager.update_connection_address_ping(
+                conn.id,
+                target_addr,
+                current_time,
               )
+            })
+            // We also update the main ping time for backward compatibility/general health
+            update_global_connection_manager(fn(manager) {
+              manager.update_connection_ping_time(conn.id, Some(current_time))
+            })
+            update_global_connection_manager(fn(manager) {
+              manager.update_connection_packet_loss(conn.id, 1, 0)
+            })
+
+            let ok = send_message(transport, target_addr, ping_msg)
+            if !ok {
+              update_global_connection_manager(fn(manager) {
+                manager.mark_connection_address_packet_lost(
+                  conn.id,
+                  target_addr,
+                )
+              })
             }
+            log_debug(
+              "DEBUG: ping send protocol=\{transport.protocol()} peer=\{peer_id} addr=\{target_addr} ok=\{ok}",
+            )
+          }
         }
 
         if conn.relay == 1 {
@@ -881,7 +917,9 @@ async fn handle_incoming_message(
     (bytes[2].to_int() << 8) |
     bytes[3].to_int()
 
-  log_debug("DEBUG: incoming bytes=\{bytes.length()} msgpack_len=\{msgpack_len}")
+  log_debug(
+    "DEBUG: incoming bytes=\{bytes.length()} msgpack_len=\{msgpack_len}",
+  )
 
   if msgpack_len < 0 || msgpack_len > bytes.length() - 4 {
     // Fallback for backward compatibility or malformed?

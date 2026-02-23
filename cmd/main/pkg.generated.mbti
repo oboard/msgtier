@@ -29,6 +29,8 @@ pub fn has_object(String) -> Bool
 
 pub fn hash_secret(String) -> Bytes
 
+pub fn is_pending_message(String) -> Bool
+
 pub fn register_object(String, id? : String) -> String
 
 pub async fn relay_message(&Transport, String, Message, String, allow_queueing? : Bool) -> Bool noraise
@@ -62,6 +64,12 @@ pub impl Hash for Address
 pub impl Show for Address
 pub impl ToJson for Address
 pub impl @json.FromJson for Address
+
+type AddressStats
+pub impl Eq for AddressStats
+pub impl Show for AddressStats
+pub impl ToJson for AddressStats
+pub impl @json.FromJson for AddressStats
 
 type BufferedReader
 
