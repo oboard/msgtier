@@ -881,7 +881,7 @@ async fn handle_incoming_message(
     (bytes[2].to_int() << 8) |
     bytes[3].to_int()
 
-  log_warn("DEBUG: incoming bytes=\{bytes.length()} msgpack_len=\{msgpack_len}")
+  log_debug("DEBUG: incoming bytes=\{bytes.length()} msgpack_len=\{msgpack_len}")
 
   if msgpack_len < 0 || msgpack_len > bytes.length() - 4 {
     // Fallback for backward compatibility or malformed?
@@ -1171,7 +1171,7 @@ async fn handle_incoming_message(
       None => "no_pk"
     }
     if !(msg.kind == "hello" && should_skip_hello_callback) {
-      log_info("Received \{msg.kind} from \{msg.source_id} (\{pk_status})")
+      log_debug("Received \{msg.kind} from \{msg.source_id} (\{pk_status})")
     }
   }
   let ctx = MessageContext::{

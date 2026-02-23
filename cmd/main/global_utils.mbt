@@ -169,11 +169,49 @@ fn pick_peer_address(peer_id : String, protocol : String) -> String? {
       
       // Select best candidate based on priority
       if good_candidates.length() > 0 {
-        // Pick the one with lowest loss rate or best latency if possible
-        // For now, just pick the first one, or prefer known peers
-        for c in good_candidates {
-           if known_peers.contains(c) { return Some(c) }
-        }
+        // Sort by quality: known > low loss > low latency
+        good_candidates.sort_by(fn(a, b) {
+           let known_a = known_peers.contains(a)
+           let known_b = known_peers.contains(b)
+           if known_a && !known_b { return -1 }
+           if !known_a && known_b { return 1 }
+           
+           // Get stats
+           let url_a = if a.contains("://") { a } else { protocol + "://" + a }
+           let url_b = if b.contains("://") { b } else { protocol + "://" + b }
+           
+           let stats_a = combined_stats.get(url_a)
+           let stats_b = combined_stats.get(url_b)
+           
+           match (stats_a, stats_b) {
+              (Some(sa), Some(sb)) => {
+                 // Calculate loss rate: (sent - received) / sent
+                 // We want lower loss rate.
+                 
+                 let loss_a = if sa.packets_sent > 0 { 
+                    (sa.packets_sent - sa.packets_received).to_double() / sa.packets_sent.to_double() 
+                 } else { 0.0 }
+                 
+                 let loss_b = if sb.packets_sent > 0 { 
+                    (sb.packets_sent - sb.packets_received).to_double() / sb.packets_sent.to_double() 
+                 } else { 0.0 }
+                 
+                 if loss_a < loss_b - 0.01 { return -1 } // Significant difference
+                 if loss_a > loss_b + 0.01 { return 1 }
+                 
+                 // If loss rate similar, check latency
+                 match (sa.latency_ms, sb.latency_ms) {
+                    (Some(la), Some(lb)) => la - lb
+                    (Some(_), None) => -1 // Prefer known latency
+                    (None, Some(_)) => 1
+                    (None, None) => 0
+                 }
+              }
+              (Some(_), None) => -1 // Prefer stats
+              (None, Some(_)) => 1
+              (None, None) => 0
+           }
+        })
         return Some(good_candidates[0])
       }
       

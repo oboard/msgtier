@@ -704,6 +704,36 @@ async fn handle_internal_http_request(
 }
 
 ///|
+
+///|
+fn parse_range_str(header : String) -> (Int, Int?)? {
+  if !header.has_prefix("bytes=") {
+    return None
+  }
+  let s = header[6:] catch { _ => return None }
+  let parts = s.split("-").to_array()
+  if parts.length() < 1 {
+    return None
+  }
+
+  try {
+    let start_str = parts[0]
+    if start_str == "" {
+      return None
+    }
+    let start = @strconv.parse_int(start_str)
+    let end = if parts.length() > 1 && parts[1] != "" {
+      Some(@strconv.parse_int(parts[1]))
+    } else {
+      None
+    }
+    Some((start, end))
+  } catch {
+    _ => None
+  }
+}
+
+///|
 async fn handle_object_download(
   id : String,
   peer_id : String?,
@@ -711,85 +741,198 @@ async fn handle_object_download(
   request_headers : Map[String, String],
   conn : @http.ServerConnection,
 ) -> Unit {
-  let has_range = match request_headers.get("Range") {
-    Some(_) => true
-    None =>
-      match request_headers.get("range") {
-        Some(_) => true
-        None => false
-      }
+  let range_header = match request_headers.get("Range") {
+    Some(v) => Some(v)
+    None => request_headers.get("range")
   }
+
   match get_object_path(id) {
-    Some(path) =>
-      if !has_range {
-        try {
-          let file = @fs.open(path, mode=ReadOnly)
-          defer file.close()
-          let headers : Map[String, String] = {
-            "Content-Type": "application/octet-stream",
-            "Accept-Ranges": "bytes",
+    Some(path) => {
+      let mut response_started = false
+      try {
+        let file = @fs.open(path, mode=ReadOnly)
+        defer file.close()
+
+        let headers : Map[String, String] = {
+          "Content-Type": "application/octet-stream",
+          "Accept-Ranges": "bytes",
+        }
+        match filename {
+          Some(fname) =>
+            headers["Content-Disposition"] = "attachment; filename=\"\{fname}\""
+          None => ()
+        }
+
+        match range_header {
+          Some(rh) =>
+            match parse_range_str(rh) {
+              Some((start, end_opt)) => {
+                // Skip bytes
+                let skip_buf = FixedArray::make(4096, b'\x00')
+                let mut skipped = 0
+                let mut ok = true
+                while skipped < start {
+                  let remaining_skip = start - skipped
+                  let to_read = if remaining_skip < 4096 {
+                    remaining_skip
+                  } else {
+                    4096
+                  }
+
+                  let read_buf = if to_read < 4096 {
+                    FixedArray::make(to_read, b'\x00')
+                  } else {
+                    skip_buf
+                  }
+
+                  let n = file.read(read_buf) catch { _ => 0 }
+                  if n <= 0 {
+                    ok = false
+                    break
+                  }
+                  skipped += n
+                }
+
+                if ok {
+                  let len = match end_opt {
+                    Some(end) => end - start + 1
+                    None => 2147483647 // Int max
+                  }
+
+                  // Using insert to avoid mutation warning if map is immutable
+                  headers["Content-Range"] = match end_opt {
+                    Some(end) => "bytes \{start}-\{end}/*"
+                    None => "bytes \{start}-/*"
+                  }
+
+                  conn.send_response(
+                    206,
+                    "Partial Content",
+                    extra_headers=headers,
+                  )
+                  response_started = true
+
+                  // Manual streaming loop
+                  let buf = FixedArray::make(4096, b'\x00')
+                  let mut remaining = len
+
+                  while remaining > 0 {
+                    let to_read = if remaining < 4096 {
+                      remaining
+                    } else {
+                      4096
+                    }
+                    let read_buf = if to_read < 4096 {
+                      FixedArray::make(to_read, b'\x00')
+                    } else {
+                      buf
+                    }
+
+                    let n = file.read(read_buf) catch { _ => 0 }
+                    if n <= 0 {
+                      break
+                    }
+
+                    // Convert to Bytes and write
+                    let chunk_buf = FixedArray::make(n, b'\x00')
+                    for i = 0; i < n; i = i + 1 {
+                      chunk_buf[i] = read_buf[i]
+                    }
+                    let chunk = Bytes::from_array(chunk_buf)
+                    conn.write(chunk)
+
+                    remaining -= n
+                  }
+
+                  conn.end_response()
+                  return
+                }
+              }
+              None => ()
+            }
+          None => ()
+        }
+
+        conn.send_response(200, "OK", extra_headers=headers)
+        response_started = true
+
+        // Manual streaming for full file
+        let buf = FixedArray::make(4096, b'\x00')
+        for {
+          let n = file.read(buf) catch { _ => 0 }
+          if n <= 0 {
+            break
           }
-          match filename {
-            Some(fname) =>
-              headers["Content-Disposition"] = "attachment; filename=\"\{fname}\""
-            None => ()
+
+          let chunk_buf = FixedArray::make(n, b'\x00')
+          for i = 0; i < n; i = i + 1 {
+            chunk_buf[i] = buf[i]
           }
-          conn
-          ..send_response(200, "OK", extra_headers=headers)
-          ..write_reader(file)
-          .end_response()
-          return
-        } catch {
-          _ => ()
+          let chunk = Bytes::from_array(chunk_buf)
+          conn.write(chunk)
+        }
+        conn.end_response()
+        return
+      } catch {
+        e => {
+          log_warn("handle_object_download error: \{e}")
+          if response_started {
+            return
+          }
         }
       }
+    }
     None => ()
   }
-  match get_object(id) {
-    Some(data) => {
-      let (status_code, headers, body) = build_object_download_response(
-        data, filename, request_headers,
-      )
-      conn
-      ..send_response(
-        status_code,
-        status_text(status_code),
-        extra_headers=headers,
-      )
-      ..write(body)
-      .end_response()
-    }
-    None =>
-      match peer_id {
-        Some(pid) => {
-          log_info("ObjectStore: fetching object id=\{id} from peer=\{pid}")
-
-          let mut path = "/api/object/" + id
-          match filename {
-            Some(fname) => path = path + "?filename=" + fname
-            None => ()
-          }
-          let forward_headers : Map[String, String] = {}
-          match request_headers.get("Range") {
-            Some(v) => forward_headers["Range"] = v
-            None =>
-              match request_headers.get("range") {
-                Some(v) => forward_headers["Range"] = v
-                None => ()
-              }
-          }
-          let timeout_ms = 300000 // 5 minutes
-          proxy_http_request_stream(
-            pid, "GET", path, forward_headers, b"", timeout_ms, filename, conn,
-          )
-          return
-        }
-        None =>
-          conn
-          ..send_response(404, "Not Found", extra_headers={})
-          ..write("Object not found")
-          .end_response()
+  try {
+    match get_object(id) {
+      Some(data) => {
+        let (status_code, headers, body) = build_object_download_response(
+          data, filename, request_headers,
+        )
+        conn
+        ..send_response(
+          status_code,
+          status_text(status_code),
+          extra_headers=headers,
+        )
+        ..write(body)
+        .end_response()
       }
+      None =>
+        match peer_id {
+          Some(pid) => {
+            log_info("ObjectStore: fetching object id=\{id} from peer=\{pid}")
+
+            let mut path = "/api/object/" + id
+            match filename {
+              Some(fname) => path = path + "?filename=" + fname
+              None => ()
+            }
+            let forward_headers : Map[String, String] = {}
+            match request_headers.get("Range") {
+              Some(v) => forward_headers["Range"] = v
+              None =>
+                match request_headers.get("range") {
+                  Some(v) => forward_headers["Range"] = v
+                  None => ()
+                }
+            }
+            let timeout_ms = 300000 // 5 minutes
+            proxy_http_request_stream(
+              pid, "GET", path, forward_headers, b"", timeout_ms, filename, conn,
+            )
+            return
+          }
+          None =>
+            conn
+            ..send_response(404, "Not Found", extra_headers={})
+            ..write("Object not found")
+            .end_response()
+        }
+    }
+  } catch {
+    e => log_warn("handle_object_download fallback error: \{e}")
   }
 }
 
