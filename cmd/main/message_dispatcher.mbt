@@ -88,14 +88,12 @@ fn handle_hello_message(ctx : MessageContext) -> Unit {
   if ctx.should_skip_hello_callback {
     return
   }
-  let mut secret_matched = false
   let secret_valid = match global_config.val {
     Some(config) => {
       let our_secret_hash = bytes_to_hex(hash_secret(config.secret))
       match msg.secret_hash {
         Some(peer_secret_hash) =>
           if peer_secret_hash == our_secret_hash {
-            secret_matched = true
             true
           } else {
             log_warn(
@@ -117,70 +115,17 @@ fn handle_hello_message(ctx : MessageContext) -> Unit {
     return
   }
 
-  let effective_pk_opt = match msg.public_key {
-    Some(pk) => Some(pk)
-    None =>
-      if secret_matched {
-        match global_keypair.val {
-          Some((_, pk)) => {
-            log_warn(
-              "Warning: Peer \{msg.source_id} missing PK but secret matched. Using our PK as fallback.",
-            )
-            Some(pk)
-          }
-          None => None
-        }
-      } else {
-        None
-      }
-  }
-
   match get_global_peer_manager().get_peer(msg.source_id) {
     None => {
       let peer_node = PeerNode::new(
         id=msg.source_id,
         version=VERSION,
-        public_key=effective_pk_opt.unwrap_or(b""),
         addresses=if msg.source_addr is Some(addr) { [addr] } else { [] },
         metadata={},
       )
       update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
     }
-    Some(existing) =>
-      match effective_pk_opt {
-        Some(new_pk) =>
-          if new_pk.length() > 0 {
-            let needs_update = if existing.public_key.length() == 0 {
-              true
-            } else {
-              existing.public_key != new_pk
-            }
-            if needs_update {
-              log_info(
-                "Updating public key for peer \{msg.source_id} (old_len=\{existing.public_key.length()})",
-              )
-              let updated_peer = { ..existing, public_key: new_pk }
-              update_global_peer_manager(fn(manager) {
-                manager.add_peer(updated_peer)
-              })
-              clear_shared_secret(msg.source_id)
-            }
-          }
-        None => ()
-      }
-  }
-
-  match effective_pk_opt {
-    Some(pk) => {
-      log_debug(
-        "DEBUG: Received/Derived Public Key from \{msg.source_id}: \{bytes_to_hex(pk)}",
-      )
-      compute_and_store_shared_secret(msg.source_id, pk)
-    }
-    None =>
-      log_warn(
-        "Cannot compute shared secret for \{msg.source_id}: No Public Key available",
-      )
+    Some(_) => ()
   }
 
   if msg.peers is Some(peer_addrs) {
@@ -351,27 +296,7 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
       }
 
       for entry in conn_entries {
-        let (conn_val, pk_bytes) = match entry {
-          Array(arr) =>
-            if arr.length() >= 21 {
-              // The last element is the public key, the rest is the Connection msgpack
-              let len = arr.length()
-              let pk_val = arr[len - 1]
-              let pk = match pk_val {
-                Binary(b) => b
-                _ => []
-              }
-              let conn_arr = []
-              for i = 0; i < len - 1; i = i + 1 {
-                conn_arr.push(arr[i])
-              }
-              (@msgpack.array(conn_arr), pk)
-            } else {
-              (entry, [])
-            }
-          _ => (entry, [])
-        }
-        match Connection::from_msgpack(conn_val) {
+        match Connection::from_msgpack(entry) {
           Some(conn) => {
             let peer_id = conn.peer_id
             let relay_depth = conn.relay
@@ -413,7 +338,6 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
                   let peer_node = PeerNode::new(
                     id=peer_id,
                     version=conn.version,
-                    public_key=pk_bytes,
                     addresses=[],
                     metadata={},
                   )
@@ -421,25 +345,7 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
                     manager.add_peer(peer_node)
                   })
                 }
-                Some(_) =>
-                  if pk_bytes.length() > 0 {
-                    let needs_clear_secret = match
-                      get_global_peer_manager().get_peer(peer_id) {
-                      Some(existing_peer) =>
-                        existing_peer.public_key.length() > 0 &&
-                        existing_peer.public_key != pk_bytes
-                      None => false
-                    }
-                    update_global_peer_manager(fn(manager) {
-                      manager.update_peer_public_key(peer_id, pk_bytes)
-                    })
-                    if needs_clear_secret {
-                      log_info(
-                        "Updating public key for peer \{peer_id} via sync (key changed)",
-                      )
-                      clear_shared_secret(peer_id)
-                    }
-                  }
+                Some(_) => ()
               }
             }
           }

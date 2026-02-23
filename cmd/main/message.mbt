@@ -11,7 +11,6 @@ struct Message {
   payload : String?
   target_id : String? // If set, send to this peer; if unset, broadcast
   body : @msgpack.Value
-  public_key : Bytes? // X25519 public key for E2E encryption (sent in hello/welcome)
   secret_hash : String? // Hash of network secret for authentication
   encrypted : Bool // Whether the data field is encrypted
   timestamp : UInt64 // Creation timestamp for TTL and deduplication
@@ -40,7 +39,6 @@ fn Message::new(
   payload? : String,
   target_id? : String,
   body? : @msgpack.Value = @msgpack.nil(),
-  public_key? : Bytes,
   secret_hash? : String,
   encrypted? : Bool = false,
   timestamp? : UInt64,
@@ -60,7 +58,6 @@ fn Message::new(
     payload,
     target_id,
     body,
-    public_key,
     secret_hash,
     encrypted,
     timestamp: timestamp.unwrap_or(@env.now()),
@@ -72,7 +69,7 @@ fn Message::new(
 ///|
 fn Message::to_msgpack(self : Message) -> Bytes {
   // Use fixed array structure for msgpack:
-  // [id, kind, from, addr, relay, visited, encrypted, version, public_key, secret_hash, payload, target, data, peers, broadcast, timestamp, timeout_ms]
+  // [id, kind, from, addr, relay, visited, encrypted, version, secret_hash, payload, target, data, peers, broadcast, timestamp, timeout_ms]
   let visited_array : Array[@msgpack.Value] = []
   for peer_id in self.visited {
     visited_array.push(@msgpack.string(peer_id))
@@ -90,10 +87,6 @@ fn Message::to_msgpack(self : Message) -> Bytes {
     @msgpack.bool(self.encrypted), // Always set encrypted field (might be true if message is encrypted)
     match self.version {
       Some(v) => @msgpack.string(v)
-      None => @msgpack.nil()
-    },
-    match self.public_key {
-      Some(pk) => @msgpack.binary(pk)
       None => @msgpack.nil()
     },
     match self.secret_hash {
@@ -198,22 +191,13 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
       } else {
         None
       }
-      let public_key_pos = version_pos + 1
-      let public_key = if arr.length() > public_key_pos {
-        match arr[public_key_pos] {
-          Binary(v) => Some(v)
-          Nil => None
-          _ => fail("Invalid public_key at position \{public_key_pos}")
-        }
-      } else {
-        None
-      }
-      let secret_hash_pos = public_key_pos + 1
+      let secret_hash_pos = version_pos + 1
       let secret_hash = if arr.length() > secret_hash_pos {
         match arr[secret_hash_pos] {
           String(v) => Some(v)
           Nil => None
-          _ => fail("Invalid secret_hash at position \{secret_hash_pos}")
+          // _ => fail("Invalid secret_hash at position \{secret_hash_pos}")
+          _ => None // Fallback for backward compatibility (might be public key in old messages)
         }
       } else {
         None
@@ -296,7 +280,6 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
         payload,
         target_id,
         body,
-        public_key,
         secret_hash,
         encrypted,
         timestamp,

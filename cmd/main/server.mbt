@@ -94,13 +94,11 @@ fn handle_new_connection(
   // Add or update peer with provided info
   if peer_info is Some(info) {
     let peer_node = match get_global_peer_manager().get_peer(info.id) {
-      Some(existing) =>
-        { ..existing, version: info.version, public_key: info.public_key }
+      Some(existing) => { ..existing, version: info.version }
       None =>
         PeerNode::new(
           id=info.id,
           version=info.version,
-          public_key=info.public_key,
           addresses=[remote_addr],
           metadata={},
         )
@@ -135,7 +133,6 @@ fn handle_new_connection(
         let peer_node = PeerNode::new(
           id=actual_peer_id,
           version=VERSION,
-          public_key=[],
           addresses=[remote_addr],
           metadata={},
         )
@@ -968,7 +965,7 @@ async fn handle_incoming_message(
   if msg.source_id == id && msg.target_id != Some(id) {
     return
   }
-  let msg = decrypt_message_body(transport, id, local_addr, msg)
+  let msg = decrypt_message_body(id, msg)
   guard msg is Some(msg) else { return }
   let should_ack = transport.protocol() == "udp" &&
     msg.kind != "ack" &&
@@ -1057,7 +1054,7 @@ async fn handle_incoming_message(
     add_known_peer(connectable_addr)
   }
   let peer_info = match msg {
-    { kind: "hello", public_key: Some(public_key), .. } => {
+    { kind: "hello", .. } => {
       // Get our own listening addresses to prevent attributing them to peers
       let my_listeners = get_our_addresses(local_addr).map(fn(a) { a.address })
       let addrs : Array[NetworkAddress] = []
@@ -1082,7 +1079,6 @@ async fn handle_incoming_message(
         },
         addresses: addrs,
         peers: msg.peers,
-        public_key,
       })
     }
     _ => None
@@ -1112,11 +1108,6 @@ async fn handle_incoming_message(
     check_and_mark_hello(hello_key, 5000UL)
   } else {
     false
-  }
-
-  // Store peer's public key if provided and compute shared secret (only if not already stored)
-  if msg.public_key is Some(pk) {
-    compute_and_store_shared_secret(msg.source_id, pk)
   }
 
   // Reply to hello if it's a new connection or new peer (key update), to ensure bidirectional key exchange.
@@ -1209,12 +1200,8 @@ async fn handle_incoming_message(
   // log_info("RAW MSG: kind=\{msg.kind} from=\{msg.source_id}")
 
   if msg.kind != "ping" && msg.kind != "pong" {
-    let pk_status = match msg.public_key {
-      Some(_) => "with_pk"
-      None => "no_pk"
-    }
     if !(msg.kind == "hello" && should_skip_hello_callback) {
-      log_debug("Received \{msg.kind} from \{msg.source_id} (\{pk_status})")
+      log_debug("Received \{msg.kind} from \{msg.source_id}")
     }
   }
   let ctx = MessageContext::{

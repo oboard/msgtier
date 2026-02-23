@@ -134,24 +134,3 @@ fn PeerManager::get_route(
 fn PeerManager::get_all_routes(self : PeerManager) -> Map[String, Route] {
   self.routes
 }
-
-///|
-fn PeerManager::update_peer_public_key(
-  self : PeerManager,
-  peer_id : String,
-  public_key : Bytes,
-) -> PeerManager {
-  match self.peers.get(peer_id) {
-    Some(peer) =>
-      if public_key.length() > 0 &&
-        (peer.public_key.length() == 0 || peer.public_key != public_key) {
-        let updated_peer = { ..peer, public_key, }
-        let peers = self.peers
-        peers[peer_id] = updated_peer
-        { ..self, peers, }
-      } else {
-        self
-      }
-    None => self
-  }
-}

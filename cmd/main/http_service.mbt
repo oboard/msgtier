@@ -423,7 +423,7 @@ async fn proxy_http_request(
   body_map["path"] = @msgpack.string(path)
   body_map["headers"] = headers_to_msgpack(headers)
   body_map["body"] = @msgpack.binary(body)
-  let is_encrypted = get_shared_secret(peer_id) is Some(_)
+  let is_encrypted = true
   let msg = Message::new(
     kind="http_proxy",
     source_id=get_config().id,
@@ -469,7 +469,7 @@ async fn proxy_http_request_stream(
   body_map["path"] = @msgpack.string(path)
   body_map["headers"] = headers_to_msgpack(headers)
   body_map["body"] = @msgpack.binary(body)
-  let is_encrypted = get_shared_secret(peer_id) is Some(_)
+  let is_encrypted = true
   let msg = Message::new(
     kind="http_proxy",
     source_id=get_config().id,
@@ -1299,7 +1299,6 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
   }
 
   // Add myself to the peers list to show my connections
-  let my_pk = get_public_key()
   let my_addrs = my_config.listeners.map(addr => {
     addr.replace(old="0.0.0.0", new="127.0.0.1")
   })
@@ -1334,7 +1333,6 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
   let me = PeerNode::new(
     id=my_id,
     version=VERSION,
-    public_key=my_pk,
     addresses=my_addrs,
     metadata=my_config.metadata.unwrap_or({}),
   )

@@ -5,7 +5,6 @@ struct PeerNode {
   id : String
   version : String
   metadata : Map[String, String]
-  public_key : Bytes // RSA public key for E2E encryption
   addresses : Array[String] // All known addresses for this peer (from gossip discovery)
   connections : Array[PeerConnectionInfo] // List of peer IDs this peer is connected to
 } derive(Show)
@@ -16,7 +15,6 @@ impl ToJson for PeerNode with to_json(self) {
     "id": self.id,
     "version": self.version,
     "metadata": self.metadata,
-    "public_key": bytes_to_hex(self.public_key),
     "addresses": self.addresses,
     "connections": self.connections,
   }
@@ -34,11 +32,10 @@ enum PeerNodeStatus {
 fn PeerNode::new(
   id~ : String,
   version~ : String,
-  public_key~ : Bytes,
   addresses~ : Array[String],
   metadata~ : Map[String, String],
 ) -> PeerNode {
-  { id, version, metadata, public_key, addresses, connections: [] }
+  { id, version, metadata, addresses, connections: [] }
 }
 
 // ///|

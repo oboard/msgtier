@@ -505,7 +505,7 @@ fn send_response_message(
   correlation_id : String,
   response_data : @msgpack.Value,
 ) -> Unit {
-  let is_encrypted = get_shared_secret(target_id) is Some(_)
+  let is_encrypted = true
   let send_one = fn(body : @msgpack.Value, attachment : Bytes?) {
     let response_msg = match attachment {
       Some(a) =>
@@ -796,7 +796,7 @@ async fn send_response_message_direct(
 ) -> Unit {
   let is_encrypted = match encrypted_override {
     Some(v) => v
-    None => get_shared_secret(target_id) is Some(_)
+    None => true
   }
   let resolved_addr = if target_addr.is_empty() {
     pick_peer_address(target_id, transport.protocol()).unwrap_or(target_addr)

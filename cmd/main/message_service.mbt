@@ -1,11 +1,9 @@
 ///|
-fn get_identity_info() -> (Bytes, String) {
-  let our_public_key = get_public_key()
-  let our_secret_hash = match global_config.val {
+fn get_identity_info() -> String {
+  match global_config.val {
     Some(config) => bytes_to_hex(hash_secret(config.secret))
     None => abort("No config found")
   }
-  (our_public_key, our_secret_hash)
 }
 
 ///|
@@ -105,17 +103,7 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
       version: conn.version,
     }
     let conn_val = updated_conn.to_msgpack()
-    let sync_entry = match conn_val {
-      Array(arr) => {
-        let pk_bytes = get_global_peer_manager()
-          .get_peer(conn.peer_id)
-          .map(peer => peer.public_key)
-          .unwrap_or([])
-        @msgpack.array([..arr, @msgpack.binary(pk_bytes)])
-      }
-      _ => conn_val
-    }
-    connections_data.push(sync_entry)
+    connections_data.push(conn_val)
   }
   Message::new(
     kind="sync",
@@ -149,25 +137,13 @@ async fn send_message(
   }
   try {
     let msg_to_send = if msg.encrypted {
-      match msg.target_id {
-        Some(target_id) => {
-          let encoded = @msgpack.encode(msg.body)
-          let encrypted = encrypt_for_peer(target_id, encoded)
-          if encrypted.length() > 0 {
-            Message::{
-              ..msg,
-              body: @msgpack.binary(encrypted),
-              encrypted: true,
-            }
-          } else {
-            log_warn("No shared secret for \{target_id}, sending unencrypted")
-            Message::{ ..msg, encrypted: false }
-          }
-        }
-        None => {
-          log_warn("Encrypted message missing target_id, sending unencrypted")
-          Message::{ ..msg, encrypted: false }
-        }
+      let encoded = @msgpack.encode(msg.body)
+      let encrypted = encrypt_with_message_key(msg.id, encoded)
+      if encrypted.length() > 0 {
+        Message::{ ..msg, body: @msgpack.binary(encrypted), encrypted: true }
+      } else {
+        log_warn("Encryption failed for \{msg.id}, sending unencrypted")
+        Message::{ ..msg, encrypted: false }
       }
     } else {
       msg
@@ -219,7 +195,7 @@ fn create_hello_message(
   relay : Int,
   peers? : Array[NetworkAddress],
 ) -> Message {
-  let (public_key, secret_hash) = get_identity_info()
+  let secret_hash = get_identity_info()
   let peers_opt = match peers {
     Some(p) => if p.is_empty() { None } else { Some(p) }
     None => None
@@ -231,7 +207,6 @@ fn create_hello_message(
     relay~,
     version=VERSION,
     peers?=peers_opt,
-    public_key~,
     secret_hash~,
   )
 }

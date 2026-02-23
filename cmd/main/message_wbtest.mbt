@@ -115,7 +115,6 @@ test "message with short array (pre-optional fields)" {
 
   // Verify optional fields are None
   assert_eq(decoded.version, None)
-  assert_eq(decoded.public_key, None)
   assert_eq(decoded.secret_hash, None)
   assert_eq(decoded.payload, None)
   assert_eq(decoded.target_id, None)

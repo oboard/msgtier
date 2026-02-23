@@ -17,6 +17,12 @@ pub fn can_direct_connect(String) -> Bool
 
 pub fn clear_pending_messages() -> Unit
 
+pub fn compute_message_key(String) -> Bytes
+
+pub fn decrypt_with_message_key(String, Bytes) -> Bytes?
+
+pub fn encrypt_with_message_key(String, Bytes) -> Bytes
+
 pub fn get_global_foreign_network_manager() -> ForeignNetworkManager
 
 pub async fn get_object(String) -> Bytes?
