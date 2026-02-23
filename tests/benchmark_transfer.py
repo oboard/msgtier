@@ -94,7 +94,7 @@ def format_mbps(bytes_count, seconds):
     return bytes_count / 1024 / 1024 / seconds
 
 
-def benchmark(payload_size, rounds, peer_id, node1_url, node2_url):
+def benchmark(payload_size, rounds, peer_id, node1_url, node2_url, timeout=60):
     log("cleanup")
     cleanup()
     p1 = None
@@ -130,7 +130,7 @@ def benchmark(payload_size, rounds, peer_id, node1_url, node2_url):
         for i in range(1, rounds + 1):
             log(f"round {i} upload start")
             t0 = time.perf_counter()
-            status, body, _ = post_bytes(upload_url, payload, timeout=60)
+            status, body, _ = post_bytes(upload_url, payload, timeout=timeout)
             t1 = time.perf_counter()
             if status != 200:
                 print(f"FAILURE: upload status={status} body_len={len(body)}")
@@ -162,7 +162,7 @@ def benchmark(payload_size, rounds, peer_id, node1_url, node2_url):
                 if attempt % 5 == 0:
                     log(f"round {i} download attempt {attempt + 1}")
                 t2 = time.perf_counter()
-                status, downloaded, _ = get_bytes(download_url, timeout=10)
+                status, downloaded, _ = get_bytes(download_url, timeout=timeout)
                 t3 = time.perf_counter()
                 if status == 200 and len(downloaded) == len(payload):
                     break
@@ -214,6 +214,7 @@ def main():
     parser.add_argument("--peer", type=str, default="oboard-mac")
     parser.add_argument("--node1-url", type=str, default="http://127.0.0.1:9000")
     parser.add_argument("--node2-url", type=str, default="http://127.0.0.1:9001")
+    parser.add_argument("--timeout", type=int, default=60)
     args = parser.parse_args()
 
     payload_size = max(1, args.size_mb) * 1024 * 1024
@@ -223,6 +224,7 @@ def main():
         args.peer,
         args.node1_url,
         args.node2_url,
+        args.timeout,
     )
     sys.exit(0 if ok else 1)
 

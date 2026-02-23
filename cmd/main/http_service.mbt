@@ -227,9 +227,8 @@ async fn handle_object_upload(
   body : &@io.Reader,
   conn : @http.ServerConnection,
 ) -> Unit {
-  let bytes = body.read_all().binary()
   let id = @uuidm.v4().to_string_simple()
-  save_object(id, bytes)
+  save_object_from_reader(id, body)
 
   let m = Map::new()
   m["id"] = id.to_json()
@@ -489,6 +488,7 @@ async fn proxy_http_request_stream(
   let mut logged_first = false
   let mut resp_headers : Map[String, String] = {}
   let mut status_code = 200
+  let mut last_chunk_time = start
   for {
     if @env.now() - start > timeout_ms_u64 {
       if !response_sent {
@@ -503,6 +503,7 @@ async fn proxy_http_request_stream(
     }
     match take_stream_chunk(req_id) {
       Some((chunk, done, headers_opt)) => {
+        last_chunk_time = @env.now()
         if !logged_first {
           log_info("http_proxy_stream first_chunk peer=\{peer_id} path=\{path}")
           logged_first = true
@@ -547,6 +548,12 @@ async fn proxy_http_request_stream(
         if now - last_log > 2000UL {
           log_debug("http_proxy_stream waiting peer=\{peer_id} path=\{path}")
           last_log = now
+        }
+        // Retry logic: if no chunk received for 5 seconds, resend the request
+        if !response_sent && now - last_chunk_time > 5000UL {
+           log_warn("http_proxy_stream: no response for 5s, retrying request... peer=\{peer_id}")
+           add_pending_message(msg)
+           last_chunk_time = now // Reset timer to avoid spamming
         }
         @async.sleep(5)
       }
@@ -643,6 +650,22 @@ async fn handle_internal_http_request(
       "Content-Type": "application/json",
     }
     (200, resp_headers, ResponseBody::Bytes(@utf8.encode(resp_json)))
+  } else if http_method == "POST" && path == "/object" {
+    // New API for zero-copy local file registration
+    let body_str = @utf8.decode(body).trim().to_string()
+    if body_str == "" {
+      let resp_headers : Map[String, String] = {}
+      (400, resp_headers, ResponseBody::Bytes(@utf8.encode("Missing file path")))
+    } else {
+      let id = register_object(body_str)
+      let m = Map::new()
+      m["id"] = id.to_json()
+      let resp_json = m.to_json().stringify()
+      let resp_headers : Map[String, String] = {
+        "Content-Type": "application/json",
+      }
+      (200, resp_headers, ResponseBody::Bytes(@utf8.encode(resp_json)))
+    }
   } else if http_method == "GET" && path == "/api/config" {
     let config = get_config()
     let resp_headers : Map[String, String] = {
@@ -734,7 +757,7 @@ async fn handle_object_download(
                 None => ()
               }
           }
-          let timeout_ms = 60000
+          let timeout_ms = 300000 // 5 minutes
           proxy_http_request_stream(
             pid, "GET", path, forward_headers, b"", timeout_ms, filename, conn,
           )

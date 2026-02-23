@@ -2,7 +2,7 @@
 let processed_messages_cache : Ref[Map[String, UInt64]] = Ref::new({})
 
 ///|
-let response_chunk_size : Int = 8388608
+let response_chunk_size : Int = 1048576
 
 ///|
 let http_proxy_no_encrypt_threshold : Int = 1048576
@@ -48,7 +48,7 @@ fn slice_bytes(b : Bytes, start : Int, end : Int) -> Bytes {
   if len <= 0 {
     return b""
   }
-  let arr = Array::make(len, b'\x00')
+  let arr = FixedArray::make(len, b'\x00')
   for i = 0; i < len; i = i + 1 {
     arr[i] = b[start + i]
   }
@@ -660,7 +660,7 @@ async fn send_response_message_direct(
           let bytes_read = file.read_at(chunk_buf, position=offset)
 
           if bytes_read > 0 {
-             let chunk_full = Bytes::from_array(chunk_buf)
+             let chunk_full = chunk_buf.unsafe_reinterpret_as_bytes()
              let chunk = if bytes_read < expected_len {
                slice_bytes(chunk_full, 0, bytes_read)
              } else {
