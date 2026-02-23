@@ -734,6 +734,7 @@ fn parse_range_str(header : String) -> (Int, Int?)? {
 
 ///|
 async fn handle_object_download(
+  root : @async.TaskGroup[Unit],
   id : String,
   peer_id : String?,
   filename : String?,
@@ -918,9 +919,11 @@ async fn handle_object_download(
                 }
             }
             let timeout_ms = 300000 // 5 minutes
-            proxy_http_request_stream(
-              pid, "GET", path, forward_headers, b"", timeout_ms, filename, conn,
-            )
+            let _ = root.spawn_bg(async fn() {
+              proxy_http_request_stream(
+                pid, "GET", path, forward_headers, b"", timeout_ms, filename, conn,
+              )
+            })
             return
           }
           None =>
@@ -937,6 +940,7 @@ async fn handle_object_download(
 
 ///|
 async fn handle_http_request(
+  root : @async.TaskGroup[Unit],
   request : @http.Request,
   body : &@io.Reader,
   conn : @http.ServerConnection,
@@ -967,7 +971,7 @@ async fn handle_http_request(
       }
     }
 
-    handle_object_download(id, peer_id, filename, request.headers, conn)
+    handle_object_download(root, id, peer_id, filename, request.headers, conn)
     return
   }
 
@@ -1008,30 +1012,32 @@ async fn handle_http_request(
         }
         let method_ = request.meth.to_string().to_upper()
         let body_bytes = body.read_all().binary()
-        match
-          proxy_http_request(
-            pid, method_, p, forward_headers, body_bytes, timeout_ms,
-          ) {
-          Some((status_code, resp_headers, resp_body)) => {
-            let headers = resp_headers
-            if !headers.contains("Content-Length") {
-              headers["Content-Length"] = resp_body.length().to_string()
+        let _ = root.spawn_bg(async fn() {
+          match
+            proxy_http_request(
+              pid, method_, p, forward_headers, body_bytes, timeout_ms,
+            ) {
+            Some((status_code, resp_headers, resp_body)) => {
+              let headers = resp_headers
+              if !headers.contains("Content-Length") {
+                headers["Content-Length"] = resp_body.length().to_string()
+              }
+              conn
+              ..send_response(
+                status_code,
+                status_text(status_code),
+                extra_headers=headers,
+              )
+              ..write(resp_body)
+              .end_response()
             }
-            conn
-            ..send_response(
-              status_code,
-              status_text(status_code),
-              extra_headers=headers,
-            )
-            ..write(resp_body)
-            .end_response()
+            None =>
+              conn
+              ..send_response(504, "Gateway Timeout", extra_headers={})
+              ..write("Timeout fetching from peer")
+              .end_response()
           }
-          None =>
-            conn
-            ..send_response(504, "Gateway Timeout", extra_headers={})
-            ..write("Timeout fetching from peer")
-            .end_response()
-        }
+        })
       }
       _ =>
         conn
@@ -1168,13 +1174,18 @@ async fn handle_http_request(
 }
 
 ///|
-async fn start_http_service(addr : String) -> Unit {
+async fn start_http_service(
+  root : @async.TaskGroup[Unit],
+  addr : String,
+) -> Unit {
   // Store the config globally for handlers to access
   init_upload_dir()
   for {
     try {
       let server = @http.Server::new(@socket.Addr::parse(addr), reuse_addr=true)
-      server.run_forever(handle_http_request)
+      server.run_forever((req, body, conn) => {
+        handle_http_request(root, req, body, conn)
+      })
     } catch {
       e => {
         log_warn("HTTP server failed to start: \{e}. Retrying in 5 seconds...")

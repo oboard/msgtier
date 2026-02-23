@@ -106,7 +106,7 @@ fn start_http_api(root : @async.TaskGroup[Unit], web_api : String?) -> Unit {
   if web_api is Some(addr) {
     let _ : @async.Task[Unit] = root.spawn(async fn() {
       log_info("HTTP API listening on http://\{addr}")
-      start_http_service(addr)
+      start_http_service(root, addr)
     })
   }
 }

@@ -929,23 +929,20 @@ async fn handle_incoming_message(
     "DEBUG: incoming bytes=\{bytes.length()} msgpack_len=\{msgpack_len}",
   )
 
-  if msgpack_len < 0 || msgpack_len > bytes.length() - 4 {
-    // Fallback for backward compatibility or malformed?
-    // Let's assume strict protocol for now.
-    log_warn(
-      "Invalid MsgPack length prefix: \{msgpack_len} (total: \{bytes.length()})",
+  let (msgpack_bytes, attachment_bytes) = if msgpack_len < 0 ||
+    msgpack_len > bytes.length() - 4 {
+    log_debug(
+      "Invalid MsgPack length prefix: \{msgpack_len} (total: \{bytes.length()}). Attempting raw decode.",
     )
-    // Try to decode as raw MsgPack if it looks like one?
-    // MsgPack arrays start with 0x9_ or 0xdc/0xdd.
-    // Length prefix might be interpreted as such? Unlikely.
-    return
-  }
-
-  let msgpack_bytes = slice_bytes(bytes, 4, 4 + msgpack_len)
-  let attachment_bytes = if 4 + msgpack_len < bytes.length() {
-    Some(slice_bytes(bytes, 4 + msgpack_len, bytes.length()))
+    (bytes, None)
   } else {
-    None
+    let mb = slice_bytes(bytes, 4, 4 + msgpack_len)
+    let ab = if 4 + msgpack_len < bytes.length() {
+      Some(slice_bytes(bytes, 4 + msgpack_len, bytes.length()))
+    } else {
+      None
+    }
+    (mb, ab)
   }
 
   let msgpack_value = @msgpack.decode(msgpack_bytes) catch {
