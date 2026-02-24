@@ -875,16 +875,25 @@ fn broadcast_sync(my_id : String, local_addr : String) -> Unit {
     return
   }
   last_sync_broadcast_time.val = now
-  let update_msg = create_sync_message(my_id, local_addr)
+  // Create base message to reuse body
+  let base_msg = create_sync_message(my_id, local_addr)
   let all_peers = get_global_peer_manager().get_all_peers()
   log_debug(
     "DEBUG: broadcast_sync from=\{my_id} local=\{local_addr} peers=\{all_peers.length()}",
   )
   for peer in all_peers {
-    log_debug(
-      "DEBUG: broadcast_sync enqueue to=\{peer.id} msg=\{update_msg.id}",
+    // Create individual message for each peer to ensure single delivery
+    // Reuse body from base_msg to avoid recomputing connections
+    let msg = Message::new(
+      kind="sync",
+      source_id=my_id,
+      source_addr=local_addr,
+      target_id=peer.id,
+      body=base_msg.body,
+      version=VERSION,
     )
-    ignore(add_pending_message(update_msg))
+    log_debug("DEBUG: broadcast_sync enqueue to=\{peer.id} msg=\{msg.id}")
+    ignore(add_pending_message(msg))
   }
 }
 

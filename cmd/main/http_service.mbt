@@ -173,10 +173,8 @@ async fn handle_ws_connection(
   let client_addr = conn.client_addr().to_string()
   try {
     let ws = @websocket.from_http_server(request, conn)
-    ws_clients.val[client_addr] = WsClient::{
-      conn: ws,
-      sending: Ref::new(false),
-    }
+    let sending_lock = Ref::new(false)
+    ws_clients.val[client_addr] = WsClient::{ conn: ws, sending: sending_lock }
     defer {
       ws.close()
       ws_clients.val.remove(client_addr)
@@ -190,8 +188,15 @@ async fn handle_ws_connection(
             match handle_ws_incoming(text) {
               Some(kind) =>
                 if kind == "ping" {
-                  ws.send_text("{\"kind\":\"pong\"}") catch {
-                    _ => ()
+                  while sending_lock.val {
+                    @async.sleep(1)
+                  }
+                  sending_lock.val = true
+                  try {
+                    ws.send_text("{\"kind\":\"pong\"}")
+                    sending_lock.val = false
+                  } catch {
+                    _ => sending_lock.val = false
                   }
                 }
               None => ()
@@ -206,8 +211,15 @@ async fn handle_ws_connection(
             match handle_ws_incoming(content) {
               Some(kind) =>
                 if kind == "ping" {
-                  ws.send_text("{\"kind\":\"pong\"}") catch {
-                    _ => ()
+                  while sending_lock.val {
+                    @async.sleep(1)
+                  }
+                  sending_lock.val = true
+                  try {
+                    ws.send_text("{\"kind\":\"pong\"}")
+                    sending_lock.val = false
+                  } catch {
+                    _ => sending_lock.val = false
                   }
                 }
               None => ()
@@ -423,7 +435,8 @@ async fn proxy_http_request(
   body_map["path"] = @msgpack.string(path)
   body_map["headers"] = headers_to_msgpack(headers)
   body_map["body"] = @msgpack.binary(body)
-  let is_encrypted = true
+  let config = get_config()
+  let is_encrypted = !config.disable_encryption
   let msg = Message::new(
     kind="http_proxy",
     source_id=get_config().id,
@@ -469,7 +482,8 @@ async fn proxy_http_request_stream(
   body_map["path"] = @msgpack.string(path)
   body_map["headers"] = headers_to_msgpack(headers)
   body_map["body"] = @msgpack.binary(body)
-  let is_encrypted = true
+  let config = get_config()
+  let is_encrypted = !config.disable_encryption
   let msg = Message::new(
     kind="http_proxy",
     source_id=get_config().id,
