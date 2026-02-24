@@ -187,6 +187,8 @@ fn handle_text_message(ctx : MessageContext) -> Unit {
     String(text) => {
       log_info("Received text message: \{text}")
       send_response_message(
+        ctx.transport,
+        ctx.root,
         ctx.my_id,
         ctx.sender_addr,
         ctx.msg.source_id,

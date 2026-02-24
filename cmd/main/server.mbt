@@ -128,7 +128,10 @@ fn handle_new_connection(
   } else {
     // Only create peer if it doesn't exist yet
     match get_global_peer_manager().get_peer(actual_peer_id) {
-      Some(_) => () // Peer exists, don't override
+      Some(_) =>
+        update_global_peer_manager(fn(manager) {
+          manager.add_peer_address(actual_peer_id, remote_addr)
+        })
       None => {
         let peer_node = PeerNode::new(
           id=actual_peer_id,
@@ -380,12 +383,14 @@ async fn process_pending_message(
     return
   }
   if transport.protocol() == "udp" {
-    if pending_msg.kind == "response" || pending_msg.kind == "http_proxy" {
-      return
-    }
+    // Allow response and http_proxy messages to be processed via UDP
+    // if pending_msg.kind == "response" || pending_msg.kind == "http_proxy" {
+    //   return
+    // }
     let allow_non_string_body = pending_msg.kind == "file" ||
       pending_msg.kind == "image" ||
-      pending_msg.kind == "http_proxy"
+      pending_msg.kind == "http_proxy" ||
+      pending_msg.kind == "response"
     if pending_msg.kind != "ping" &&
       pending_msg.kind != "pong" &&
       pending_msg.kind != "hello" &&
@@ -535,6 +540,24 @@ async fn process_pending_message(
       add_pending_message(pending_msg)
       continue
     }
+    // Collect candidate addresses from both active connections and PeerManager
+    let candidates : Array[String] = []
+    let seen_candidates : Map[String, Bool] = {}
+
+    // 1. Add addresses from active connections (prioritized)
+    for conn in target_connections {
+      if conn.relay == 1 {
+        for addr, _ in conn.address_stats {
+          if addr.has_prefix(transport.protocol() + "://") {
+            if !seen_candidates.contains(addr) {
+              candidates.push(addr)
+              seen_candidates[addr] = true
+            }
+          }
+        }
+      }
+    }
+
     match get_global_peer_manager().get_peer(target_peer_id) {
       Some(peer) => {
         let lan_addrs : Array[String] = []
@@ -555,39 +578,51 @@ async fn process_pending_message(
             Some(addr) =>
               if addr.protocol.to_string() == transport.protocol() {
                 let host = extract_host(addr_str)
-                if is_private(host) || is_loopback(host) {
-                  lan_addrs.push(addr_str)
+                let full_addr = if addr_str.contains("://") {
+                  addr_str
                 } else {
-                  wan_addrs.push(addr_str)
+                  transport.protocol() + "://" + addr_str
+                }
+
+                if !seen_candidates.contains(full_addr) {
+                  if is_private(host) || is_loopback(host) {
+                    lan_addrs.push(full_addr)
+                  } else {
+                    wan_addrs.push(full_addr)
+                  }
+                  seen_candidates[full_addr] = true
                 }
               }
             None => ()
           }
         }
-        let candidates = [..lan_addrs, ..wan_addrs]
-        for addr in candidates {
-          let target_addr = if addr.contains("://") {
-            addr
-          } else {
-            transport.protocol() + "://" + addr
-          }
-          let msg = pending_msg
-          log_debug("PendingMessage: direct addr=\{target_addr} id=\{msg.id}")
-          let success = send_message(transport, target_addr, msg)
-          log_debug(
-            "DEBUG: pending send protocol=\{transport.protocol()} addr=\{target_addr} id=\{msg.id} ok=\{success}",
-          )
-          if success {
-            sent = true
-            if transport.protocol() == "udp" {
-              record_message_sent(pending_msg.id, target_peer_id, "udp")
-              add_pending_message(pending_msg)
-            }
-            break
-          }
+        // Append LAN then WAN addresses from PeerManager to candidates
+        for addr in lan_addrs {
+          candidates.push(addr)
+        }
+        for addr in wan_addrs {
+          candidates.push(addr)
         }
       }
       None => ()
+    }
+
+    // Send to candidates
+    for target_addr in candidates {
+      let msg = pending_msg
+      log_debug("PendingMessage: direct addr=\{target_addr} id=\{msg.id}")
+      let success = send_message(transport, target_addr, msg)
+      log_debug(
+        "DEBUG: pending send protocol=\{transport.protocol()} addr=\{target_addr} id=\{msg.id} ok=\{success}",
+      )
+      if success {
+        sent = true
+        if transport.protocol() == "udp" {
+          record_message_sent(pending_msg.id, target_peer_id, "udp")
+          add_pending_message(pending_msg)
+        }
+        break
+      }
     }
     if sent && transport.protocol() != "udp" {
       let required_protocols = [transport.protocol()]
@@ -1116,7 +1151,11 @@ async fn handle_incoming_message(
   // Use the message's relay count as the hop depth for this connection
   // msg.relay already indicates how many hops the message took to reach us
   let relay_depth_to_use = msg.relay
-  let effective_addr = sender_addr
+  let effective_addr = if sender_addr.contains("://") {
+    sender_addr
+  } else {
+    transport.protocol() + "://" + sender_addr
+  }
   let (conn, is_new_connection, is_new_peer) = handle_new_connection(
     msg.source_id,
     local_addr,
@@ -1166,6 +1205,13 @@ async fn handle_incoming_message(
   update_global_connection_manager(fn(manager) {
     let timestamp = @env.now()
     manager.update_connection_last_seen(conn.id, timestamp)
+  })
+
+  // Update address stats to mark this address as active and valid for sending responses
+  // This ensures pick_peer_address will consider this address as a "good candidate"
+  update_global_connection_manager(fn(manager) {
+    let timestamp = @env.now()
+    manager.update_connection_address_pong(conn.id, effective_addr, timestamp)
   })
 
   // Only broadcast connection update if this is a NEW connection established via Hello

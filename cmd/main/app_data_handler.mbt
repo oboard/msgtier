@@ -262,6 +262,7 @@ fn ensure_status_header(
 
 ///|
 fn handle_script_message(
+  transport : &Transport,
   root : @async.TaskGroup[Unit],
   id : String,
   local_addr : String,
@@ -297,12 +298,30 @@ fn handle_script_message(
       }
     }
     let content_str = cleaned.to_string().trim().to_string()
+    if content_str.is_empty() {
+      log_warn("Received empty script content from \{msg.source_id}")
+      send_response_message(
+        transport,
+        root,
+        id,
+        local_addr,
+        msg.source_id,
+        msg.payload.unwrap_or(msg.id),
+        @msgpack.map({
+          "status": @msgpack.string("400"),
+          "data": @msgpack.binary(@utf8.encode("Error: Empty script content")),
+        }),
+      )
+      return
+    }
     log_info(
       "DEBUG: Handling data message. Encrypted=\{msg.encrypted}, Content='\{content_str}'",
     )
     match execute_script_handler(content_str) {
       Some(output) =>
         send_response_message(
+          transport,
+          root,
           id,
           local_addr,
           msg.source_id,
@@ -341,6 +360,7 @@ fn register_object_handlers(dispatcher : MessageDispatcher) -> Unit {
 ///|
 fn handle_script_plugin(ctx : MessageContext) -> Unit {
   handle_script_message(
+    ctx.transport,
     ctx.root,
     ctx.my_id,
     ctx.local_addr,
@@ -499,105 +519,26 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
 
 ///|
 fn send_response_message(
+  transport : &Transport,
+  root : @async.TaskGroup[Unit],
   source_id : String,
   source_addr : String,
   target_id : String,
   correlation_id : String,
   response_data : @msgpack.Value,
 ) -> Unit {
-  let config = get_config()
-  let is_encrypted = config.is_encrypt()
-  let send_one = fn(body : @msgpack.Value, attachment : Bytes?) {
-    let response_msg = match attachment {
-      Some(a) =>
-        Message::new(
-          kind="response",
-          source_id~,
-          source_addr~,
-          target_id~,
-          relay=1,
-          body~,
-          encrypted=is_encrypted,
-          payload=correlation_id,
-          attachment=a,
-        )
-      None =>
-        Message::new(
-          kind="response",
-          source_id~,
-          source_addr~,
-          target_id~,
-          relay=1,
-          body~,
-          encrypted=is_encrypted,
-          payload=correlation_id,
-        )
-    }
-    add_pending_message(response_msg)
-  }
-  let send_chunked = fn(
-    data : Bytes,
-    status : String?,
-    headers : Map[String, String]?,
-  ) {
-    let total = (data.length() + response_chunk_size - 1) / response_chunk_size
-    for i = 0; i < total; i = i + 1 {
-      let start = i * response_chunk_size
-      let end = if start + response_chunk_size > data.length() {
-        data.length()
-      } else {
-        start + response_chunk_size
-      }
-      let chunk = slice_bytes(data, start, end)
-      let arr : Array[@msgpack.Value] = []
-      arr.push(@msgpack.int(i))
-      arr.push(@msgpack.int(total))
-      arr.push(@msgpack.binary(b""))
-      if i == 0 {
-        match status {
-          Some(s) => arr.push(@msgpack.string(s))
-          None => if headers is Some(_) { arr.push(@msgpack.nil()) }
-        }
-        match headers {
-          Some(h) => arr.push(headers_to_msgpack(h))
-          None => ()
-        }
-      }
-      send_one(@msgpack.array(arr), Some(chunk))
-    }
-  }
-  match response_data {
-    Binary(b) =>
-      if b.length() >= response_chunk_size {
-        send_chunked(b, None, None)
-      } else {
-        send_one(response_data, None)
-      }
-    Map(m) => {
-      let status = match m.get("status") {
-        Some(String(s)) => Some(s)
-        _ => None
-      }
-      let headers = parse_headers_map(m)
-      let data = match m.get("data") {
-        Some(Binary(b)) => Some(b)
-        _ => None
-      }
-      match (status, data) {
-        (Some(status), Some(data)) =>
-          if data.length() >= response_chunk_size {
-            send_chunked(data, Some(status), headers)
-          } else {
-            send_one(response_data, None)
-          }
-        _ => send_one(response_data, None)
-      }
-    }
-    _ => send_one(response_data, None)
-  }
-  log_info(
-    "DataResponse: queued correlation=\{correlation_id} to=\{target_id} encrypted=\{is_encrypted}",
-  )
+  root.spawn_bg(async fn() {
+    send_response_message_direct(
+      transport,
+      "", // target_addr (empty, let it resolve)
+      source_id,
+      source_addr,
+      target_id,
+      correlation_id,
+      ResponseSource::MsgPack(response_data),
+      None, // encrypted_override
+    )
+  })
 }
 
 ///|

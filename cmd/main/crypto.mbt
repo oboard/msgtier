@@ -50,10 +50,6 @@ pub fn decrypt_with_message_key(
   message_id : String,
   encrypted : Bytes,
 ) -> Bytes? {
-  let config = get_config()
-  if !config.is_encrypt() {
-    return Some(encrypted)
-  }
   let key = compute_message_key(message_id)
   @x25519.decrypt(key, encrypted)
 }
