@@ -976,6 +976,11 @@ async fn handle_incoming_message(
   }
   let msg = decrypt_message_body(id, msg)
   guard msg is Some(msg) else { return }
+  let is_broadcast = msg.is_broadcast()
+  let is_unicast_to_me = match msg.target_id {
+    Some(tid) => tid == id
+    None => false
+  }
   let should_ack = transport.protocol() == "udp" &&
     msg.kind != "ack" &&
     msg.kind != "response" &&
@@ -983,18 +988,32 @@ async fn handle_incoming_message(
     msg.kind != "pong" &&
     msg.kind != "hello" &&
     msg.kind != "sync" &&
-    msg.target_id is Some(target_id) &&
-    target_id == id
+    (is_unicast_to_me || is_broadcast)
   if should_ack {
-    let ack_msg = Message::new(
-      kind="ack",
-      source_id=id,
-      source_addr=local_addr,
-      target_id=msg.source_id,
-      payload=msg.id,
-      encrypted=msg.encrypted,
-    )
-    ignore(send_message(transport, sender_addr, ack_msg))
+    let ack_msg = if is_broadcast {
+      Message::new(
+        kind="ack",
+        source_id=id,
+        source_addr=local_addr,
+        // No target_id implies broadcast
+        payload=msg.id,
+        encrypted=msg.encrypted,
+      )
+    } else {
+      Message::new(
+        kind="ack",
+        source_id=id,
+        source_addr=local_addr,
+        target_id=msg.source_id,
+        payload=msg.id,
+        encrypted=msg.encrypted,
+      )
+    }
+    if is_broadcast {
+      add_pending_message(ack_msg)
+    } else {
+      ignore(send_message(transport, sender_addr, ack_msg))
+    }
   }
   if transport.protocol() == "udp" && msg.kind != "ack" {
     if check_and_mark_received(msg.id, msg.timestamp) {
