@@ -276,7 +276,7 @@ fn handle_pong_message(ctx : MessageContext) -> Unit {
 ///|
 fn handle_ack_message(ctx : MessageContext) -> Unit {
   match ctx.msg.payload {
-    Some(id) => remove_pending_message_by_id(id) |> ignore
+    Some(id) => mark_pending_message_acked(id, ctx.msg.source_id)
     None => ()
   }
 }

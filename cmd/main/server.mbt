@@ -382,6 +382,18 @@ async fn process_pending_message(
   if !is_pending_message(pending_msg.id) {
     return
   }
+  
+  // Retry logic
+  let now = @env.now()
+  let retry_interval = 2000UL // 2 seconds
+  if entry.last_attempt > 0UL && now - entry.last_attempt < retry_interval {
+    return
+  }
+  if entry.retry_count > 5 {
+    log_debug("Message \{pending_msg.id} exceeded max retries, removing")
+    remove_pending_message(pending_msg) |> ignore
+    return
+  }
   if transport.protocol() == "udp" {
     // Allow response and http_proxy messages to be processed via UDP
     // if pending_msg.kind == "response" || pending_msg.kind == "http_proxy" {
@@ -414,6 +426,9 @@ async fn process_pending_message(
     }
   }
   for target_peer_id in target_peer_ids {
+    if entry.acked_peers.get(target_peer_id) == Some(true) {
+      continue
+    }
     // Handle loopback (send to self)
     if target_peer_id == my_id {
       // Attempt to remove message atomically (returns true if we removed it)
@@ -445,7 +460,6 @@ async fn process_pending_message(
     }
     if transport.protocol() == "udp" &&
       !should_send_message(pending_msg.id, target_peer_id, "udp", 200UL) {
-      add_pending_message(pending_msg)
       continue
     }
     let target_connections = cm.get_peer_connections(target_peer_id)
@@ -504,7 +518,6 @@ async fn process_pending_message(
             sent = true
             if transport.protocol() == "udp" {
               record_message_sent(pending_msg.id, target_peer_id, "udp")
-              add_pending_message(pending_msg)
             } else {
               mark_pending_message_sent(
                 pending_msg.id,
@@ -520,7 +533,6 @@ async fn process_pending_message(
           log_debug(
             "DEBUG: pending no connections and no route protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.id}",
           )
-          add_pending_message(pending_msg)
         }
       }
       continue
@@ -537,7 +549,6 @@ async fn process_pending_message(
     }
     if transport.protocol() == "udp" &&
       !should_send_message(pending_msg.id, target_peer_id, "udp", 200UL) {
-      add_pending_message(pending_msg)
       continue
     }
     // Collect candidate addresses from both active connections and PeerManager
@@ -619,7 +630,6 @@ async fn process_pending_message(
         sent = true
         if transport.protocol() == "udp" {
           record_message_sent(pending_msg.id, target_peer_id, "udp")
-          add_pending_message(pending_msg)
         }
         break
       }
@@ -641,9 +651,10 @@ async fn process_pending_message(
       log_debug(
         "DEBUG: pending failed to send on any connection protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.id}",
       )
-      add_pending_message(pending_msg)
     }
   }
+
+  update_pending_message_state(pending_msg.id, entry.retry_count + 1, now)
 }
 
 ///|
@@ -1016,9 +1027,7 @@ async fn handle_incoming_message(
     Some(tid) => tid == id
     None => false
   }
-  let should_ack = transport.protocol() == "udp" &&
-    msg.kind != "ack" &&
-    msg.kind != "response" &&
+  let should_ack = msg.kind != "ack" &&
     msg.kind != "ping" &&
     msg.kind != "pong" &&
     msg.kind != "hello" &&
@@ -1050,7 +1059,7 @@ async fn handle_incoming_message(
       ignore(send_message(transport, sender_addr, ack_msg))
     }
   }
-  if transport.protocol() == "udp" && msg.kind != "ack" {
+  if msg.kind != "ack" {
     if check_and_mark_received(msg.id, msg.timestamp) {
       return
     }
