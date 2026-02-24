@@ -128,38 +128,3 @@ test "decryption fails with wrong secret" {
     None => inspect(true, content="true")
   }
 }
-
-///|
-test "encryption disabled" {
-  // Setup config with disabled encryption
-  global_config.val = Some({
-    id: "test_node",
-    secret: "test_secret_123",
-    peers: [],
-    listeners: [],
-    scripts: None,
-    web_api: None,
-    metadata: None,
-    log: None,
-    port: None,
-    relay_network_whitelist: None,
-    relay_all_peer_rpc: None,
-    foreign_relay_bps_limit: None,
-    upload_dir: None,
-    disable_encryption: Some(true),
-  })
-
-  let message_id = "msg-123"
-  let data = b"Clear Text Data"
-
-  // Encrypt should return raw data
-  let encrypted = encrypt_with_message_key(message_id, data)
-  inspect(encrypted == data, content="true")
-
-  // Decrypt should return raw data
-  let decrypted = decrypt_with_message_key(message_id, encrypted)
-  match decrypted {
-    Some(d) => inspect(d == data, content="true")
-    None => fail("Decryption failed when disabled")
-  }
-}

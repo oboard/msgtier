@@ -314,7 +314,7 @@ fn handle_script_message(
       )
       return
     }
-    log_info(
+    log_debug(
       "DEBUG: Handling data message. Encrypted=\{msg.encrypted}, Content='\{content_str}'",
     )
     match execute_script_handler(content_str) {
