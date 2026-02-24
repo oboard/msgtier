@@ -506,7 +506,7 @@ fn send_response_message(
   response_data : @msgpack.Value,
 ) -> Unit {
   let config = get_config()
-  let is_encrypted = !config.disable_encryption
+  let is_encrypted = config.is_encrypt()
   let send_one = fn(body : @msgpack.Value, attachment : Bytes?) {
     let response_msg = match attachment {
       Some(a) =>
@@ -796,7 +796,7 @@ async fn send_response_message_direct(
   encrypted_override : Bool?,
 ) -> Unit {
   let config = get_config()
-  let default_encrypted = !config.disable_encryption
+  let default_encrypted = config.is_encrypt()
   let is_encrypted = match encrypted_override {
     Some(v) => v
     None => default_encrypted

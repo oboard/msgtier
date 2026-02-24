@@ -23,7 +23,7 @@ test "encryption and decryption roundtrip" {
     relay_all_peer_rpc: None,
     foreign_relay_bps_limit: None,
     upload_dir: None,
-    disable_encryption: false,
+    disable_encryption: None,
   })
 
   let message_id = "msg-12345"
@@ -58,7 +58,7 @@ test "decryption fails with wrong message id" {
     relay_all_peer_rpc: None,
     foreign_relay_bps_limit: None,
     upload_dir: None,
-    disable_encryption: false,
+    disable_encryption: None,
   })
 
   let message_id = "msg-original"
@@ -95,7 +95,7 @@ test "decryption fails with wrong secret" {
     relay_all_peer_rpc: None,
     foreign_relay_bps_limit: None,
     upload_dir: None,
-    disable_encryption: false,
+    disable_encryption: None,
   })
 
   let message_id = "msg-1"
@@ -118,7 +118,7 @@ test "decryption fails with wrong secret" {
     relay_all_peer_rpc: None,
     foreign_relay_bps_limit: None,
     upload_dir: None,
-    disable_encryption: false,
+    disable_encryption: None,
   })
 
   let result = decrypt_with_message_key(message_id, encrypted)
@@ -146,7 +146,7 @@ test "encryption disabled" {
     relay_all_peer_rpc: None,
     foreign_relay_bps_limit: None,
     upload_dir: None,
-    disable_encryption: true,
+    disable_encryption: Some(true),
   })
 
   let message_id = "msg-123"

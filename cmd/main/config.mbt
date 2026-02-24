@@ -13,12 +13,17 @@ struct Config {
   relay_all_peer_rpc : Bool?
   foreign_relay_bps_limit : Int?
   upload_dir : String?
-  disable_encryption : Bool
+  disable_encryption : Bool?
 } derive(Show, ToJson, FromJson)
 
 ///|
 async fn Config::from_file(path : String) -> Config {
   @fs.read_file(path).text() |> @json5.parse |> @json.from_json
+}
+
+///|
+fn Config::is_encrypt(self : Config) -> Bool {
+  self.disable_encryption != Some(true)
 }
 
 ///|
@@ -40,7 +45,7 @@ fn get_config() -> Config {
         relay_all_peer_rpc: None,
         foreign_relay_bps_limit: None,
         upload_dir: None,
-        disable_encryption: false,
+        disable_encryption: None,
       }
   }
 }

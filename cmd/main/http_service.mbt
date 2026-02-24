@@ -436,7 +436,7 @@ async fn proxy_http_request(
   body_map["headers"] = headers_to_msgpack(headers)
   body_map["body"] = @msgpack.binary(body)
   let config = get_config()
-  let is_encrypted = !config.disable_encryption
+  let is_encrypted = config.is_encrypt()
   let msg = Message::new(
     kind="http_proxy",
     source_id=get_config().id,
@@ -483,7 +483,7 @@ async fn proxy_http_request_stream(
   body_map["headers"] = headers_to_msgpack(headers)
   body_map["body"] = @msgpack.binary(body)
   let config = get_config()
-  let is_encrypted = !config.disable_encryption
+  let is_encrypted = config.is_encrypt()
   let msg = Message::new(
     kind="http_proxy",
     source_id=get_config().id,

@@ -37,7 +37,7 @@ pub fn compute_message_key(message_id : String) -> Bytes {
 /// Encrypt data using message-specific key
 pub fn encrypt_with_message_key(message_id : String, data : Bytes) -> Bytes {
   let config = get_config()
-  if config.disable_encryption {
+  if !config.is_encrypt() {
     return data
   }
   let key = compute_message_key(message_id)
@@ -51,7 +51,7 @@ pub fn decrypt_with_message_key(
   encrypted : Bytes,
 ) -> Bytes? {
   let config = get_config()
-  if config.disable_encryption {
+  if !config.is_encrypt() {
     return Some(encrypted)
   }
   let key = compute_message_key(message_id)
