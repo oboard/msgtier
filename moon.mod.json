@@ -8,6 +8,9 @@
     "gmlewis/flate": "0.36.2",
     "gmlewis/io": "0.23.2"
   },
+  "bin-deps": {
+    "oboard/morm": "0.2.2"
+  },
   "readme": "README.mbt.md",
   "repository": "",
   "license": "Apache-2.0",

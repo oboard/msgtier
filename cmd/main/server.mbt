@@ -382,7 +382,7 @@ async fn process_pending_message(
   if !is_pending_message(pending_msg.id) {
     return
   }
-  
+
   // Retry logic
   let now = @env.now()
   let retry_interval = 2000UL // 2 seconds
@@ -529,11 +529,10 @@ async fn process_pending_message(
             }
           }
         }
-        None => {
+        None =>
           log_debug(
             "DEBUG: pending no connections and no route protocol=\{transport.protocol()} target=\{target_peer_id} id=\{pending_msg.id}",
           )
-        }
       }
       continue
     }

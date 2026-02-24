@@ -79,7 +79,9 @@ pub fn add_pending_message(msg : Message) -> Unit {
 }
 
 ///|
-pub fn take_pending_messages(predicate : (Message) -> Bool) -> Array[PendingEntry] {
+pub fn take_pending_messages(
+  predicate : (Message) -> Bool,
+) -> Array[PendingEntry] {
   let messages = global_pending_messages
   if messages.is_empty() {
     []
@@ -152,8 +154,8 @@ pub fn mark_pending_message_sent(
       }
       if all_sent {
         if entry.msg.kind == "ack" {
-           messages.remove(i) |> ignore
-           return true
+          messages.remove(i) |> ignore
+          return true
         }
         return false
       }
@@ -198,10 +200,8 @@ pub fn mark_pending_message_acked(msg_id : String, peer_id : String) -> Unit {
     if entry.msg.id == msg_id {
       entry.acked_peers[peer_id] = true
       match entry.msg.target_id {
-        Some(tid) => if tid == peer_id {
-          idx_to_remove = i
-        }
-        None => () 
+        Some(tid) => if tid == peer_id { idx_to_remove = i }
+        None => ()
       }
       break
     }
