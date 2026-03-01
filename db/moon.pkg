@@ -1,21 +1,18 @@
 import {
-  "oboard/chat/sqlite3",
   "oboard/morm",
   "oboard/morm/engine",
-  "oboard/morm/dialect",
-  "oboard/mocket",
-  "moonbitlang/x/fs",
+  "moonbitlang/core/json",
 }
 
 options(
   "pre-build": [
     {
-      "command": "$mod_dir/.mooncakes/oboard/morm/mormgen $input -o $output && moonfmt -w $output",
+      "command": "$mod_dir/.mooncakes/oboard/morm/morm-gen $input -o $output && moonfmt -w $output",
       "input": "entities.mbt",
       "output": "entities.g.mbt",
     },
     {
-      "command": "$mod_dir/.mooncakes/oboard/morm/mormgen $input -o $output && moonfmt -w $output",
+      "command": "$mod_dir/.mooncakes/oboard/morm/morm-gen $input -o $output && moonfmt -w $output",
       "input": "mapper.mbt",
       "output": "mapper.g.mbt",
     },
