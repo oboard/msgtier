@@ -206,7 +206,7 @@ fn Connection::get_best_address(
         (if unacked > 0 { unacked } else { 0 })
       effective_loss * 100 / stats.packets_sent
     } else {
-      100
+      0
     }
     let latency = stats.latency_ms.unwrap_or(1000)
     let score = 1000.0 - loss_rate.to_double() * 10.0 - latency.to_double()

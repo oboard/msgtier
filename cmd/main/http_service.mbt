@@ -1201,7 +1201,7 @@ async fn handle_http_request(
       // Prepare data payload (encryption handled at send time)
       let is_self = target_id.trim() == my_id
       let data_val = @msgpack.string(body_str)
-      let is_encrypted = !is_self
+      let is_encrypted = !is_self && config.is_encrypt()
 
       // Create data message to send with body as data
       let msg = Message::new(
@@ -1240,8 +1240,10 @@ async fn handle_http_request(
           // Register request to track response
           add_pending_request(msg.id)
 
-          // Add to pending message queue
-          add_pending_message(msg)
+          // Try direct send first to avoid pending queue delays, then fall back.
+          if !send_http_proxy_request_now(target_id, msg) {
+            add_pending_message(msg)
+          }
           log_debug("HTTP /send: Registered request id=\{msg.id}")
 
           // Wait for response with timeout

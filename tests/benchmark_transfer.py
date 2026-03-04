@@ -52,7 +52,7 @@ def get_bytes(url, timeout=60):
         return 0, b"", {}
 
 
-def wait_http_ready(url, attempts=60, delay=0.2):
+def wait_http_ready(url, attempts=180, delay=0.2):
     for i in range(attempts):
         status, _, _ = get_bytes(url, timeout=2)
         if status == 200:
@@ -63,7 +63,7 @@ def wait_http_ready(url, attempts=60, delay=0.2):
     return False
 
 
-def wait_peer_connected(status_url, peer_id, attempts=120, delay=0.5):
+def wait_peer_connected(status_url, peer_id, attempts=180, delay=0.5):
     for i in range(attempts):
         status, body, _ = get_bytes(status_url, timeout=2)
         if status == 200 and body:

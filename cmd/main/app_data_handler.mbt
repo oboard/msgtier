@@ -8,6 +8,9 @@ let response_chunk_size : Int = 1048576
 let http_proxy_no_encrypt_threshold : Int = 1048576
 
 ///|
+let stream_priority_chunks : Int = 4
+
+///|
 let stream_frame_magic : Bytes = b"MSTR"
 
 ///|
@@ -614,6 +617,7 @@ fn handle_script_message(
   root : @async.TaskGroup[Unit],
   id : String,
   local_addr : String,
+  sender_addr : String,
   msg : Message,
   data_value : @msgpack.Value,
 ) -> Unit {
@@ -648,17 +652,21 @@ fn handle_script_message(
     let content_str = cleaned.to_string().trim().to_string()
     if content_str.is_empty() {
       log_warn("Received empty script content from \{msg.source_id}")
-      send_response_message(
+      send_response_message_direct(
         transport,
-        root,
+        sender_addr,
         id,
         local_addr,
         msg.source_id,
         msg.payload.unwrap_or(msg.id),
-        @msgpack.map({
-          "status": @msgpack.string("400"),
-          "data": @msgpack.binary(@utf8.encode("Error: Empty script content")),
-        }),
+        ResponseSource::MsgPack(
+          @msgpack.map({
+            "status": @msgpack.string("400"),
+            "data": @msgpack.binary(@utf8.encode("Error: Empty script content")),
+          }),
+        ),
+        None,
+        false,
       )
       return
     }
@@ -667,19 +675,38 @@ fn handle_script_message(
     )
     match execute_script_handler(content_str) {
       Some(output) =>
-        send_response_message(
+        send_response_message_direct(
           transport,
-          root,
+          sender_addr,
           id,
           local_addr,
           msg.source_id,
           msg.payload.unwrap_or(msg.id),
-          output.to_msgpack(),
+          ResponseSource::MsgPack(output.to_msgpack()),
+          None,
+          false,
         )
-      None =>
+      None => {
         log_warn(
           "Script execution returned no output for message \{msg.id} content='\{content_str}'",
         )
+        send_response_message_direct(
+          transport,
+          sender_addr,
+          id,
+          local_addr,
+          msg.source_id,
+          msg.payload.unwrap_or(msg.id),
+          ResponseSource::MsgPack(
+            @msgpack.map({
+              "status": @msgpack.string("500"),
+              "data": @msgpack.binary(@utf8.encode("Error: No script output")),
+            }),
+          ),
+          None,
+          false,
+        )
+      }
     }
   })
 }
@@ -712,6 +739,7 @@ fn handle_script_plugin(ctx : MessageContext) -> Unit {
     ctx.root,
     ctx.my_id,
     ctx.local_addr,
+    ctx.sender_addr,
     ctx.msg,
     ctx.msg.body,
   )
@@ -1010,12 +1038,95 @@ async fn send_chunked_helper(
     return
   }
 
+  let prefix_end = if total < stream_priority_chunks {
+    total
+  } else {
+    stream_priority_chunks
+  }
+  let primary_route = stream_routes[0]
+  for i = 0; i < prefix_end; i = i + 1 {
+    let start = i * response_chunk_size
+    let end = if start + response_chunk_size > data.length() {
+      data.length()
+    } else {
+      start + response_chunk_size
+    }
+    let chunk = slice_bytes(data, start, end)
+    send_chunk_frame_or_fallback(
+      transport,
+      resolved_addr,
+      Some(primary_route),
+      source_id,
+      source_addr,
+      target_id,
+      correlation_id,
+      is_encrypted,
+      i,
+      total,
+      chunk,
+      status,
+      headers,
+    )
+  }
+  if prefix_end >= total {
+    log_bench(
+      "stream_send_done",
+      details="req=\{correlation_id} mode=bytes total=\{total}",
+    )
+    return
+  }
+
   @async.with_task_group(fn(root) {
     let route_count = stream_routes.length()
-    for route_idx = 0; route_idx < route_count; route_idx = route_idx + 1 {
+    let remaining = total - prefix_end
+    let primary_share = if remaining <= route_count {
+      1
+    } else {
+      (remaining + route_count - 1) / route_count
+    }
+    let primary_end = if prefix_end + primary_share > total {
+      total
+    } else {
+      prefix_end + primary_share
+    }
+    if prefix_end < primary_end {
+      let route = primary_route
+      root.spawn_bg(async fn() {
+        for i = prefix_end; i < primary_end; i = i + 1 {
+          let start = i * response_chunk_size
+          let end = if start + response_chunk_size > data.length() {
+            data.length()
+          } else {
+            start + response_chunk_size
+          }
+          let chunk = slice_bytes(data, start, end)
+          send_chunk_frame_or_fallback(
+            transport,
+            resolved_addr,
+            Some(route),
+            source_id,
+            source_addr,
+            target_id,
+            correlation_id,
+            is_encrypted,
+            i,
+            total,
+            chunk,
+            status,
+            headers,
+          )
+        }
+      })
+    }
+    let tail_start = primary_end
+    let secondary_count = route_count - 1
+    for route_idx = 1; route_idx < route_count; route_idx = route_idx + 1 {
       let route = stream_routes[route_idx]
-      let start_index = route_idx * total / route_count
-      let end_index = (route_idx + 1) * total / route_count
+      let local_idx = route_idx - 1
+      let start_index = tail_start +
+        local_idx * (total - tail_start) / secondary_count
+      let end_index = tail_start +
+        (local_idx + 1) * (total - tail_start) / secondary_count
       if start_index >= end_index {
         continue
       }
@@ -1160,12 +1271,130 @@ async fn send_file_stream_helper(
     return
   }
 
+  let prefix_end = if total < stream_priority_chunks {
+    total
+  } else {
+    stream_priority_chunks
+  }
+  let primary_route = stream_routes[0]
+  try {
+    let file = @fs.open(path, mode=ReadOnly)
+    defer file.close()
+    for i = 0; i < prefix_end; i = i + 1 {
+      let offset = i.to_int64() * chunk_size_64
+      let expected_len = if offset + chunk_size_64 > file_size {
+        (file_size - offset).to_int()
+      } else {
+        response_chunk_size
+      }
+      let chunk_buf = FixedArray::make(expected_len, b'\x00')
+      let bytes_read = file.read_at(chunk_buf, position=offset)
+      if bytes_read <= 0 {
+        continue
+      }
+      let chunk_full = chunk_buf.unsafe_reinterpret_as_bytes()
+      let chunk = if bytes_read < expected_len {
+        slice_bytes(chunk_full, 0, bytes_read)
+      } else {
+        chunk_full
+      }
+      send_chunk_frame_or_fallback(
+        transport,
+        resolved_addr,
+        Some(primary_route),
+        source_id,
+        source_addr,
+        target_id,
+        correlation_id,
+        is_encrypted,
+        i,
+        total,
+        chunk,
+        Some(status),
+        headers,
+      )
+    }
+  } catch {
+    e => {
+      log_error("File stream error: " + e.to_string())
+      return
+    }
+  }
+  if prefix_end >= total {
+    log_bench(
+      "stream_send_done",
+      details="req=\{correlation_id} mode=file total=\{total}",
+    )
+    return
+  }
+
   @async.with_task_group(fn(root) {
     let route_count = stream_routes.length()
-    for route_idx = 0; route_idx < route_count; route_idx = route_idx + 1 {
+    let remaining = total - prefix_end
+    let primary_share = if remaining <= route_count {
+      1
+    } else {
+      (remaining + route_count - 1) / route_count
+    }
+    let primary_end = if prefix_end + primary_share > total {
+      total
+    } else {
+      prefix_end + primary_share
+    }
+    if prefix_end < primary_end {
+      let route = primary_route
+      root.spawn_bg(async fn() {
+        try {
+          let file = @fs.open(path, mode=ReadOnly)
+          defer file.close()
+          for i = prefix_end; i < primary_end; i = i + 1 {
+            let offset = i.to_int64() * chunk_size_64
+            let expected_len = if offset + chunk_size_64 > file_size {
+              (file_size - offset).to_int()
+            } else {
+              response_chunk_size
+            }
+            let chunk_buf = FixedArray::make(expected_len, b'\x00')
+            let bytes_read = file.read_at(chunk_buf, position=offset)
+            if bytes_read <= 0 {
+              continue
+            }
+            let chunk_full = chunk_buf.unsafe_reinterpret_as_bytes()
+            let chunk = if bytes_read < expected_len {
+              slice_bytes(chunk_full, 0, bytes_read)
+            } else {
+              chunk_full
+            }
+            send_chunk_frame_or_fallback(
+              transport,
+              resolved_addr,
+              Some(route),
+              source_id,
+              source_addr,
+              target_id,
+              correlation_id,
+              is_encrypted,
+              i,
+              total,
+              chunk,
+              Some(status),
+              headers,
+            )
+          }
+        } catch {
+          e => log_error("File stream route error: " + e.to_string())
+        }
+      })
+    }
+    let tail_start = primary_end
+    let secondary_count = route_count - 1
+    for route_idx = 1; route_idx < route_count; route_idx = route_idx + 1 {
       let route = stream_routes[route_idx]
-      let start_index = route_idx * total / route_count
-      let end_index = (route_idx + 1) * total / route_count
+      let local_idx = route_idx - 1
+      let start_index = tail_start +
+        local_idx * (total - tail_start) / secondary_count
+      let end_index = tail_start +
+        (local_idx + 1) * (total - tail_start) / secondary_count
       if start_index >= end_index {
         continue
       }

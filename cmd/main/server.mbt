@@ -214,16 +214,16 @@ fn handle_new_connection(
   }
 
   // Add new connection with protocol
+  let my_id = get_config().id
+  let new_conn = Connection::new(my_id, actual_peer_id)
   update_global_connection_manager(fn(manager) {
-    let my_id = get_config().id
-    let new_conn = Connection::new(my_id, actual_peer_id)
     let mgr = manager.add_connection(new_conn)
     mgr.update_connection_relay(new_conn.id, relay_depth)
   })
   log_debug(
     "DEBUG: handle_new_connection added peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
   )
-  let conn = Connection::new(my_id, actual_peer_id).update_relay(relay_depth)
+  let conn = new_conn.update_relay(relay_depth)
   let updated_conn = match port_tuple {
     Some((local_port, proto, remote_port)) => {
       let now = @env.now()
