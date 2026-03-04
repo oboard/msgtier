@@ -8,6 +8,7 @@ struct PendingRequest {
 
 ///|
 struct StreamRequest {
+  cond : @cond_var.Cond
   mut queue : Array[Bytes]
   mut queue_head : Int
   chunks : Map[Int, Bytes]
@@ -71,6 +72,7 @@ fn add_stream_request(id : String) -> Unit {
     }
   }
   streams[id] = {
+    cond: @cond_var.Cond::new(),
     queue: [],
     queue_head: 0,
     chunks: {},
@@ -128,6 +130,7 @@ fn push_stream_chunk(
         Some(t) => if req.received >= t { req.closed = true }
         None => ()
       }
+      req.cond.signal()
     }
     None => ()
   }
@@ -148,6 +151,7 @@ fn push_stream_data(
       }
       req.queue.push(data)
       req.closed = true
+      req.cond.signal()
     }
     None => ()
   }
@@ -198,6 +202,27 @@ fn take_stream_chunk(id : String) -> (Bytes, Bool, Map[String, String]?)? {
 }
 
 ///|
+async fn wait_stream_chunk(
+  id : String,
+  timeout_ms : Int,
+) -> (Bytes, Bool, Map[String, String]?)? {
+  match global_stream_requests.val.get(id) {
+    Some(req) => {
+      let result = @async.with_timeout_opt(timeout_ms, async fn() {
+        for {
+          match take_stream_chunk(id) {
+            Some(chunk) => break chunk
+            None => req.cond.wait()
+          }
+        }
+      })
+      result
+    }
+    None => None
+  }
+}
+
+///|
 fn resolve_request(
   id : String,
   headers : Map[String, String],
@@ -224,7 +249,7 @@ async fn wait_for_response(
         for {
           match req.response {
             Some(r) => break (r, req.headers)
-            None => @async.sleep(10)
+            None => req.cond.wait()
           }
         }
       })

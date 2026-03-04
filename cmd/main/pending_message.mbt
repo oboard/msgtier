@@ -11,7 +11,19 @@ pub struct PendingEntry {
 let global_pending_messages : Array[PendingEntry] = []
 
 ///|
+let global_pending_cond : @cond_var.Cond = @cond_var.Cond::new()
+
+///|
+let global_pending_generation : Ref[Int] = Ref::new(0)
+
+///|
 let pending_send_times : Ref[Map[String, UInt64]] = Ref::new({})
+
+///|
+fn notify_pending_changed() -> Unit {
+  global_pending_generation.val = global_pending_generation.val + 1
+  global_pending_cond.signal()
+}
 
 ///|
 fn make_send_key(
@@ -76,11 +88,12 @@ pub fn add_pending_message(msg : Message) -> Unit {
     last_attempt: 0UL,
     acked_peers: {},
   })
+  notify_pending_changed()
 }
 
 ///|
 pub fn take_pending_messages(
-  predicate : (Message) -> Bool,
+  predicate : (PendingEntry) -> Bool,
 ) -> Array[PendingEntry] {
   let messages = global_pending_messages
   if messages.is_empty() {
@@ -98,7 +111,7 @@ pub fn take_pending_messages(
           "Pending message \{entry.msg.id} timed out (age: \{now - entry.msg.timestamp}ms > \{timeout}ms), removed",
         )
         messages.remove(i) |> ignore
-      } else if predicate(entry.msg) {
+      } else if predicate(entry) {
         matched.push(entry)
       }
       i = i - 1
@@ -118,6 +131,9 @@ fn remove_pending_message_by_id(id : String) -> Bool {
   global_pending_messages.retain(entry => entry.msg.id != id)
   let len_after = global_pending_messages.length()
   clear_message_send_state(id)
+  if len_before != len_after {
+    notify_pending_changed()
+  }
   len_before != len_after
 }
 
@@ -167,7 +183,33 @@ pub fn mark_pending_message_sent(
 
 ///|
 pub fn clear_pending_messages() -> Unit {
-  global_pending_messages.clear()
+  if !global_pending_messages.is_empty() {
+    global_pending_messages.clear()
+    notify_pending_changed()
+  }
+}
+
+///|
+pub fn get_pending_generation() -> Int {
+  global_pending_generation.val
+}
+
+///|
+pub async fn wait_for_pending_change(
+  last_generation : Int,
+  timeout_ms : Int,
+) -> Int {
+  ignore(
+    @async.with_timeout_opt(timeout_ms, async fn() {
+      for {
+        if global_pending_generation.val != last_generation {
+          break ()
+        }
+        global_pending_cond.wait()
+      }
+    }),
+  )
+  global_pending_generation.val
 }
 
 ///|
@@ -186,6 +228,7 @@ pub fn set_pending_message_broadcast(id : String) -> Unit {
   for i = 0; i < messages.length(); i = i + 1 {
     if messages[i].msg.id == id {
       messages[i].msg = { ..messages[i].msg, target_id: None }
+      notify_pending_changed()
       break
     }
   }
@@ -209,6 +252,7 @@ pub fn mark_pending_message_acked(msg_id : String, peer_id : String) -> Unit {
   if idx_to_remove != -1 {
     messages.remove(idx_to_remove) |> ignore
     clear_message_send_state(msg_id)
+    notify_pending_changed()
   }
 }
 

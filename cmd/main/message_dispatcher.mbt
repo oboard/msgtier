@@ -129,10 +129,49 @@ fn handle_hello_message(ctx : MessageContext) -> Unit {
   }
 
   if msg.peers is Some(peer_addrs) {
+    let sender_addrs : Array[String] = []
     for peer_addr_obj in peer_addrs {
       let peer_url = peer_addr_obj.address
       if !is_bind_all_address(peer_url) && peer_url != ctx.local_addr {
         add_known_peer(peer_url)
+        sender_addrs.push(peer_url)
+      }
+    }
+    if !sender_addrs.is_empty() {
+      for transport in get_registered_transports() {
+        if has_direct_connection_for_protocol(
+            msg.source_id,
+            transport.protocol(),
+            transport.protocol_type(),
+          ) {
+          continue
+        }
+        let local_addr = transport.protocol() + "://" + transport.local_addr()
+        let our_addresses = get_our_addresses(local_addr)
+        let hello_msg = create_hello_message(
+          get_config().id,
+          local_addr,
+          1,
+          peers=our_addresses,
+        )
+        for peer_url in sender_addrs {
+          let mut parsed : Address? = None
+          try {
+            parsed = Some(Address::parse(peer_url))
+          } catch {
+            _ => ()
+          }
+          match parsed {
+            Some(addr) =>
+              if addr.protocol == transport.protocol_type() {
+                ctx.root.spawn_bg(async fn() {
+                  ignore(send_message(transport, peer_url, hello_msg))
+                })
+                break
+              }
+            None => ()
+          }
+        }
       }
     }
   }

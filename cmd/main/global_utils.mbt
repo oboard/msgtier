@@ -50,9 +50,73 @@ fn log_error(msg : &Show) -> Unit {
 }
 
 ///|
+fn bench_trace_path() -> String {
+  "/tmp/msgtier-bench-" + get_config().id + ".log"
+}
+
+///|
+let bench_trace_lines : Ref[Array[String]] = Ref::new([])
+
+///|
+let bench_trace_generation : Ref[Int] = Ref::new(0)
+
+///|
+async fn reset_bench_trace() -> Unit {
+  bench_trace_lines.val = []
+  bench_trace_generation.val += 1
+  @fs.write_file(bench_trace_path(), b"", create=0o644) catch {
+    _ => ()
+  }
+}
+
+///|
+fn start_bench_trace_flusher(root : @async.TaskGroup[Unit]) -> Unit {
+  let _ : @async.Task[Unit] = root.spawn(async fn() {
+    let mut flushed_generation = -1
+    for {
+      let current_generation = bench_trace_generation.val
+      if current_generation != flushed_generation {
+        let contents = bench_trace_lines.val.join("")
+        @fs.write_file(bench_trace_path(), @utf8.encode(contents), create=0o644) catch {
+          _ => ()
+        }
+        flushed_generation = current_generation
+      }
+      @async.sleep(20)
+    }
+  })
+}
+
+///|
+fn log_bench(stage : String, details? : String = "") -> Unit {
+  let suffix = if details == "" { "" } else { " " + details }
+  let line = "BENCH stage=\{stage} ts=\{@env.now()}\{suffix}\n"
+  bench_trace_lines.val.push(line)
+  bench_trace_generation.val += 1
+}
+
+///|
 /// Global list of all known peer addresses (configured + discovered)
 /// Used for active connection attempts
 let global_known_peers : Ref[Map[String, UInt64]] = Ref::new({})
+
+///|
+let global_transports : Ref[Map[String, &Transport]] = Ref::new({})
+
+///|
+fn register_transport(transport : &Transport) -> Unit {
+  let key = transport.protocol() + "://" + transport.local_addr()
+  global_transports.val[key] = transport
+}
+
+///|
+fn get_registered_transports() -> Array[&Transport] {
+  let transports : Array[&Transport] = []
+  for _, transport in global_transports.val {
+    transports.push(transport)
+  }
+  transports
+}
 
 ///|
 /// Add a peer address to the known peers list

@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -94,6 +95,117 @@ def format_mbps(bytes_count, seconds):
     return bytes_count / 1024 / 1024 / seconds
 
 
+BENCH_RE = re.compile(r"BENCH stage=(\S+) ts=(\d+)(?: (.*))?$")
+NODE1_TRACE = "/tmp/msgtier-bench-oboard-mac.log"
+NODE2_TRACE = "/tmp/msgtier-bench-oboard-mac-2.log"
+
+
+def parse_bench_markers(log_path):
+    markers = []
+    if not os.path.exists(log_path):
+        return markers
+    with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line = line.strip()
+            m = BENCH_RE.search(line)
+            if not m:
+                continue
+            stage = m.group(1)
+            ts = int(m.group(2))
+            fields = {}
+            raw_fields = m.group(3) or ""
+            for part in raw_fields.split():
+                if "=" not in part:
+                    continue
+                key, value = part.split("=", 1)
+                fields[key] = value
+            markers.append({"stage": stage, "ts": ts, "fields": fields})
+    return markers
+
+
+def find_latest_marker(markers, stage, **expected):
+    for marker in reversed(markers):
+        if marker["stage"] != stage:
+            continue
+        ok = True
+        for key, value in expected.items():
+            if marker["fields"].get(key) != value:
+                ok = False
+                break
+        if ok:
+            return marker
+    return None
+
+
+def analyze_round_stages(object_id, node1_log, node2_log):
+    path = f"/api/object/{object_id}"
+    node1_markers = parse_bench_markers(node1_log)
+    node2_markers = parse_bench_markers(node2_log)
+    start_marker = find_latest_marker(
+        node2_markers, "proxy_stream_start", path=path
+    )
+    if not start_marker:
+        return None
+    req_id = start_marker["fields"].get("req")
+    if not req_id:
+        return None
+
+    stages = {
+        "node2_start": start_marker,
+        "node1_recv": find_latest_marker(node1_markers, "http_proxy_recv", req=req_id),
+        "node1_ready": find_latest_marker(
+            node1_markers, "http_proxy_resp_ready", req=req_id
+        ),
+        "node1_send_start": find_latest_marker(
+            node1_markers, "stream_send_start", req=req_id
+        ),
+        "node1_send_done": find_latest_marker(
+            node1_markers, "stream_send_done", req=req_id
+        ),
+        "node2_first": find_latest_marker(
+            node2_markers, "proxy_stream_first_chunk", req=req_id
+        ),
+        "node2_done": find_latest_marker(
+            node2_markers, "proxy_stream_done", req=req_id
+        ),
+    }
+
+    def diff_ms(a, b):
+        if not a or not b:
+            return None
+        return b["ts"] - a["ts"]
+
+    return {
+        "req_id": req_id,
+        "dispatch_ms": diff_ms(stages["node2_start"], stages["node1_recv"]),
+        "prepare_ms": diff_ms(stages["node1_recv"], stages["node1_ready"]),
+        "send_wait_ms": diff_ms(stages["node1_ready"], stages["node1_send_start"]),
+        "first_byte_ms": diff_ms(stages["node1_send_start"], stages["node2_first"]),
+        "send_total_ms": diff_ms(stages["node1_send_start"], stages["node1_send_done"]),
+        "drain_ms": diff_ms(stages["node2_first"], stages["node2_done"]),
+        "proxy_total_ms": diff_ms(stages["node2_start"], stages["node2_done"]),
+    }
+
+
+def format_stage_breakdown(stage_info):
+    if not stage_info:
+        return "stages=unavailable"
+    ordered = [
+        ("dispatch", stage_info.get("dispatch_ms")),
+        ("prepare", stage_info.get("prepare_ms")),
+        ("send_wait", stage_info.get("send_wait_ms")),
+        ("first_byte", stage_info.get("first_byte_ms")),
+        ("send_total", stage_info.get("send_total_ms")),
+        ("drain", stage_info.get("drain_ms")),
+        ("proxy_total", stage_info.get("proxy_total_ms")),
+    ]
+    parts = [f"req={stage_info['req_id']}"]
+    for label, value in ordered:
+        if value is not None:
+            parts.append(f"{label}={value}ms")
+    return " ".join(parts)
+
+
 def benchmark(payload_size, rounds, peer_id, node1_url, node2_url, timeout=60):
     log("cleanup")
     cleanup()
@@ -182,9 +294,11 @@ def benchmark(payload_size, rounds, peer_id, node1_url, node2_url, timeout=60):
 
             upload_mbps = format_mbps(len(payload), t1 - t0)
             download_mbps = format_mbps(len(payload), t3 - t2)
+            stage_info = analyze_round_stages(object_id, NODE1_TRACE, NODE2_TRACE)
             print(
                 f"Round {i}: upload={upload_mbps:.2f} MB/s "
-                f"download={download_mbps:.2f} MB/s"
+                f"download={download_mbps:.2f} MB/s "
+                f"{format_stage_breakdown(stage_info)}"
             )
 
         avg_upload = sum(upload_times) / len(upload_times)

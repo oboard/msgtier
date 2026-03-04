@@ -26,6 +26,11 @@ async fn init_upload_dir() -> Unit {
 }
 
 ///|
+pub fn get_runtime_tmp_dir() -> String {
+  default_upload_dir.val
+}
+
+///|
 fn get_upload_dir() -> String {
   match get_config().upload_dir {
     Some(dir) => dir
@@ -81,20 +86,14 @@ pub async fn save_object_from_reader(id : String, reader : &@io.Reader) -> Unit 
   let file = @fs.open(path, mode=WriteOnly, create=0o644, truncate=true)
   defer file.close()
 
-  let buf = FixedArray::make(1048576, b'\x00') // 1MB buffer
+  let buf = FixedArray::make(4194304, b'\x00') // 4MB buffer
   for {
     let n = reader.read(buf)
     if n <= 0 {
       break
     }
-    // Convert FixedArray slice to Bytes for writing
-    // We assume Bytes::from_array works with FixedArray as seen in quic/utils.mbt
-    // If not, we will get a compilation error and fix it.
-    let chunk_buf = FixedArray::make(n, b'\x00')
-    for i = 0; i < n; i = i + 1 {
-      chunk_buf[i] = buf[i]
-    }
-    let chunk = Bytes::from_array(chunk_buf)
+    let full = buf.unsafe_reinterpret_as_bytes()
+    let chunk = if n < 4194304 { slice_bytes(full, 0, n) } else { full }
     file.write(chunk)
   }
 }

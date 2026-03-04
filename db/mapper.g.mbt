@@ -9,16 +9,13 @@ pub fn MessageMapperImpl::new(engine : &@engine.Engine) -> MessageMapperImpl {
 }
 
 ///|
-pub impl MessageMapper for MessageMapperImpl with find_by_peer_id(
-  self,
-  peer_id : String,
-) -> FixedArray[Message] {
-  let q = @morm.select_from("message").where_eq("peer_id", peer_id)
-  @engine.exec_query(self.engine, q).rows.map(row => {
-    @json.from_json(row) catch {
-      _ => panic()
-    }
-  })
+pub impl MessageMapper for MessageMapperImpl with save(self, entity : Message) -> Message {
+  let q = @morm.upsert_into("message").from(entity)
+  let res = @engine.exec_query(self.engine, q)
+  if res.rows is [result, ..] {
+    return (try! @json.from_json(result) : Message)
+  }
+  panic()
 }
 
 ///|

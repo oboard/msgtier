@@ -35,6 +35,8 @@ async fn run_with_config(
 ) -> Unit {
   let config = Config::from_file(config_path)
   global_config.val = Some(config)
+  reset_bench_trace()
+  start_bench_trace_flusher(root)
   log_debug(config.to_json().stringify(indent=2))
   let id = config.id
   for peer_url in config.peers {

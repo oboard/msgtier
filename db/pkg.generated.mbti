@@ -1,0 +1,41 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/db"
+
+import {
+  "moonbitlang/core/json",
+  "oboard/morm",
+  "oboard/morm/engine",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub(all) struct Message {
+  id : String
+  source_id : String
+  target_id : String?
+  kind : String
+  content : String
+  timestamp : String
+}
+pub fn Message::table() -> @morm.Table
+pub impl ToJson for Message
+pub impl @json.FromJson for Message
+pub impl @morm.Entity for Message
+
+pub struct MessageMapperImpl {
+  engine : &@engine.Engine
+}
+pub fn MessageMapperImpl::new(&@engine.Engine) -> Self
+pub impl MessageMapper for MessageMapperImpl
+
+// Type aliases
+
+// Traits
+pub trait MessageMapper {
+  async save(Self, Message) -> Message
+  async find_all(Self) -> FixedArray[Message]
+}
+

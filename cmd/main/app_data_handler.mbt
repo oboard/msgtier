@@ -8,6 +8,12 @@ let response_chunk_size : Int = 1048576
 let http_proxy_no_encrypt_threshold : Int = 1048576
 
 ///|
+let stream_frame_magic : Bytes = b"MSTR"
+
+///|
+let stream_frame_version : Int = 1
+
+///|
 struct ResponseChunkState {
   total : Int
   mut received : Int
@@ -53,6 +59,348 @@ fn slice_bytes(b : Bytes, start : Int, end : Int) -> Bytes {
     arr[i] = b[start + i]
   }
   Bytes::from_array(arr)
+}
+
+///|
+fn write_u16(buf : FixedArray[Byte], offset : Int, value : Int) -> Unit {
+  buf[offset] = ((value >> 8) & 0xFF).to_byte()
+  buf[offset + 1] = (value & 0xFF).to_byte()
+}
+
+///|
+fn write_u32(buf : FixedArray[Byte], offset : Int, value : Int) -> Unit {
+  buf[offset] = ((value >> 24) & 0xFF).to_byte()
+  buf[offset + 1] = ((value >> 16) & 0xFF).to_byte()
+  buf[offset + 2] = ((value >> 8) & 0xFF).to_byte()
+  buf[offset + 3] = (value & 0xFF).to_byte()
+}
+
+///|
+fn read_u16(buf : Bytes, offset : Int) -> Int? {
+  if offset + 2 > buf.length() {
+    None
+  } else {
+    Some((buf[offset].to_int() << 8) | buf[offset + 1].to_int())
+  }
+}
+
+///|
+fn read_u32(buf : Bytes, offset : Int) -> Int? {
+  if offset + 4 > buf.length() {
+    None
+  } else {
+    Some(
+      (buf[offset].to_int() << 24) |
+      (buf[offset + 1].to_int() << 16) |
+      (buf[offset + 2].to_int() << 8) |
+      buf[offset + 3].to_int(),
+    )
+  }
+}
+
+///|
+fn encode_stream_frame(
+  correlation_id : String,
+  index : Int,
+  total : Int,
+  data : Bytes,
+  headers : Map[String, String]?,
+  encrypted : Bool,
+) -> Bytes {
+  let corr_bytes = @utf8.encode(correlation_id)
+  let header_pairs = match headers {
+    Some(h) => h
+    None => {}
+  }
+  let key_bytes : Array[Bytes] = []
+  let value_bytes : Array[Bytes] = []
+  let mut meta_len = 0
+  for key, value in header_pairs {
+    let kb = @utf8.encode(key)
+    let vb = @utf8.encode(value)
+    key_bytes.push(kb)
+    value_bytes.push(vb)
+    meta_len = meta_len + 2 + 4 + kb.length() + vb.length()
+  }
+  let payload = if encrypted {
+    encrypt_with_message_key(correlation_id, data)
+  } else {
+    data
+  }
+  let total_len = 24 + corr_bytes.length() + meta_len + payload.length()
+  let buf = FixedArray::make(total_len, b'\x00')
+  buf[0] = stream_frame_magic[0]
+  buf[1] = stream_frame_magic[1]
+  buf[2] = stream_frame_magic[2]
+  buf[3] = stream_frame_magic[3]
+  buf[4] = stream_frame_version.to_byte()
+  let flags = if encrypted { 1 } else { 0 }
+  buf[5] = flags.to_byte()
+  write_u16(buf, 6, header_pairs.length())
+  write_u32(buf, 8, index)
+  write_u32(buf, 12, total)
+  write_u32(buf, 16, corr_bytes.length())
+  write_u32(buf, 20, payload.length())
+  let mut offset = 24
+  for i = 0; i < corr_bytes.length(); i = i + 1 {
+    buf[offset + i] = corr_bytes[i]
+  }
+  offset = offset + corr_bytes.length()
+  for i = 0; i < key_bytes.length(); i = i + 1 {
+    let kb = key_bytes[i]
+    let vb = value_bytes[i]
+    write_u16(buf, offset, kb.length())
+    offset = offset + 2
+    write_u32(buf, offset, vb.length())
+    offset = offset + 4
+    for j = 0; j < kb.length(); j = j + 1 {
+      buf[offset + j] = kb[j]
+    }
+    offset = offset + kb.length()
+    for j = 0; j < vb.length(); j = j + 1 {
+      buf[offset + j] = vb[j]
+    }
+    offset = offset + vb.length()
+  }
+  for i = 0; i < payload.length(); i = i + 1 {
+    buf[offset + i] = payload[i]
+  }
+  Bytes::from_array(buf)
+}
+
+///|
+fn decode_stream_frame(
+  raw : Bytes,
+) -> (String, Int, Int, Bytes, Map[String, String]?, Bool)? {
+  if raw.length() < 24 ||
+    raw[0] != stream_frame_magic[0] ||
+    raw[1] != stream_frame_magic[1] ||
+    raw[2] != stream_frame_magic[2] ||
+    raw[3] != stream_frame_magic[3] ||
+    raw[4].to_int() != stream_frame_version {
+    return None
+  }
+  let flags = raw[5].to_int()
+  let encrypted = (flags & 1) != 0
+  let meta_count = read_u16(raw, 6).unwrap_or(0)
+  let index = read_u32(raw, 8).unwrap_or(-1)
+  let total = read_u32(raw, 12).unwrap_or(-1)
+  let corr_len = read_u32(raw, 16).unwrap_or(-1)
+  let data_len = read_u32(raw, 20).unwrap_or(-1)
+  if index < 0 || total <= 0 || index >= total || corr_len < 0 || data_len < 0 {
+    return None
+  }
+  let mut offset = 24
+  if offset + corr_len > raw.length() {
+    return None
+  }
+  let correlation_id = @utf8.decode(slice_bytes(raw, offset, offset + corr_len)) catch {
+    _ => return None
+  }
+  offset = offset + corr_len
+  let headers : Map[String, String] = {}
+  for i = 0; i < meta_count; i = i + 1 {
+    let key_len = read_u16(raw, offset).unwrap_or(-1)
+    offset = offset + 2
+    let value_len = read_u32(raw, offset).unwrap_or(-1)
+    offset = offset + 4
+    if key_len < 0 ||
+      value_len < 0 ||
+      offset + key_len + value_len > raw.length() {
+      return None
+    }
+    let key = @utf8.decode(slice_bytes(raw, offset, offset + key_len)) catch {
+      _ => return None
+    }
+    offset = offset + key_len
+    let value = @utf8.decode(slice_bytes(raw, offset, offset + value_len)) catch {
+      _ => return None
+    }
+    offset = offset + value_len
+    headers[key] = value
+  }
+  if offset + data_len > raw.length() {
+    return None
+  }
+  let data = slice_bytes(raw, offset, offset + data_len)
+  let decoded_data = if encrypted {
+    match decrypt_with_message_key(correlation_id, data) {
+      Some(decrypted) => decrypted
+      None => return None
+    }
+  } else {
+    data
+  }
+  Some(
+    (
+      correlation_id,
+      index,
+      total,
+      decoded_data,
+      if headers.is_empty() {
+        None
+      } else {
+        Some(headers)
+      },
+      encrypted,
+    ),
+  )
+}
+
+///|
+fn merge_stream_headers(
+  status : String?,
+  headers : Map[String, String]?,
+) -> Map[String, String]? {
+  let merged = match headers {
+    Some(h) => h
+    None => {}
+  }
+  match status {
+    Some(s) => merged["status"] = s
+    None => ()
+  }
+  if merged.is_empty() {
+    None
+  } else {
+    Some(merged)
+  }
+}
+
+///|
+fn try_handle_stream_frame(raw : Bytes) -> Bool {
+  match decode_stream_frame(raw) {
+    Some((correlation_id, index, total, data, headers, _)) => {
+      push_stream_chunk(correlation_id, index, total, data, headers)
+      true
+    }
+    None => false
+  }
+}
+
+///|
+struct StreamRoute {
+  transport : &Transport
+  target_addr : String
+}
+
+///|
+fn collect_stream_routes(
+  default_transport : &Transport,
+  target_id : String,
+  resolved_addr : String,
+) -> Array[StreamRoute] {
+  let routes : Array[StreamRoute] = []
+  let seen : Map[String, Bool] = {}
+  if !resolved_addr.is_empty() {
+    let key = default_transport.protocol() + "|" + resolved_addr
+    routes.push({ transport: default_transport, target_addr: resolved_addr })
+    seen[key] = true
+  }
+  let connections = get_global_connection_manager().get_peer_connections(
+    target_id,
+  )
+  for transport in get_registered_transports() {
+    let protocol = transport.protocol()
+    if protocol == "udp" {
+      continue
+    }
+    let mut addr_opt = None
+    for conn in connections {
+      if conn.relay != 1 {
+        continue
+      }
+      match conn.get_best_address(protocol) {
+        Some(addr) => {
+          addr_opt = Some(addr)
+          break
+        }
+        None => ()
+      }
+    }
+    match addr_opt {
+      Some(addr) => {
+        let key = protocol + "|" + addr
+        if !seen.contains(key) {
+          routes.push({ transport, target_addr: addr })
+          seen[key] = true
+        }
+      }
+      None => ()
+    }
+  }
+  routes
+}
+
+///|
+fn stream_chunk_headers(
+  index : Int,
+  status : String?,
+  headers : Map[String, String]?,
+) -> Map[String, String]? {
+  if index == 0 {
+    merge_stream_headers(status, headers)
+  } else {
+    None
+  }
+}
+
+///|
+async fn send_chunk_frame_or_fallback(
+  default_transport : &Transport,
+  default_addr : String,
+  route : StreamRoute?,
+  source_id : String,
+  source_addr : String,
+  target_id : String,
+  correlation_id : String,
+  is_encrypted : Bool,
+  index : Int,
+  total : Int,
+  chunk : Bytes,
+  status : String?,
+  headers : Map[String, String]?,
+) -> Unit {
+  let chunk_headers = stream_chunk_headers(index, status, headers)
+  let sent = match route {
+    Some(route) =>
+      route.transport.send(
+        route.target_addr,
+        encode_stream_frame(
+          correlation_id, index, total, chunk, chunk_headers, is_encrypted,
+        ),
+      )
+    None => false
+  }
+  if sent {
+    return
+  }
+
+  let arr : Array[@msgpack.Value] = []
+  arr.push(@msgpack.int(index))
+  arr.push(@msgpack.int(total))
+  arr.push(@msgpack.binary(b""))
+  if index == 0 {
+    match status {
+      Some(s) => arr.push(@msgpack.string(s))
+      None => if headers is Some(_) { arr.push(@msgpack.nil()) }
+    }
+    match headers {
+      Some(h) => arr.push(headers_to_msgpack(h))
+      None => ()
+    }
+  }
+  let _ = send_one_helper(
+    default_transport,
+    default_addr,
+    source_id,
+    source_addr,
+    target_id,
+    correlation_id,
+    is_encrypted,
+    @msgpack.array(arr),
+    Some(chunk),
+  )
 }
 
 ///|
@@ -411,6 +759,7 @@ fn handle_object_get_message(ctx : MessageContext) -> Unit {
       msg.payload.unwrap_or(msg.id),
       ResponseSource::MsgPack(@msgpack.map(resp_map)),
       Some(msg.encrypted),
+      false,
     )
   })
 }
@@ -418,6 +767,7 @@ fn handle_object_get_message(ctx : MessageContext) -> Unit {
 ///|
 fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
   let msg = ctx.msg
+  let correlation_id = msg.payload.unwrap_or(msg.id)
   let should_skip_quic = if ctx.transport.protocol() == "quic" {
     let conns = get_global_connection_manager().get_peer_connections(
       msg.source_id,
@@ -441,7 +791,7 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
     log_warn("Duplicate or expired message \{msg.id} ignored")
     return
   }
-  let (http_method, path, headers, body) = match msg.body {
+  let (http_method, path, headers, body, prefer_stream_frame) = match msg.body {
     Map(m) => {
       let http_method = match m.get("method") {
         Some(String(s)) => s
@@ -468,13 +818,29 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
         Some(Binary(b)) => b
         _ => b""
       }
-      (http_method, path, headers, body)
+      let prefer_stream_frame = match m.get("stream_mode") {
+        Some(String(mode)) => mode == "frame_v1"
+        _ => false
+      }
+      (http_method, path, headers, body, prefer_stream_frame)
     }
-    _ => ("GET", "/", {}, b"")
+    _ => ("GET", "/", {}, b"", false)
   }
+  log_bench(
+    "http_proxy_recv",
+    details="req=\{correlation_id} from=\{msg.source_id} path=\{path} stream=\{prefer_stream_frame}",
+  )
   ctx.root.spawn_bg(async fn() {
     let (status_code, resp_headers, resp_body) = handle_internal_http_request(
       http_method, path, headers, body,
+    )
+    let resp_kind = match resp_body {
+      Bytes(b) => "bytes:\{b.length()}"
+      File(file_path) => "file:\{file_path}"
+    }
+    log_bench(
+      "http_proxy_resp_ready",
+      details="req=\{correlation_id} path=\{path} status=\{status_code} body=\{resp_kind}",
     )
     match resp_body {
       Bytes(b) => {
@@ -493,9 +859,10 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
           ctx.my_id,
           ctx.local_addr,
           msg.source_id,
-          msg.payload.unwrap_or(msg.id),
+          correlation_id,
           ResponseSource::MsgPack(@msgpack.map(resp_map)),
           Some(use_encryption),
+          prefer_stream_frame,
         )
       }
       File(path) =>
@@ -505,13 +872,14 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
           ctx.my_id,
           ctx.local_addr,
           msg.source_id,
-          msg.payload.unwrap_or(msg.id),
+          correlation_id,
           ResponseSource::FileStream(
             path,
             status_code.to_string(),
             resp_headers,
           ),
           Some(false),
+          prefer_stream_frame,
         )
     }
   })
@@ -537,6 +905,7 @@ fn send_response_message(
       correlation_id,
       ResponseSource::MsgPack(response_data),
       None, // encrypted_override
+      false,
     )
   })
 }
@@ -603,42 +972,85 @@ async fn send_chunked_helper(
   data : Bytes,
   status : String?,
   headers : Map[String, String]?,
+  prefer_stream_frame : Bool,
 ) -> Unit {
   let total = (data.length() + response_chunk_size - 1) / response_chunk_size
-  for i = 0; i < total; i = i + 1 {
-    let start = i * response_chunk_size
-    let end = if start + response_chunk_size > data.length() {
-      data.length()
-    } else {
-      start + response_chunk_size
-    }
-    let chunk = slice_bytes(data, start, end)
-    let arr : Array[@msgpack.Value] = []
-    arr.push(@msgpack.int(i))
-    arr.push(@msgpack.int(total))
-    arr.push(@msgpack.binary(b""))
-    if i == 0 {
-      match status {
-        Some(s) => arr.push(@msgpack.string(s))
-        None => if headers is Some(_) { arr.push(@msgpack.nil()) }
-      }
-      match headers {
-        Some(h) => arr.push(headers_to_msgpack(h))
-        None => ()
-      }
-    }
-    let _ = send_one_helper(
-      transport,
-      resolved_addr,
-      source_id,
-      source_addr,
-      target_id,
-      correlation_id,
-      is_encrypted,
-      @msgpack.array(arr),
-      Some(chunk),
-    )
+  let stream_routes = if prefer_stream_frame {
+    collect_stream_routes(transport, target_id, resolved_addr)
+  } else {
+    []
   }
+  log_bench(
+    "stream_send_start",
+    details="req=\{correlation_id} mode=bytes total=\{total} routes=\{stream_routes.length()}",
+  )
+  if stream_routes.length() <= 1 {
+    let route = if stream_routes.length() == 1 {
+      Some(stream_routes[0])
+    } else {
+      None
+    }
+    for i = 0; i < total; i = i + 1 {
+      let start = i * response_chunk_size
+      let end = if start + response_chunk_size > data.length() {
+        data.length()
+      } else {
+        start + response_chunk_size
+      }
+      let chunk = slice_bytes(data, start, end)
+      send_chunk_frame_or_fallback(
+        transport, resolved_addr, route, source_id, source_addr, target_id, correlation_id,
+        is_encrypted, i, total, chunk, status, headers,
+      )
+    }
+    log_bench(
+      "stream_send_done",
+      details="req=\{correlation_id} mode=bytes total=\{total}",
+    )
+    return
+  }
+
+  @async.with_task_group(fn(root) {
+    let route_count = stream_routes.length()
+    for route_idx = 0; route_idx < route_count; route_idx = route_idx + 1 {
+      let route = stream_routes[route_idx]
+      let start_index = route_idx * total / route_count
+      let end_index = (route_idx + 1) * total / route_count
+      if start_index >= end_index {
+        continue
+      }
+      root.spawn_bg(async fn() {
+        for i = start_index; i < end_index; i = i + 1 {
+          let start = i * response_chunk_size
+          let end = if start + response_chunk_size > data.length() {
+            data.length()
+          } else {
+            start + response_chunk_size
+          }
+          let chunk = slice_bytes(data, start, end)
+          send_chunk_frame_or_fallback(
+            transport,
+            resolved_addr,
+            Some(route),
+            source_id,
+            source_addr,
+            target_id,
+            correlation_id,
+            is_encrypted,
+            i,
+            total,
+            chunk,
+            status,
+            headers,
+          )
+        }
+      })
+    }
+  })
+  log_bench(
+    "stream_send_done",
+    details="req=\{correlation_id} mode=bytes total=\{total}",
+  )
 }
 
 ///|
@@ -653,54 +1065,12 @@ async fn send_file_stream_helper(
   path : String,
   status : String,
   headers : Map[String, String]?,
+  prefer_stream_frame : Bool,
 ) -> Unit {
-  try {
+  let file_size = try {
     let file = @fs.open(path, mode=ReadOnly)
     defer file.close()
-    let file_size = file.size()
-    let chunk_size_64 = response_chunk_size.to_int64()
-    let total_64 = (file_size + chunk_size_64 - 1) / chunk_size_64
-    let total = total_64.to_int()
-
-    for i = 0; i < total; i = i + 1 {
-      let offset = i.to_int64() * chunk_size_64
-      let expected_len = if offset + chunk_size_64 > file_size {
-        (file_size - offset).to_int()
-      } else {
-        response_chunk_size
-      }
-      let chunk_buf = FixedArray::make(expected_len, b'\x00')
-      let bytes_read = file.read_at(chunk_buf, position=offset)
-
-      if bytes_read > 0 {
-        let chunk_full = chunk_buf.unsafe_reinterpret_as_bytes()
-        let chunk = if bytes_read < expected_len {
-          slice_bytes(chunk_full, 0, bytes_read)
-        } else {
-          chunk_full
-        }
-
-        let arr : Array[@msgpack.Value] = []
-        arr.push(@msgpack.int(i))
-        arr.push(@msgpack.int(total))
-        arr.push(@msgpack.binary(b""))
-        if i == 0 {
-          arr.push(@msgpack.string(status))
-          arr.push(headers_to_msgpack(headers.unwrap_or({})))
-        }
-        let _ = send_one_helper(
-          transport,
-          resolved_addr,
-          source_id,
-          source_addr,
-          target_id,
-          correlation_id,
-          is_encrypted,
-          @msgpack.array(arr),
-          Some(chunk),
-        )
-      }
-    }
+    file.size()
   } catch {
     e => {
       log_error("File stream error: " + e.to_string())
@@ -721,8 +1091,132 @@ async fn send_file_stream_helper(
         @msgpack.map(resp_map),
         None,
       )
+      return
     }
   }
+  let chunk_size_64 = response_chunk_size.to_int64()
+  let total_64 = (file_size + chunk_size_64 - 1) / chunk_size_64
+  let total = total_64.to_int()
+  let stream_routes = if prefer_stream_frame {
+    collect_stream_routes(transport, target_id, resolved_addr)
+  } else {
+    []
+  }
+  log_bench(
+    "stream_send_start",
+    details="req=\{correlation_id} mode=file total=\{total} routes=\{stream_routes.length()}",
+  )
+
+  if stream_routes.length() <= 1 {
+    let route = if stream_routes.length() == 1 {
+      Some(stream_routes[0])
+    } else {
+      None
+    }
+    try {
+      let file = @fs.open(path, mode=ReadOnly)
+      defer file.close()
+      for i = 0; i < total; i = i + 1 {
+        let offset = i.to_int64() * chunk_size_64
+        let expected_len = if offset + chunk_size_64 > file_size {
+          (file_size - offset).to_int()
+        } else {
+          response_chunk_size
+        }
+        let chunk_buf = FixedArray::make(expected_len, b'\x00')
+        let bytes_read = file.read_at(chunk_buf, position=offset)
+        if bytes_read <= 0 {
+          continue
+        }
+        let chunk_full = chunk_buf.unsafe_reinterpret_as_bytes()
+        let chunk = if bytes_read < expected_len {
+          slice_bytes(chunk_full, 0, bytes_read)
+        } else {
+          chunk_full
+        }
+        send_chunk_frame_or_fallback(
+          transport,
+          resolved_addr,
+          route,
+          source_id,
+          source_addr,
+          target_id,
+          correlation_id,
+          is_encrypted,
+          i,
+          total,
+          chunk,
+          Some(status),
+          headers,
+        )
+      }
+    } catch {
+      e => log_error("File stream error: " + e.to_string())
+    }
+    log_bench(
+      "stream_send_done",
+      details="req=\{correlation_id} mode=file total=\{total}",
+    )
+    return
+  }
+
+  @async.with_task_group(fn(root) {
+    let route_count = stream_routes.length()
+    for route_idx = 0; route_idx < route_count; route_idx = route_idx + 1 {
+      let route = stream_routes[route_idx]
+      let start_index = route_idx * total / route_count
+      let end_index = (route_idx + 1) * total / route_count
+      if start_index >= end_index {
+        continue
+      }
+      root.spawn_bg(async fn() {
+        try {
+          let file = @fs.open(path, mode=ReadOnly)
+          defer file.close()
+          for i = start_index; i < end_index; i = i + 1 {
+            let offset = i.to_int64() * chunk_size_64
+            let expected_len = if offset + chunk_size_64 > file_size {
+              (file_size - offset).to_int()
+            } else {
+              response_chunk_size
+            }
+            let chunk_buf = FixedArray::make(expected_len, b'\x00')
+            let bytes_read = file.read_at(chunk_buf, position=offset)
+            if bytes_read <= 0 {
+              continue
+            }
+            let chunk_full = chunk_buf.unsafe_reinterpret_as_bytes()
+            let chunk = if bytes_read < expected_len {
+              slice_bytes(chunk_full, 0, bytes_read)
+            } else {
+              chunk_full
+            }
+            send_chunk_frame_or_fallback(
+              transport,
+              resolved_addr,
+              Some(route),
+              source_id,
+              source_addr,
+              target_id,
+              correlation_id,
+              is_encrypted,
+              i,
+              total,
+              chunk,
+              Some(status),
+              headers,
+            )
+          }
+        } catch {
+          e => log_error("File stream route error: " + e.to_string())
+        }
+      })
+    }
+  })
+  log_bench(
+    "stream_send_done",
+    details="req=\{correlation_id} mode=file total=\{total}",
+  )
 }
 
 ///|
@@ -735,6 +1229,7 @@ async fn send_response_message_direct(
   correlation_id : String,
   response_source : ResponseSource,
   encrypted_override : Bool?,
+  prefer_stream_frame : Bool,
 ) -> Unit {
   let config = get_config()
   let default_encrypted = config.is_encrypt()
@@ -763,6 +1258,7 @@ async fn send_response_message_direct(
               b,
               None,
               None,
+              prefer_stream_frame,
             )
           } else {
             let _ = send_one_helper(
@@ -801,6 +1297,7 @@ async fn send_response_message_direct(
                   data,
                   Some(status),
                   headers,
+                  prefer_stream_frame,
                 )
               } else {
                 let _ = send_one_helper(
@@ -856,6 +1353,7 @@ async fn send_response_message_direct(
         path,
         status,
         Some(headers),
+        prefer_stream_frame,
       )
   }
   log_info(

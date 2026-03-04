@@ -16,9 +16,34 @@ fn ConnectionManager::add_connection(
   conn : Connection,
 ) -> ConnectionManager {
   let connections = self.connections
-  connections[conn.id] = conn
   let peer_connections = self.peer_connections
-  peer_connections[conn.peer_id] = [conn.id]
+  match connections.get(conn.id) {
+    Some(existing) =>
+      if existing.peer_id != conn.peer_id {
+        match peer_connections.get(existing.peer_id) {
+          Some(ids) => {
+            let new_ids = ids.filter(fn(id) { id != conn.id })
+            if new_ids.is_empty() {
+              peer_connections.remove(existing.peer_id)
+            } else {
+              peer_connections[existing.peer_id] = new_ids
+            }
+          }
+          None => ()
+        }
+      }
+    None => ()
+  }
+  connections[conn.id] = conn
+  match peer_connections.get(conn.peer_id) {
+    Some(ids) =>
+      if !ids.contains(conn.id) {
+        let new_ids = ids.copy()
+        new_ids.push(conn.id)
+        peer_connections[conn.peer_id] = new_ids
+      }
+    None => peer_connections[conn.peer_id] = [conn.id]
+  }
   { connections, peer_connections }
 }
 

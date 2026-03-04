@@ -29,6 +29,8 @@ async fn emit_ws_message(msg : Message) -> Unit {
     return
   }
 
+  persist_chat_message(msg)
+
   // Deduplicate messages within a short window
   let now = @env.now()
   let id = msg.id
@@ -93,7 +95,7 @@ async fn emit_ws_message(msg : Message) -> Unit {
 }
 
 ///|
-fn handle_ws_incoming(text : String) -> String? {
+async fn handle_ws_incoming(text : String) -> String? {
   let json_val = @json.parse(text) catch {
     _ => {
       log_warn("WS: invalid json payload")
@@ -156,6 +158,7 @@ fn handle_ws_incoming(text : String) -> String? {
         "WS: Received chat message kind=\{kind} target=\{target_display}",
       )
       add_pending_message(msg)
+      emit_ws_message(msg)
       Some(kind)
     }
     _ => {
@@ -292,6 +295,17 @@ async fn handle_object_registration(
 }
 
 ///|
+async fn chat_messages_handler(conn : @http.ServerConnection) -> Unit {
+  let body = list_chat_messages_json().stringify()
+  conn
+  ..send_response(200, "OK", extra_headers={
+    "Content-Type": "application/json",
+  })
+  ..write(body)
+  .end_response()
+}
+
+///|
 fn parse_range_header(
   headers : Map[String, String],
   total_len : Int,
@@ -419,6 +433,68 @@ fn build_object_download_response(
 }
 
 ///|
+async fn send_http_proxy_request_now(peer_id : String, msg : Message) -> Bool {
+  let registered = get_registered_transports()
+  let tcp_transports = registered.filter(fn(transport) {
+    transport.protocol() == "tcp"
+  })
+  let transports = if tcp_transports.is_empty() {
+    registered
+  } else {
+    tcp_transports
+  }
+
+  for transport in transports {
+    let protocol = transport.protocol()
+    let candidates : Array[String] = []
+    let seen : Map[String, Bool] = {}
+    let connections = get_global_connection_manager().get_peer_connections(
+      peer_id,
+    )
+    for conn in connections {
+      if conn.relay != 1 {
+        continue
+      }
+      for addr, _ in conn.address_stats {
+        if addr.has_prefix(protocol + "://") && !seen.contains(addr) {
+          candidates.push(addr)
+          seen[addr] = true
+        }
+      }
+    }
+    match pick_peer_address(peer_id, protocol) {
+      Some(addr) =>
+        if !seen.contains(addr) {
+          candidates.push(addr)
+          seen[addr] = true
+        }
+      None => ()
+    }
+    match pick_peer_lan_address(peer_id, protocol) {
+      Some(addr) => {
+        let full_addr = if addr.contains("://") {
+          addr
+        } else {
+          protocol + "://" + addr
+        }
+        if !seen.contains(full_addr) {
+          candidates.push(full_addr)
+          seen[full_addr] = true
+        }
+      }
+      None => ()
+    }
+
+    for target_addr in candidates {
+      if send_message(transport, target_addr, msg) {
+        return true
+      }
+    }
+  }
+  false
+}
+
+///|
 async fn proxy_http_request(
   peer_id : String,
   http_method : String,
@@ -447,7 +523,9 @@ async fn proxy_http_request(
     timeout_ms=timeout_ms_uint,
   )
   let msg = { ..msg, target_id: Some(peer_id), payload: Some(req_id) }
-  add_pending_message(msg)
+  if !send_http_proxy_request_now(peer_id, msg) {
+    add_pending_message(msg)
+  }
 
   match wait_for_response(req_id, timeout_ms_uint) {
     Some((data, headers)) => {
@@ -476,12 +554,17 @@ async fn proxy_http_request_stream(
   let timeout_ms_uint = timeout_ms.reinterpret_as_uint()
   let timeout_ms_u64 = timeout_ms.to_uint64()
   let req_id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
+  log_bench(
+    "proxy_stream_start",
+    details="req=\{req_id} peer=\{peer_id} path=\{path}",
+  )
   add_stream_request(req_id)
   let body_map : Map[String, @msgpack.Value] = Map::new()
   body_map["method"] = @msgpack.string(http_method)
   body_map["path"] = @msgpack.string(path)
   body_map["headers"] = headers_to_msgpack(headers)
   body_map["body"] = @msgpack.binary(body)
+  body_map["stream_mode"] = @msgpack.string("frame_v1")
   let config = get_config()
   let is_encrypted = config.is_encrypt()
   let msg = Message::new(
@@ -494,7 +577,9 @@ async fn proxy_http_request_stream(
     timeout_ms=timeout_ms_uint,
   )
   let msg = { ..msg, target_id: Some(peer_id), payload: Some(req_id) }
-  add_pending_message(msg)
+  if !send_http_proxy_request_now(peer_id, msg) {
+    add_pending_message(msg)
+  }
   let start = @env.now()
   let mut last_log = start
   let mut response_sent = false
@@ -502,8 +587,10 @@ async fn proxy_http_request_stream(
   let mut resp_headers : Map[String, String] = {}
   let mut status_code = 200
   let mut last_chunk_time = start
+  let mut total_bytes = 0
   for {
-    if @env.now() - start > timeout_ms_u64 {
+    let now = @env.now()
+    if now - start > timeout_ms_u64 {
       if !response_sent {
         conn
         ..send_response(504, "Gateway Timeout", extra_headers={})
@@ -514,11 +601,21 @@ async fn proxy_http_request_stream(
       }
       return
     }
-    match take_stream_chunk(req_id) {
+    let remaining_ms_u64 = timeout_ms_u64 - (now - start)
+    let wait_ms = if remaining_ms_u64 > 1000UL {
+      1000
+    } else {
+      remaining_ms_u64.to_int()
+    }
+    match wait_stream_chunk(req_id, wait_ms) {
       Some((chunk, done, headers_opt)) => {
         last_chunk_time = @env.now()
         if !logged_first {
           log_info("http_proxy_stream first_chunk peer=\{peer_id} path=\{path}")
+          log_bench(
+            "proxy_stream_first_chunk",
+            details="req=\{req_id} peer=\{peer_id} path=\{path}",
+          )
           logged_first = true
         }
         if !response_sent {
@@ -549,9 +646,14 @@ async fn proxy_http_request_stream(
           response_sent = true
         }
         if chunk.length() > 0 {
+          total_bytes = total_bytes + chunk.length()
           conn.write(chunk)
         }
         if done {
+          log_bench(
+            "proxy_stream_done",
+            details="req=\{req_id} peer=\{peer_id} path=\{path} bytes=\{total_bytes}",
+          )
           conn.end_response()
           return
         }
@@ -570,7 +672,6 @@ async fn proxy_http_request_stream(
           add_pending_message(msg)
           last_chunk_time = now // Reset timer to avoid spamming
         }
-        @async.sleep(5)
       }
     }
   }
@@ -709,6 +810,15 @@ async fn handle_internal_http_request(
       200,
       resp_headers,
       ResponseBody::Bytes(@utf8.encode(config.to_json().stringify())),
+    )
+  } else if http_method == "GET" && path == "/api/chat/messages" {
+    let resp_headers : Map[String, String] = {
+      "Content-Type": "application/json",
+    }
+    (
+      200,
+      resp_headers,
+      ResponseBody::Bytes(@utf8.encode(list_chat_messages_json().stringify())),
     )
   } else {
     let resp_headers : Map[String, String] = {}
@@ -869,22 +979,7 @@ async fn handle_object_download(
 
         conn.send_response(200, "OK", extra_headers=headers)
         response_started = true
-
-        // Manual streaming for full file
-        let buf = FixedArray::make(4096, b'\x00')
-        for {
-          let n = file.read(buf) catch { _ => 0 }
-          if n <= 0 {
-            break
-          }
-
-          let chunk_buf = FixedArray::make(n, b'\x00')
-          for i = 0; i < n; i = i + 1 {
-            chunk_buf[i] = buf[i]
-          }
-          let chunk = Bytes::from_array(chunk_buf)
-          conn.write(chunk)
-        }
+        conn.write_reader(file)
         conn.end_response()
         return
       } catch {
@@ -1064,6 +1159,7 @@ async fn handle_http_request(
 
   match (request.meth, request.path) {
     (Get, "/api/ws") => handle_ws_connection(request, conn)
+    (Get, "/api/chat/messages") => chat_messages_handler(conn)
     (Get, "/api/config") => get_config_handler(conn)
     (Get, "/api/status") => status_handler(conn)
     (Get, "/api/download") => download_handler(conn)
@@ -1194,6 +1290,7 @@ async fn start_http_service(
 ) -> Unit {
   // Store the config globally for handlers to access
   init_upload_dir()
+  init_chat_store()
   for {
     try {
       let server = @http.Server::new(@socket.Addr::parse(addr), reuse_addr=true)

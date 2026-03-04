@@ -64,6 +64,30 @@ fn extract_port_tuple(
 }
 
 ///|
+fn has_direct_connection_for_protocol(
+  peer_id : String,
+  protocol : String,
+  protocol_type : Protocol,
+) -> Bool {
+  get_global_connection_manager()
+  .get_peer_connections(peer_id)
+  .any(fn(conn) {
+    if conn.relay != 1 {
+      return false
+    }
+    if conn.ports.any(fn(p) { p.protocol == protocol_type }) {
+      return true
+    }
+    for addr, _ in conn.address_stats {
+      if addr.has_prefix(protocol + "://") {
+        return true
+      }
+    }
+    false
+  })
+}
+
+///|
 fn handle_new_connection(
   peer_id : String,
   local_addr : String,
@@ -229,6 +253,8 @@ async fn handle_reconnects(
     "DEBUG: handle_reconnects start protocol=\{transport.protocol()} local=\{local_addr} id=\{peer_id}",
   )
   let our_addresses = get_our_addresses(local_addr)
+  let transport_protocol = transport.protocol()
+  let transport_protocol_type = transport.protocol_type()
   let reconnect_interval = 5000 // Fixed interval: 5s
   for {
     // Sleep with fixed interval
@@ -246,10 +272,11 @@ async fn handle_reconnects(
 
     let peers = get_global_peer_manager().get_all_peers()
     for peer in peers {
-      let has_direct_conn = get_global_connection_manager()
-        .get_peer_connections(peer.id)
-        .any(fn(conn) { conn.relay == 1 })
-      if has_direct_conn {
+      if has_direct_connection_for_protocol(
+          peer.id,
+          transport_protocol,
+          transport_protocol_type,
+        ) {
         continue
       }
       for addr_str in peer.addresses {
@@ -261,7 +288,7 @@ async fn handle_reconnects(
         }
         match parsed {
           Some(addr) => {
-            if addr.protocol != transport.protocol_type() {
+            if addr.protocol != transport_protocol_type {
               continue
             }
             let key = peer.id +
@@ -320,13 +347,12 @@ async fn handle_reconnects(
         }
         match parsed {
           Some(a) =>
-            if a.protocol == transport.protocol_type() {
+            if a.protocol == transport_protocol_type {
               match peer_id_opt {
                 Some(pid) => {
-                  let has_direct_conn = get_global_connection_manager()
-                    .get_peer_connections(pid)
-                    .any(fn(conn) { conn.relay == 1 })
-                  if has_direct_conn {
+                  if has_direct_connection_for_protocol(
+                      pid, transport_protocol, transport_protocol_type,
+                    ) {
                     continue
                   }
                   let key = pid +
@@ -671,6 +697,7 @@ async fn handle_pending_messages(
 
   let queue = @aqueue.Queue::new(kind=Unbounded)
   let in_queue : @set.Set[String] = @set.Set::new()
+  let mut pending_generation = get_pending_generation()
 
   root.spawn_bg(async fn() {
     for {
@@ -688,12 +715,16 @@ async fn handle_pending_messages(
   })
 
   for {
-    // Check for pending messages every 100ms
-    @async.sleep(100)
+    // Wake immediately for new messages, but still sweep periodically for retries/timeouts.
+    pending_generation = wait_for_pending_change(pending_generation, 100)
+    let now = @env.now()
+    let retry_interval = 2000UL
     // Only take messages we can handle:
     // 1. Specific protocol match (e.g. tcp://...)
     // 2. No protocol (peer ID) - we try to route these
-    let pending = take_pending_messages(fn(_) { true })
+    let pending = take_pending_messages(fn(entry) {
+      entry.last_attempt == 0UL || now - entry.last_attempt >= retry_interval
+    })
     if pending.is_empty() {
       continue
     }
@@ -965,6 +996,9 @@ async fn handle_incoming_message(
   transport : &Transport,
   dispatcher : Ref[MessageDispatcher],
 ) -> Unit noraise {
+  if try_handle_stream_frame(bytes) {
+    return
+  }
   if bytes.length() < 4 {
     log_warn("Received message too short: \{bytes.length()} bytes")
     return
@@ -1306,6 +1340,7 @@ async fn start_listener_service(
 ) -> Unit {
   let dispatcher = Ref::new(build_message_dispatcher())
   let local_addr = transport.protocol() + "://" + transport.local_addr()
+  register_transport(transport)
   log_debug(
     "DEBUG: start_listener_service protocol=\{transport.protocol()} local=\{local_addr} id=\{my_id}",
   )
