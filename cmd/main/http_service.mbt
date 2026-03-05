@@ -433,7 +433,7 @@ fn build_object_download_response(
 }
 
 ///|
-async fn send_http_proxy_request_now(peer_id : String, msg : Message) -> Bool {
+async fn send_message_now(peer_id : String, msg : Message) -> Bool {
   let registered = get_registered_transports()
   let tcp_transports = registered.filter(fn(transport) {
     transport.protocol() == "tcp"
@@ -523,7 +523,7 @@ async fn proxy_http_request(
     timeout_ms=timeout_ms_uint,
   )
   let msg = { ..msg, target_id: Some(peer_id), payload: Some(req_id) }
-  if !send_http_proxy_request_now(peer_id, msg) {
+  if !send_message_now(peer_id, msg) {
     add_pending_message(msg)
   }
 
@@ -577,7 +577,7 @@ async fn proxy_http_request_stream(
     timeout_ms=timeout_ms_uint,
   )
   let msg = { ..msg, target_id: Some(peer_id), payload: Some(req_id) }
-  if !send_http_proxy_request_now(peer_id, msg) {
+  if !send_message_now(peer_id, msg) {
     add_pending_message(msg)
   }
   let start = @env.now()
@@ -1241,7 +1241,7 @@ async fn handle_http_request(
           add_pending_request(msg.id)
 
           // Try direct send first to avoid pending queue delays, then fall back.
-          if !send_http_proxy_request_now(target_id, msg) {
+          if !send_message_now(target_id, msg) {
             add_pending_message(msg)
           }
           log_debug("HTTP /send: Registered request id=\{msg.id}")

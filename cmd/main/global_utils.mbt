@@ -1,8 +1,28 @@
 ///|
+struct GlobalState {
+  mut peer_manager : PeerManager
+  mut connection_manager : ConnectionManager
+  known_peers : Map[String, UInt64]
+  transports : Map[String, &Transport]
+  hello_times : Map[String, UInt64]
+  hello_callback_times : Map[String, UInt64]
+  mut bench_trace_lines : Array[String]
+  mut bench_trace_generation : Int
+}
 
 ///|
-/// Global state for the peer manager using new architecture
-let global_peer_manager : Ref[PeerManager] = Ref::new(PeerManager::new())
+let global_state : GlobalState = {
+  peer_manager: PeerManager::new(),
+  connection_manager: ConnectionManager::new(),
+  known_peers: {},
+  transports: {},
+  hello_times: {},
+  hello_callback_times: {},
+  bench_trace_lines: [],
+  bench_trace_generation: 0,
+}
+
+///|
 
 ///|
 enum LogLevel {
@@ -55,15 +75,9 @@ fn bench_trace_path() -> String {
 }
 
 ///|
-let bench_trace_lines : Ref[Array[String]] = Ref::new([])
-
-///|
-let bench_trace_generation : Ref[Int] = Ref::new(0)
-
-///|
 async fn reset_bench_trace() -> Unit {
-  bench_trace_lines.val = []
-  bench_trace_generation.val += 1
+  global_state.bench_trace_lines = []
+  global_state.bench_trace_generation += 1
   @fs.write_file(bench_trace_path(), b"", create=0o644) catch {
     _ => ()
   }
@@ -74,9 +88,9 @@ fn start_bench_trace_flusher(root : @async.TaskGroup[Unit]) -> Unit {
   let _ : @async.Task[Unit] = root.spawn(async fn() {
     let mut flushed_generation = -1
     for {
-      let current_generation = bench_trace_generation.val
+      let current_generation = global_state.bench_trace_generation
       if current_generation != flushed_generation {
-        let contents = bench_trace_lines.val.join("")
+        let contents = global_state.bench_trace_lines.join("")
         @fs.write_file(bench_trace_path(), @utf8.encode(contents), create=0o644) catch {
           _ => ()
         }
@@ -91,28 +105,20 @@ fn start_bench_trace_flusher(root : @async.TaskGroup[Unit]) -> Unit {
 fn log_bench(stage : String, details? : String = "") -> Unit {
   let suffix = if details == "" { "" } else { " " + details }
   let line = "BENCH stage=\{stage} ts=\{@env.now()}\{suffix}\n"
-  bench_trace_lines.val.push(line)
-  bench_trace_generation.val += 1
+  global_state.bench_trace_lines.push(line)
+  global_state.bench_trace_generation += 1
 }
-
-///|
-/// Global list of all known peer addresses (configured + discovered)
-/// Used for active connection attempts
-let global_known_peers : Ref[Map[String, UInt64]] = Ref::new({})
-
-///|
-let global_transports : Ref[Map[String, &Transport]] = Ref::new({})
 
 ///|
 fn register_transport(transport : &Transport) -> Unit {
   let key = transport.protocol() + "://" + transport.local_addr()
-  global_transports.val[key] = transport
+  global_state.transports[key] = transport
 }
 
 ///|
 fn get_registered_transports() -> Array[&Transport] {
   let transports : Array[&Transport] = []
-  for _, transport in global_transports.val {
+  for _, transport in global_state.transports {
     transports.push(transport)
   }
   transports
@@ -133,7 +139,7 @@ fn add_known_peer(peer_addr : String) -> Unit {
       url.set_pathname("")
     }
     let peer_addr = url.to_string()
-    let peers = global_known_peers.val
+    let peers = global_state.known_peers
     if !peers.contains(peer_addr) {
       peers[peer_addr] = @env.now() // Track when we first learned about this peer
     }
@@ -158,7 +164,7 @@ fn is_bind_all_address(addr : String) -> Bool {
 ///|
 /// Get all known peer addresses
 fn get_all_known_peers() -> Array[String] {
-  global_known_peers.val.keys().to_array()
+  global_state.known_peers.keys().to_array()
 }
 
 ///|
@@ -355,15 +361,10 @@ fn pick_peer_lan_address(peer_id : String, protocol : String) -> String? {
 }
 
 ///|
-/// Global mapping of peer_id -> last time we received/processed hello from them
-/// Used to debounce re-broadcasting of hello messages
-let global_hello_times : Ref[Map[String, UInt64]] = Ref::new({})
-
-///|
 /// Check if we should re-broadcast hello for this peer (debounce check)
 /// Only re-broadcast once per 5 second period
 fn should_rebroadcast_hello(peer_id : String) -> Bool {
-  let times = global_hello_times.val
+  let times = global_state.hello_times
   let now = @env.now()
   match times.get(peer_id) {
     Some(last_time) => now - last_time > 5000UL // 5 seconds
@@ -374,17 +375,14 @@ fn should_rebroadcast_hello(peer_id : String) -> Bool {
 ///|
 /// Record that we processed a hello from this peer
 fn record_hello_time(peer_id : String) -> Unit {
-  let times = global_hello_times.val
+  let times = global_state.hello_times
   times[peer_id] = @env.now()
 }
 
 ///|
-let global_hello_callback_times : Ref[Map[String, UInt64]] = Ref::new({})
-
-///|
 fn check_and_mark_hello(key : String, ttl_ms : UInt64) -> Bool {
   let now = @env.now()
-  let cache = global_hello_callback_times.val
+  let cache = global_state.hello_callback_times
   match cache.get(key) {
     Some(last_time) =>
       if now - last_time <= ttl_ms {
@@ -434,37 +432,13 @@ fn check_and_mark_hello(key : String, ttl_ms : UInt64) -> Bool {
 // }
 
 ///|
-/// Update global peer manager state
-fn update_global_peer_manager(fn_update : (PeerManager) -> PeerManager) -> Unit {
-  let current = global_peer_manager.val
-  let updated = fn_update(current)
-  global_peer_manager.val = updated
-}
-
-///|
 /// Get current global peer manager
 fn get_global_peer_manager() -> PeerManager {
-  global_peer_manager.val
-}
-
-///|
-/// Global state for the connection manager
-let global_connection_manager : Ref[ConnectionManager] = Ref::new(
-  ConnectionManager::new(),
-)
-
-///|
-/// Update global connection manager state
-fn update_global_connection_manager(
-  fn_update : (ConnectionManager) -> ConnectionManager,
-) -> Unit {
-  let current = global_connection_manager.val
-  let updated = fn_update(current)
-  global_connection_manager.val = updated
+  global_state.peer_manager
 }
 
 ///|
 /// Get current global connection manager
 fn get_global_connection_manager() -> ConnectionManager {
-  global_connection_manager.val
+  global_state.connection_manager
 }

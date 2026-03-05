@@ -626,21 +626,17 @@ fn handle_script_message(
     return
   }
 
-  log_debug(
-    "DEBUG: Processing data message from \{msg.source_id}, encrypted=\{msg.encrypted}",
-  )
-  match data_value {
-    Binary(b) =>
-      log_debug("DEBUG: Received data_value Binary len=\{b.length()}")
-    String(s) =>
-      log_debug("DEBUG: Received data_value String len=\{s.length()}")
-    _ => log_debug("DEBUG: Received data_value Other")
-  }
   let data_content = match data_value {
     Binary(raw_data) => decode_binary_payload(raw_data)
     _ => data_value
   }
   root.spawn_bg(async fn() {
+    let make_script_result = fn(status : String, message : String) {
+      @msgpack.map({
+        "status": @msgpack.string(status),
+        "data": @msgpack.binary(@utf8.encode(message)),
+      })
+    }
     let content_str = if data_content is String(content) { content } else { "" }
     // Trim whitespace and remove null bytes from content string
     let cleaned = StringBuilder::new()
@@ -660,19 +656,13 @@ fn handle_script_message(
         msg.source_id,
         msg.payload.unwrap_or(msg.id),
         ResponseSource::MsgPack(
-          @msgpack.map({
-            "status": @msgpack.string("400"),
-            "data": @msgpack.binary(@utf8.encode("Error: Empty script content")),
-          }),
+          make_script_result("400", "Error: Empty script content"),
         ),
         None,
         false,
       )
       return
     }
-    log_debug(
-      "DEBUG: Handling data message. Encrypted=\{msg.encrypted}, Content='\{content_str}'",
-    )
     match execute_script_handler(content_str) {
       Some(output) =>
         send_response_message_direct(
@@ -698,10 +688,7 @@ fn handle_script_message(
           msg.source_id,
           msg.payload.unwrap_or(msg.id),
           ResponseSource::MsgPack(
-            @msgpack.map({
-              "status": @msgpack.string("500"),
-              "data": @msgpack.binary(@utf8.encode("Error: No script output")),
-            }),
+            make_script_result("500", "Error: No script output"),
           ),
           None,
           false,

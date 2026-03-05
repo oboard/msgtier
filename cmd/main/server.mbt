@@ -127,10 +127,11 @@ fn handle_new_connection(
           metadata={},
         )
     }
-    update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
-    update_global_peer_manager(fn(manager) {
-      manager.add_peer_address(info.id, remote_addr)
-    })
+    global_state.peer_manager = global_state.peer_manager.add_peer(peer_node)
+    global_state.peer_manager = global_state.peer_manager.add_peer_address(
+      info.id,
+      remote_addr,
+    )
     match info.peers {
       Some(peer_addrs) => {
         let my_listeners = get_our_addresses(local_addr).map(fn(a) { a.address })
@@ -142,9 +143,10 @@ fn handle_new_connection(
           if my_listeners.contains(addr) {
             continue
           }
-          update_global_peer_manager(fn(manager) {
-            manager.add_peer_address(info.id, addr)
-          })
+          global_state.peer_manager = global_state.peer_manager.add_peer_address(
+            info.id,
+            addr,
+          )
         }
       }
       None => ()
@@ -153,9 +155,9 @@ fn handle_new_connection(
     // Only create peer if it doesn't exist yet
     match get_global_peer_manager().get_peer(actual_peer_id) {
       Some(_) =>
-        update_global_peer_manager(fn(manager) {
-          manager.add_peer_address(actual_peer_id, remote_addr)
-        })
+        global_state.peer_manager = global_state.peer_manager.add_peer_address(
+          actual_peer_id, remote_addr,
+        )
       None => {
         let peer_node = PeerNode::new(
           id=actual_peer_id,
@@ -163,7 +165,9 @@ fn handle_new_connection(
           addresses=[remote_addr],
           metadata={},
         )
-        update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
+        global_state.peer_manager = global_state.peer_manager.add_peer(
+          peer_node,
+        )
         is_new_peer = true
       }
     }
@@ -182,9 +186,10 @@ fn handle_new_connection(
     let existing_conn = existing_conns[0]
     let should_upgrade = relay_depth < existing_conn.relay
     if should_upgrade {
-      update_global_connection_manager(fn(manager) {
-        manager.update_connection_relay(existing_conn.id, relay_depth)
-      })
+      global_state.connection_manager = global_state.connection_manager.update_connection_relay(
+        existing_conn.id,
+        relay_depth,
+      )
     }
     let upgraded_conn = if should_upgrade {
       existing_conn.update_relay(relay_depth)
@@ -194,15 +199,13 @@ fn handle_new_connection(
     let updated_conn = match port_tuple {
       Some((local_port, proto, remote_port)) => {
         let now = @env.now()
-        update_global_connection_manager(fn(manager) {
-          manager.update_connection_ports(
-            existing_conn.id,
-            local_port,
-            proto,
-            remote_port,
-            now,
-          )
-        })
+        global_state.connection_manager = global_state.connection_manager.update_connection_ports(
+          existing_conn.id,
+          local_port,
+          proto,
+          remote_port,
+          now,
+        )
         upgraded_conn.touch_port(local_port, proto, remote_port, now)
       }
       None => upgraded_conn
@@ -216,10 +219,11 @@ fn handle_new_connection(
   // Add new connection with protocol
   let my_id = get_config().id
   let new_conn = Connection::new(my_id, actual_peer_id)
-  update_global_connection_manager(fn(manager) {
-    let mgr = manager.add_connection(new_conn)
-    mgr.update_connection_relay(new_conn.id, relay_depth)
-  })
+  let mgr = global_state.connection_manager.add_connection(new_conn)
+  global_state.connection_manager = mgr.update_connection_relay(
+    new_conn.id,
+    relay_depth,
+  )
   log_debug(
     "DEBUG: handle_new_connection added peer=\{actual_peer_id} local=\{local_addr} remote=\{remote_addr}",
   )
@@ -227,15 +231,13 @@ fn handle_new_connection(
   let updated_conn = match port_tuple {
     Some((local_port, proto, remote_port)) => {
       let now = @env.now()
-      update_global_connection_manager(fn(manager) {
-        manager.update_connection_ports(
-          conn.id,
-          local_port,
-          proto,
-          remote_port,
-          now,
-        )
-      })
+      global_state.connection_manager = global_state.connection_manager.update_connection_ports(
+        conn.id,
+        local_port,
+        proto,
+        remote_port,
+        now,
+      )
       conn.touch_port(local_port, proto, remote_port, now)
     }
     None => conn
@@ -832,29 +834,28 @@ async fn handle_heartbeat(
 
         for target_addr in candidate_addrs {
           if target_addr != "routed" {
-            update_global_connection_manager(fn(manager) {
-              manager.update_connection_address_ping(
-                conn.id,
-                target_addr,
-                current_time,
-              )
-            })
+            global_state.connection_manager = global_state.connection_manager.update_connection_address_ping(
+              conn.id,
+              target_addr,
+              current_time,
+            )
             // We also update the main ping time for backward compatibility/general health
-            update_global_connection_manager(fn(manager) {
-              manager.update_connection_ping_time(conn.id, Some(current_time))
-            })
-            update_global_connection_manager(fn(manager) {
-              manager.update_connection_packet_loss(conn.id, 1, 0)
-            })
+            global_state.connection_manager = global_state.connection_manager.update_connection_ping_time(
+              conn.id,
+              Some(current_time),
+            )
+            global_state.connection_manager = global_state.connection_manager.update_connection_packet_loss(
+              conn.id,
+              1,
+              0,
+            )
 
             let ok = send_message(transport, target_addr, ping_msg)
             if !ok {
-              update_global_connection_manager(fn(manager) {
-                manager.mark_connection_address_packet_lost(
-                  conn.id,
-                  target_addr,
-                )
-              })
+              global_state.connection_manager = global_state.connection_manager.mark_connection_address_packet_lost(
+                conn.id,
+                target_addr,
+              )
             }
             log_debug(
               "DEBUG: ping send protocol=\{transport.protocol()} peer=\{peer_id} addr=\{target_addr} ok=\{ok}",
@@ -863,13 +864,11 @@ async fn handle_heartbeat(
         }
 
         if conn.relay == 1 {
-          update_global_connection_manager(fn(manager) {
-            manager.prune_connection_ports(
-              conn.id,
-              current_time,
-              CONNECTION_TIMEOUT_MS,
-            )
-          })
+          global_state.connection_manager = global_state.connection_manager.prune_connection_ports(
+            conn.id,
+            current_time,
+            CONNECTION_TIMEOUT_MS,
+          )
         }
 
         let ping_timeout = match conn.last_ping_time {
@@ -887,9 +886,9 @@ async fn handle_heartbeat(
             "",
           )
           log_warn("Connection to \{peer_id} at \{target_addr} timed out")
-          update_global_connection_manager(fn(manager) {
-            manager.remove_connection(conn.id)
-          })
+          global_state.connection_manager = global_state.connection_manager.remove_connection(
+            conn.id,
+          )
           log_debug(
             "DEBUG: heartbeat timeout broadcast protocol=\{transport.protocol()} peer=\{peer_id}",
           )
@@ -928,9 +927,9 @@ async fn handle_heartbeat(
           log_warn(
             "Peer \{peer_id} has no active connections and route expired/missing, removing peer.",
           )
-          update_global_peer_manager(fn(manager) {
-            manager.remove_peer(peer_id)
-          })
+          global_state.peer_manager = global_state.peer_manager.remove_peer(
+            peer_id,
+          )
           needs_broadcast = true
         }
       }
@@ -1239,22 +1238,27 @@ async fn handle_incoming_message(
   }
 
   // Track bytes received
-  update_global_connection_manager(fn(manager) {
-    manager.update_connection_bytes(conn.id, 0UL, bytes.length().to_uint64())
-  })
+  global_state.connection_manager = global_state.connection_manager.update_connection_bytes(
+    conn.id,
+    0UL,
+    bytes.length().to_uint64(),
+  )
 
   // Update last_seen timestamp
-  update_global_connection_manager(fn(manager) {
-    let timestamp = @env.now()
-    manager.update_connection_last_seen(conn.id, timestamp)
-  })
+  let timestamp = @env.now()
+  global_state.connection_manager = global_state.connection_manager.update_connection_last_seen(
+    conn.id,
+    timestamp,
+  )
 
   // Update address stats to mark this address as active and valid for sending responses
   // This ensures pick_peer_address will consider this address as a "good candidate"
-  update_global_connection_manager(fn(manager) {
-    let timestamp = @env.now()
-    manager.update_connection_address_pong(conn.id, effective_addr, timestamp)
-  })
+  let timestamp = @env.now()
+  global_state.connection_manager = global_state.connection_manager.update_connection_address_pong(
+    conn.id,
+    effective_addr,
+    timestamp,
+  )
 
   // Only broadcast connection update if this is a NEW connection established via Hello
   // This prevents sync storms where sync messages on ephemeral connections trigger more syncs
@@ -1376,9 +1380,9 @@ async fn start_listener_service(
           )
           for conn in conns {
             if conn.relay == 1 {
-              update_global_connection_manager(fn(manager) {
-                manager.remove_connection(conn.id)
-              })
+              global_state.connection_manager = global_state.connection_manager.remove_connection(
+                conn.id,
+              )
               log_warn("[disconnect]\t\{conn.peer_id}(\{remote_addr})")
             }
           }

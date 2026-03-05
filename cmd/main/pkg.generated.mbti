@@ -124,6 +124,8 @@ pub impl Show for ForeignNetworkPacket
 pub impl ToJson for ForeignNetworkPacket
 pub impl @json.FromJson for ForeignNetworkPacket
 
+type GlobalState
+
 type LogLevel
 pub impl Eq for LogLevel
 pub impl Show for LogLevel

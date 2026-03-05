@@ -123,7 +123,7 @@ fn handle_hello_message(ctx : MessageContext) -> Unit {
         addresses=if msg.source_addr is Some(addr) { [addr] } else { [] },
         metadata={},
       )
-      update_global_peer_manager(fn(manager) { manager.add_peer(peer_node) })
+      global_state.peer_manager = global_state.peer_manager.add_peer(peer_node)
     }
     Some(_) => ()
   }
@@ -294,21 +294,26 @@ fn handle_pong_message(ctx : MessageContext) -> Unit {
     match conn.last_ping_time {
       Some(ping_time) => {
         let rtt_ms = (current_time - ping_time).to_int()
-        update_global_connection_manager(fn(manager) {
-          manager.update_connection_latency(conn.id, rtt_ms)
-        })
+        global_state.connection_manager = global_state.connection_manager.update_connection_latency(
+          conn.id,
+          rtt_ms,
+        )
       }
       None => ()
     }
-    update_global_connection_manager(fn(manager) {
-      manager.update_connection_address_pong(conn.id, addr_key, current_time)
-    })
-    update_global_connection_manager(fn(manager) {
-      manager.update_connection_pong_time(conn.id, Some(current_time))
-    })
-    update_global_connection_manager(fn(manager) {
-      manager.update_connection_last_seen(conn.id, current_time)
-    })
+    global_state.connection_manager = global_state.connection_manager.update_connection_address_pong(
+      conn.id,
+      addr_key,
+      current_time,
+    )
+    global_state.connection_manager = global_state.connection_manager.update_connection_pong_time(
+      conn.id,
+      Some(current_time),
+    )
+    global_state.connection_manager = global_state.connection_manager.update_connection_last_seen(
+      conn.id,
+      current_time,
+    )
   }
 }
 
@@ -370,9 +375,11 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
               log_debug(
                 "DEBUG: update_route target=\{peer_id} via=\{msg.source_id} hops=\{new_hops}",
               )
-              update_global_peer_manager(fn(manager) {
-                manager.update_route(peer_id, msg.source_id, new_hops)
-              })
+              global_state.peer_manager = global_state.peer_manager.update_route(
+                peer_id,
+                msg.source_id,
+                new_hops,
+              )
 
               match get_global_peer_manager().get_peer(peer_id) {
                 None => {
@@ -382,9 +389,9 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
                     addresses=[],
                     metadata={},
                   )
-                  update_global_peer_manager(fn(manager) {
-                    manager.add_peer(peer_node)
-                  })
+                  global_state.peer_manager = global_state.peer_manager.add_peer(
+                    peer_node,
+                  )
                 }
                 Some(_) => ()
               }
@@ -394,9 +401,10 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
         }
       }
       if !sender_connections.is_empty() {
-        update_global_peer_manager(fn(manager) {
-          manager.update_peer_connections(msg.source_id, sender_connections)
-        })
+        global_state.peer_manager = global_state.peer_manager.update_peer_connections(
+          msg.source_id,
+          sender_connections,
+        )
       }
     }
     _ => ()
