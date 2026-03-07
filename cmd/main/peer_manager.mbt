@@ -59,6 +59,23 @@ fn PeerManager::update_peer_connections(
 }
 
 ///|
+fn PeerManager::update_peer_metadata(
+  self : PeerManager,
+  peer_id : String,
+  metadata : Map[String, String],
+) -> PeerManager {
+  match self.peers.get(peer_id) {
+    Some(peer) => {
+      let updated_peer = { ..peer, metadata, }
+      let peers = self.peers
+      peers[peer_id] = updated_peer
+      { ..self, peers, }
+    }
+    None => self
+  }
+}
+
+///|
 fn PeerManager::get_peer(self : PeerManager, peer_id : String) -> PeerNode? {
   self.peers.get(peer_id)
 }

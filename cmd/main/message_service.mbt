@@ -86,10 +86,35 @@ fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
 }
 
 ///|
+fn get_local_node_metadata() -> Map[String, String] {
+  match global_config.val {
+    Some(config) => {
+      let metadata = config.metadata.unwrap_or({})
+      let script_names : Array[String] = []
+      match config.scripts {
+        Some(scripts) =>
+          for name, _ in scripts {
+            script_names.push(name)
+          }
+        None => ()
+      }
+      metadata["scripts"] = script_names.to_json().stringify()
+      metadata
+    }
+    None => {
+      let metadata : Map[String, String] = {}
+      metadata["scripts"] = "[]"
+      metadata
+    }
+  }
+}
+
+///|
 fn create_sync_message(my_id : String, local_addr : String) -> Message {
   // Create a message that includes all current connections of this node
   let all_conns = get_global_connection_manager().get_all_connections()
   let connections_data : Array[@msgpack.Value] = []
+  let local_metadata = get_local_node_metadata()
 
   // Include direct connections (hops=1)
   for conn in all_conns {
@@ -101,6 +126,7 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
       bandwidth_mbps,
       packet_loss_rate,
       version: conn.version,
+      metadata: Some(local_metadata),
     }
     let conn_val = updated_conn.to_msgpack()
     connections_data.push(conn_val)

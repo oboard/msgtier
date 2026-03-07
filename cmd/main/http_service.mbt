@@ -1447,7 +1447,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
     id=my_id,
     version=VERSION,
     addresses=my_addrs,
-    metadata=my_config.metadata.unwrap_or({}),
+    metadata=get_local_node_metadata(),
   )
   let me_with_conns = { ..me, connections: my_connections }
   all_peers.push(me_with_conns)
