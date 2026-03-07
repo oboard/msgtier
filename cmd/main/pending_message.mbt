@@ -169,11 +169,10 @@ pub fn mark_pending_message_sent(
         }
       }
       if all_sent {
-        if entry.msg.kind == "ack" {
-          messages.remove(i) |> ignore
-          return true
-        }
-        return false
+        messages.remove(i) |> ignore
+        clear_message_send_state(msg_id)
+        notify_pending_changed()
+        return true
       }
       return false
     }
