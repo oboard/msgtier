@@ -1240,10 +1240,10 @@ async fn handle_http_request(
           // Register request to track response
           add_pending_request(msg.id)
 
-          // Try direct send first to avoid pending queue delays, then fall back.
-          if !send_message_now(target_id, msg) {
-            add_pending_message(msg)
-          }
+          // Always enqueue pending first. If immediate path succeeds, ack will clear it;
+          // if a path is slow/broken, pending workers can retry via alternate paths.
+          add_pending_message(msg)
+          ignore(send_message_now(target_id, msg))
           log_debug("HTTP /send: Registered request id=\{msg.id}")
 
           // Wait for response with timeout

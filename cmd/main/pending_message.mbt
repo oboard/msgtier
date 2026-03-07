@@ -181,6 +181,31 @@ pub fn mark_pending_message_sent(
 }
 
 ///|
+pub fn mark_pending_message_attempted(
+  msg_id : String,
+  peer_id : String,
+  protocol : String,
+) -> Bool {
+  let messages = global_pending_messages
+  for i = 0; i < messages.length(); i = i + 1 {
+    let entry = messages[i]
+    if entry.msg.id == msg_id {
+      let target_protocols = match entry.sent_targets.get(peer_id) {
+        Some(m) => m
+        None => {
+          let m = {}
+          entry.sent_targets[peer_id] = m
+          m
+        }
+      }
+      target_protocols[protocol] = true
+      return true
+    }
+  }
+  false
+}
+
+///|
 pub fn clear_pending_messages() -> Unit {
   if !global_pending_messages.is_empty() {
     global_pending_messages.clear()

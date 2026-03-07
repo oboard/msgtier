@@ -511,11 +511,10 @@ async fn process_pending_message(
               if transport.protocol() == "udp" {
                 record_message_sent(pending_msg.id, target_peer_id, "udp")
               } else {
-                mark_pending_message_sent(
+                mark_pending_message_attempted(
                   pending_msg.id,
                   target_peer_id,
                   transport.protocol(),
-                  [transport.protocol()],
                 )
                 |> ignore
               }
@@ -547,11 +546,10 @@ async fn process_pending_message(
             if transport.protocol() == "udp" {
               record_message_sent(pending_msg.id, target_peer_id, "udp")
             } else {
-              mark_pending_message_sent(
+              mark_pending_message_attempted(
                 pending_msg.id,
                 target_peer_id,
                 transport.protocol(),
-                [transport.protocol()],
               )
               |> ignore
             }
@@ -662,15 +660,13 @@ async fn process_pending_message(
       }
     }
     if sent && transport.protocol() != "udp" {
-      let required_protocols = [transport.protocol()]
       log_debug(
         "DEBUG: pending mark sent id=\{pending_msg.id} protocol=\{transport.protocol()}",
       )
-      mark_pending_message_sent(
+      mark_pending_message_attempted(
         pending_msg.id,
         target_peer_id,
         transport.protocol(),
-        required_protocols,
       )
       |> ignore
     } else if target_connections.length() > 0 {
