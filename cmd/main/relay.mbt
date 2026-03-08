@@ -1,22 +1,4 @@
 ///|
-pub fn can_direct_connect(peer_id : String) -> Bool {
-  let conns = get_global_connection_manager().get_peer_connections(peer_id)
-  if conns.is_empty() {
-    return false
-  }
-  match get_global_peer_manager().get_peer(peer_id) {
-    Some(peer) =>
-      for addr in peer.addresses {
-        if addr != "routed" && !addr.is_empty() {
-          return true
-        }
-      }
-    None => ()
-  }
-  false
-}
-
-///|
 let message_timeout_ms : UInt = 30000
 
 ///|

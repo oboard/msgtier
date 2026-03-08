@@ -1578,7 +1578,7 @@ async fn send_response_message_direct(
 }
 
 ///|
-pub fn handle_data_response(
+fn handle_data_response(
   correlation_id : String,
   response_data : @msgpack.Value,
   attachment : Bytes?,

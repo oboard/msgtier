@@ -1,6 +1,6 @@
 ///|
 pub struct PendingEntry {
-  mut msg : Message
+  msg : Message
   sent_targets : Map[String, Map[String, Bool]] // PeerID -> Protocol -> Sent
   retry_count : Int
   last_attempt : UInt64
@@ -35,7 +35,7 @@ fn make_send_key(
 }
 
 ///|
-pub fn should_send_message(
+fn should_send_message(
   msg_id : String,
   peer_id : String,
   protocol : String,
@@ -50,7 +50,7 @@ pub fn should_send_message(
 }
 
 ///|
-pub fn record_message_sent(
+fn record_message_sent(
   msg_id : String,
   peer_id : String,
   protocol : String,
@@ -74,7 +74,7 @@ fn clear_message_send_state(msg_id : String) -> Unit {
 }
 
 ///|
-pub fn add_pending_message(msg : Message) -> Unit {
+fn add_pending_message(msg : Message) -> Unit {
   let messages = global_pending_messages
   if msg.kind == "sync" {
     messages.retain(fn(entry) {
@@ -92,7 +92,7 @@ pub fn add_pending_message(msg : Message) -> Unit {
 }
 
 ///|
-pub fn take_pending_messages(
+fn take_pending_messages(
   predicate : (PendingEntry) -> Bool,
 ) -> Array[PendingEntry] {
   let messages = global_pending_messages
@@ -121,12 +121,12 @@ pub fn take_pending_messages(
 }
 
 ///|
-pub fn remove_pending_message(message : Message) -> Bool {
+fn remove_pending_message(message : Message) -> Bool {
   remove_pending_message_by_id(message.id)
 }
 
 ///|
-pub fn remove_pending_message_by_id(id : String) -> Bool {
+fn remove_pending_message_by_id(id : String) -> Bool {
   let len_before = global_pending_messages.length()
   global_pending_messages.retain(entry => entry.msg.id != id)
   let len_after = global_pending_messages.length()
@@ -138,50 +138,7 @@ pub fn remove_pending_message_by_id(id : String) -> Bool {
 }
 
 ///|
-pub fn mark_pending_message_sent(
-  msg_id : String,
-  peer_id : String,
-  protocol : String,
-  required_protocols : Array[String],
-) -> Bool {
-  let messages = global_pending_messages
-  for i = 0; i < messages.length(); i = i + 1 {
-    let entry = messages[i]
-    if entry.msg.id == msg_id {
-      let target_protocols = match entry.sent_targets.get(peer_id) {
-        Some(m) => m
-        None => {
-          let m = {}
-          entry.sent_targets[peer_id] = m
-          m
-        }
-      }
-      target_protocols[protocol] = true
-
-      if entry.msg.is_broadcast() {
-        return false
-      }
-      let mut all_sent = true
-      for req in required_protocols {
-        if !target_protocols.contains(req) {
-          all_sent = false
-          break
-        }
-      }
-      if all_sent {
-        messages.remove(i) |> ignore
-        clear_message_send_state(msg_id)
-        notify_pending_changed()
-        return true
-      }
-      return false
-    }
-  }
-  false
-}
-
-///|
-pub fn mark_pending_message_attempted(
+fn mark_pending_message_attempted(
   msg_id : String,
   peer_id : String,
   protocol : String,
@@ -206,20 +163,12 @@ pub fn mark_pending_message_attempted(
 }
 
 ///|
-pub fn clear_pending_messages() -> Unit {
-  if !global_pending_messages.is_empty() {
-    global_pending_messages.clear()
-    notify_pending_changed()
-  }
-}
-
-///|
-pub fn get_pending_generation() -> Int {
+fn get_pending_generation() -> Int {
   global_pending_generation.val
 }
 
 ///|
-pub async fn wait_for_pending_change(
+async fn wait_for_pending_change(
   last_generation : Int,
   timeout_ms : Int,
 ) -> Int {
@@ -237,7 +186,7 @@ pub async fn wait_for_pending_change(
 }
 
 ///|
-pub fn is_pending_message(id : String) -> Bool {
+fn is_pending_message(id : String) -> Bool {
   for entry in global_pending_messages {
     if entry.msg.id == id {
       return true
@@ -247,19 +196,7 @@ pub fn is_pending_message(id : String) -> Bool {
 }
 
 ///|
-pub fn set_pending_message_broadcast(id : String) -> Unit {
-  let messages = global_pending_messages
-  for i = 0; i < messages.length(); i = i + 1 {
-    if messages[i].msg.id == id {
-      messages[i].msg = { ..messages[i].msg, target_id: None }
-      notify_pending_changed()
-      break
-    }
-  }
-}
-
-///|
-pub fn mark_pending_message_acked(msg_id : String, peer_id : String) -> Unit {
+fn mark_pending_message_acked(msg_id : String, peer_id : String) -> Unit {
   let messages = global_pending_messages
   let mut idx_to_remove = -1
   for i = 0; i < messages.length(); i = i + 1 {
@@ -286,7 +223,7 @@ pub fn mark_pending_message_acked(msg_id : String, peer_id : String) -> Unit {
 }
 
 ///|
-pub fn update_pending_message_state(
+fn update_pending_message_state(
   msg_id : String,
   retry_count : Int,
   last_attempt : UInt64,

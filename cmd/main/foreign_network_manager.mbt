@@ -16,32 +16,9 @@ fn ForeignNetworkManager::new(relay_bps_limit? : Int) -> ForeignNetworkManager {
 }
 
 ///|
-pub fn ForeignNetworkManager::wrap_packet(
-  _self : ForeignNetworkManager,
-  target_network : String,
-  target_peer_id : String,
-  payload : Bytes,
-) -> ForeignNetworkPacket {
-  { target_network, target_peer_id, payload }
-}
-
-///|
-pub fn ForeignNetworkManager::unwrap_packet(
-  _self : ForeignNetworkManager,
-  packet : ForeignNetworkPacket,
-) -> (String, String, Bytes) {
-  (packet.target_network, packet.target_peer_id, packet.payload)
-}
-
-///|
 let global_foreign_network_manager : Ref[ForeignNetworkManager] = Ref::new(
   ForeignNetworkManager::new(),
 )
-
-///|
-pub fn get_global_foreign_network_manager() -> ForeignNetworkManager {
-  global_foreign_network_manager.val
-}
 
 ///|
 fn init_foreign_network_manager() -> Unit {

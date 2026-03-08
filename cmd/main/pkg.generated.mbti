@@ -6,18 +6,11 @@ import {
   "moonbitlang/async/io",
   "moonbitlang/async/socket",
   "moonbitlang/core/json",
-  "oboard/msgtier/msgpack",
   "oboard/msgtier/quic",
 }
 
 // Values
-pub fn add_pending_message(Message) -> Unit
-
 pub fn bytes_to_hex(Bytes) -> String
-
-pub fn can_direct_connect(String) -> Bool
-
-pub fn clear_pending_messages() -> Unit
 
 pub fn compute_message_key(String) -> Bytes
 
@@ -25,51 +18,23 @@ pub fn decrypt_with_message_key(String, Bytes) -> Bytes?
 
 pub fn encrypt_with_message_key(String, Bytes) -> Bytes
 
-pub fn get_global_foreign_network_manager() -> ForeignNetworkManager
-
 pub async fn get_object(String) -> Bytes?
 
 pub async fn get_object_path(String) -> String?
 
-pub fn get_pending_generation() -> Int
-
 pub fn get_runtime_tmp_dir() -> String
-
-pub fn handle_data_response(String, @msgpack.Value, Bytes?, String) -> Unit
 
 pub fn has_object(String) -> Bool
 
 pub fn hash_secret(String) -> Bytes
 
-pub fn is_pending_message(String) -> Bool
-
-pub fn mark_pending_message_acked(String, String) -> Unit
-
-pub fn mark_pending_message_attempted(String, String, String) -> Bool
-
-pub fn mark_pending_message_sent(String, String, String, Array[String]) -> Bool
-
-pub fn record_message_sent(String, String, String) -> Unit
-
 pub fn register_object(String, id? : String) -> String
 
 pub async fn relay_message(&Transport, String, Message, String, allow_queueing? : Bool) -> Bool noraise
 
-pub fn remove_pending_message(Message) -> Bool
-
 pub async fn save_object(String, Bytes) -> Unit
 
 pub async fn save_object_from_reader(String, &@io.Reader) -> Unit
-
-pub fn set_pending_message_broadcast(String) -> Unit
-
-pub fn should_send_message(String, String, String, UInt64) -> Bool
-
-pub fn take_pending_messages((PendingEntry) -> Bool) -> Array[PendingEntry]
-
-pub fn update_pending_message_state(String, Int, UInt64) -> Unit
-
-pub async fn wait_for_pending_change(Int, Int) -> Int
 
 // Errors
 type AddressParseError
@@ -117,8 +82,6 @@ type ConnectionManager
 pub impl Show for ConnectionManager
 
 type ForeignNetworkManager
-pub fn ForeignNetworkManager::unwrap_packet(Self, ForeignNetworkPacket) -> (String, String, Bytes)
-pub fn ForeignNetworkManager::wrap_packet(Self, String, String, Bytes) -> ForeignNetworkPacket
 pub impl Show for ForeignNetworkManager
 
 type ForeignNetworkPacket
@@ -180,7 +143,7 @@ pub impl ToJson for PeerNodeStatus
 pub impl @json.FromJson for PeerNodeStatus
 
 pub struct PendingEntry {
-  mut msg : Message
+  msg : Message
   sent_targets : Map[String, Map[String, Bool]]
   retry_count : Int
   last_attempt : UInt64

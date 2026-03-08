@@ -21,11 +21,93 @@ let last_emitted_ids : Ref[Map[String, UInt64]] = Ref::new({})
 let last_emitted_order : Ref[Array[String]] = Ref::new([])
 
 ///|
+let chat_db_file : Ref[String] = Ref::new("")
+
+///|
+let chat_engine : Ref[@sqlite3.SQLiteEngine?] = Ref::new(None)
+
+///|
+let chat_mapper : Ref[@db.MessageMapperImpl?] = Ref::new(None)
+
+///|
+fn is_persistable_chat_kind(kind : String) -> Bool {
+  kind == "text" || kind == "file" || kind == "image" || kind == "video"
+}
+
+///|
+async fn init_chat_store() -> Unit {
+  let db_dir = @fs.tmpdir(prefix="msgtier")
+
+  if !@fs.exists(db_dir) {
+    @fs.mkdir(db_dir, permission=0o755)
+  }
+
+  let db_file = db_dir + "/chat.sqlite3"
+  chat_db_file.val = db_file
+  try {
+    let engine = @sqlite3.SQLiteEngine::open(db_file)
+    @morm.auto_migrate(engine, [@db.Message::table()])
+    let mapper = @db.MessageMapperImpl::new(engine)
+    chat_mapper.val = Some(mapper)
+    chat_engine.val = Some(engine)
+  } catch {
+    e => log_warn("Failed to initialize chat store: \{e}")
+  }
+}
+
+///|
+async fn persist_chat_message(msg : Message) -> Unit {
+  if !is_persistable_chat_kind(msg.kind) {
+    return
+  }
+  if chat_mapper.val is Some(mapper) {
+    ignore(
+      mapper.save(@db.Message::{
+        id: msg.id,
+        source_id: msg.source_id,
+        target_id: msg.target_id,
+        kind: msg.kind,
+        content: msg.body.to_json().stringify(),
+        timestamp: msg.timestamp.to_string(),
+      }),
+    ) catch {
+      e => log_warn("Failed to persist chat message \{msg.id}: \{e}")
+    }
+  }
+}
+
+///|
+async fn list_chat_messages_json() -> Json {
+  match chat_mapper.val {
+    Some(mapper) =>
+      mapper.find_all().map(fn(m) { m.to_json() }).to_json() catch {
+        e => {
+          log_warn("Failed to load chat messages: \{e}")
+          let empty : Array[Json] = []
+          empty.to_json()
+        }
+      }
+    None => {
+      let empty : Array[Json] = []
+      empty.to_json()
+    }
+  }
+}
+
+///|
+async fn chat_messages_handler(conn : @http.ServerConnection) -> Unit {
+  let body = list_chat_messages_json().stringify()
+  conn
+  ..send_response(200, "OK", extra_headers={
+    "Content-Type": "application/json",
+  })
+  ..write(body)
+  .end_response()
+}
+
+///|
 async fn emit_ws_message(msg : Message) -> Unit {
-  if msg.kind != "text" &&
-    msg.kind != "file" &&
-    msg.kind != "image" &&
-    msg.kind != "video" {
+  if !is_persistable_chat_kind(msg.kind) {
     return
   }
 
@@ -291,17 +373,6 @@ async fn handle_object_registration(
     "Content-Type": "application/json",
   })
   ..write(resp_json)
-  .end_response()
-}
-
-///|
-async fn chat_messages_handler(conn : @http.ServerConnection) -> Unit {
-  let body = list_chat_messages_json().stringify()
-  conn
-  ..send_response(200, "OK", extra_headers={
-    "Content-Type": "application/json",
-  })
-  ..write(body)
   .end_response()
 }
 
