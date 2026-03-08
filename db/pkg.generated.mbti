@@ -20,6 +20,7 @@ pub(all) struct Message {
   content : String
   timestamp : String
 }
+pub fn Message::from_row(Json) -> Self
 pub fn Message::table() -> @morm.Table
 pub impl ToJson for Message
 pub impl @json.FromJson for Message

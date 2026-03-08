@@ -285,6 +285,9 @@ fn handle_text_message(ctx : MessageContext) -> Unit {
 fn handle_response_message(ctx : MessageContext) -> Unit {
   match ctx.msg.payload {
     Some(correlation_id) => {
+      log_debug(
+        "ResponseMessage: recv msg_id=\{ctx.msg.id} correlation=\{correlation_id} from=\{ctx.msg.source_id}",
+      )
       let final_data = match ctx.msg.body {
         Binary(raw) => decode_binary_payload(raw)
         _ => ctx.msg.body
@@ -295,10 +298,11 @@ fn handle_response_message(ctx : MessageContext) -> Unit {
         ctx.msg.attachment,
         ctx.msg.source_id,
       )
+      ignore(remove_pending_message_by_id(correlation_id))
     }
     None =>
       log_warn(
-        "Response message missing payload correlation id from \{ctx.msg.source_id}",
+        "Response message missing payload correlation id from \{ctx.msg.source_id}, msg_id=\{ctx.msg.id}",
       )
   }
 }

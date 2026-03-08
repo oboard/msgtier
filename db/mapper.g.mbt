@@ -13,7 +13,7 @@ pub impl MessageMapper for MessageMapperImpl with save(self, entity : Message) -
   let q = @morm.upsert_into("message").from(entity)
   let res = @engine.exec_query(self.engine, q)
   if res.rows is [result, ..] {
-    return (try! @json.from_json(result) : Message)
+    return Message::from_row(result)
   }
   panic()
 }
@@ -23,9 +23,5 @@ pub impl MessageMapper for MessageMapperImpl with find_all(self) -> FixedArray[
   Message,
 ] {
   let q = @morm.select_from("message")
-  @engine.exec_query(self.engine, q).rows.map(row => {
-    @json.from_json(row) catch {
-      _ => panic()
-    }
-  })
+  @engine.exec_query(self.engine, q).rows.map(row => Message::from_row(row))
 }

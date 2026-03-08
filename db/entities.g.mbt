@@ -22,6 +22,7 @@ pub fn Message::table() -> @morm.Table {
         charset: None,
         collation: None,
         default_value: None,
+        engine_options: [],
       },
       {
         name: "source_id",
@@ -35,6 +36,7 @@ pub fn Message::table() -> @morm.Table {
         charset: None,
         collation: None,
         default_value: None,
+        engine_options: [],
       },
       {
         name: "target_id",
@@ -48,6 +50,7 @@ pub fn Message::table() -> @morm.Table {
         charset: None,
         collation: None,
         default_value: None,
+        engine_options: [],
       },
       {
         name: "kind",
@@ -61,6 +64,7 @@ pub fn Message::table() -> @morm.Table {
         charset: None,
         collation: None,
         default_value: None,
+        engine_options: [],
       },
       {
         name: "content",
@@ -74,6 +78,7 @@ pub fn Message::table() -> @morm.Table {
         charset: None,
         collation: None,
         default_value: None,
+        engine_options: [],
       },
       {
         name: "timestamp",
@@ -87,6 +92,7 @@ pub fn Message::table() -> @morm.Table {
         charset: None,
         collation: None,
         default_value: None,
+        engine_options: [],
       },
     ],
     indexes: [],
@@ -101,4 +107,59 @@ pub fn Message::table() -> @morm.Table {
     auto_increment: None,
     engine_options: [],
   }
+}
+
+///|
+pub fn Message::from_row(row : Json) -> Message {
+  if row is Object(obj) {
+    let id_json = match obj.get("id") {
+      Some(value) => value
+      None => panic()
+    }
+    let id : String = (
+      try! @engine.from_param(@engine.param_from_json_value(id_json)) : String)
+    let source_id_json = match obj.get("source_id") {
+      Some(value) => value
+      None => panic()
+    }
+    let source_id : String = (
+      try! @engine.from_param(@engine.param_from_json_value(source_id_json)) :
+      String)
+    let target_id_json = match obj.get("target_id") {
+      Some(value) => value
+      None => panic()
+    }
+    let target_id : String? = match target_id_json {
+      Null => None
+      _ =>
+        Some(
+          (
+            try! @engine.from_param(
+              @engine.param_from_json_value(target_id_json),
+            ) : String),
+        )
+    }
+    let kind_json = match obj.get("kind") {
+      Some(value) => value
+      None => panic()
+    }
+    let kind : String = (
+      try! @engine.from_param(@engine.param_from_json_value(kind_json)) : String)
+    let content_json = match obj.get("content") {
+      Some(value) => value
+      None => panic()
+    }
+    let content : String = (
+      try! @engine.from_param(@engine.param_from_json_value(content_json)) :
+      String)
+    let timestamp_json = match obj.get("timestamp") {
+      Some(value) => value
+      None => panic()
+    }
+    let timestamp : String = (
+      try! @engine.from_param(@engine.param_from_json_value(timestamp_json)) :
+      String)
+    return Message::{ id, source_id, target_id, kind, content, timestamp }
+  }
+  panic()
 }

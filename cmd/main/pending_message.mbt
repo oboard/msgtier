@@ -126,7 +126,7 @@ pub fn remove_pending_message(message : Message) -> Bool {
 }
 
 ///|
-fn remove_pending_message_by_id(id : String) -> Bool {
+pub fn remove_pending_message_by_id(id : String) -> Bool {
   let len_before = global_pending_messages.length()
   global_pending_messages.retain(entry => entry.msg.id != id)
   let len_after = global_pending_messages.length()
@@ -267,7 +267,12 @@ pub fn mark_pending_message_acked(msg_id : String, peer_id : String) -> Unit {
     if entry.msg.id == msg_id {
       entry.acked_peers[peer_id] = true
       match entry.msg.target_id {
-        Some(tid) => if tid == peer_id { idx_to_remove = i }
+        Some(tid) =>
+          // ACK only confirms receipt. For request/response messages (payload present),
+          // keep pending until actual response or timeout.
+          if tid == peer_id && entry.msg.payload is None {
+            idx_to_remove = i
+          }
         None => ()
       }
       break

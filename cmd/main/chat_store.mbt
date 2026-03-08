@@ -27,7 +27,7 @@ async fn init_chat_store() -> Unit {
   let db_file = db_dir + "/chat.sqlite3"
   chat_db_file.val = db_file
   try {
-    let conn = @sqlite3_engine.Connection::open(db_file)
+    let conn = @sqlite3.Connection::open(db_file)
     defer (conn.close() catch { _ => () })
     let stmt = conn.prepare(
       "CREATE TABLE IF NOT EXISTS message (" +
@@ -58,7 +58,7 @@ fn persist_chat_message(msg : Message) -> Unit {
   }
 
   try {
-    let conn = @sqlite3_engine.Connection::open(db_file)
+    let conn = @sqlite3.Connection::open(db_file)
     defer (conn.close() catch { _ => () })
     let stmt = conn.prepare(
       "INSERT OR REPLACE INTO message " +
@@ -91,7 +91,7 @@ fn list_chat_messages_json() -> Json {
 
   try {
     let items : Array[Json] = []
-    let conn = @sqlite3_engine.Connection::open(db_file)
+    let conn = @sqlite3.Connection::open(db_file)
     defer (conn.close() catch { _ => () })
     let stmt = conn.prepare(
       "SELECT id, source_id, target_id, kind, content, timestamp " +
@@ -104,8 +104,7 @@ fn list_chat_messages_json() -> Json {
         break
       }
       let content : String = stmt.column(index=4)
-      let target_id = if stmt.column_type(index=2) ==
-        @sqlite3_engine.SQLITE_NULL {
+      let target_id = if stmt.column_type(index=2) == @sqlite3.SQLITE_NULL {
         None
       } else {
         Some(stmt.column(index=2))

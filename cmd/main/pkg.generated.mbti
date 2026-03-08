@@ -45,6 +45,8 @@ pub fn is_pending_message(String) -> Bool
 
 pub fn mark_pending_message_acked(String, String) -> Unit
 
+pub fn mark_pending_message_attempted(String, String, String) -> Bool
+
 pub fn mark_pending_message_sent(String, String, String, Array[String]) -> Bool
 
 pub fn record_message_sent(String, String, String) -> Unit

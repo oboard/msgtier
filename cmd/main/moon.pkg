@@ -26,7 +26,7 @@ import {
   "moonbitlang/async/aqueue",
   "moonbitlang/x/crypto",
   "oboard/msgtier/db",
-  "oboard/morm/sqlite3_engine",
+  "oboard/morm/engine/sqlite3",
 }
 
 options(
