@@ -83,17 +83,12 @@ fn register_core_handlers(dispatcher : MessageDispatcher) -> Unit {
 }
 
 ///|
-fn normalize_sender_addr(ctx : MessageContext) -> String {
-  if ctx.sender_addr.contains("://") {
-    ctx.sender_addr
-  } else {
-    ctx.transport.protocol() + "://" + ctx.sender_addr
+fn handle_hello_message(ctx : MessageContext) -> Unit {
+  let msg = ctx.msg
+  if ctx.should_skip_hello_callback {
+    return
   }
-}
-
-///|
-fn verify_peer_secret(msg : Message) -> Bool {
-  match global_config.val {
+  let secret_valid = match global_config.val {
     Some(config) => {
       let our_secret_hash = bytes_to_hex(hash_secret(config.secret))
       match msg.secret_hash {
@@ -116,13 +111,11 @@ fn verify_peer_secret(msg : Message) -> Bool {
     }
     None => true
   }
-}
+  if !secret_valid {
+    return
+  }
 
-///|
-fn ensure_peer_exists_from_hello(ctx : MessageContext) -> Unit {
-  let msg = ctx.msg
   match get_global_peer_manager().get_peer(msg.source_id) {
-    Some(_) => ()
     None => {
       let peer_node = PeerNode::new(
         id=msg.source_id,
@@ -132,128 +125,93 @@ fn ensure_peer_exists_from_hello(ctx : MessageContext) -> Unit {
       )
       global_state.peer_manager = global_state.peer_manager.add_peer(peer_node)
     }
+    Some(_) => ()
   }
-}
 
-///|
-fn collect_sender_addrs_from_hello(
-  msg : Message,
-  local_addr : String,
-) -> Array[String] {
-  let sender_addrs : Array[String] = []
   if msg.peers is Some(peer_addrs) {
+    let sender_addrs : Array[String] = []
     for peer_addr_obj in peer_addrs {
       let peer_url = peer_addr_obj.address
-      if !is_bind_all_address(peer_url) && peer_url != local_addr {
+      if !is_bind_all_address(peer_url) && peer_url != ctx.local_addr {
         add_known_peer(peer_url)
         sender_addrs.push(peer_url)
       }
     }
-  }
-  sender_addrs
-}
-
-///|
-fn try_probe_sender_addrs(
-  ctx : MessageContext,
-  sender_addrs : Array[String],
-) -> Unit {
-  if sender_addrs.is_empty() {
-    return
-  }
-  for transport in get_registered_transports() {
-    if has_direct_connection_for_protocol(
-        ctx.msg.source_id,
-        transport.protocol(),
-        transport.protocol_type(),
-      ) {
-      continue
-    }
-    let local_addr = transport.protocol() + "://" + transport.local_addr()
-    let our_addresses = get_our_addresses(local_addr)
-    let hello_msg = create_hello_message(
-      get_config().id,
-      local_addr,
-      1,
-      peers=our_addresses,
-    )
-    for peer_url in sender_addrs {
-      let mut parsed : Address? = None
-      try {
-        parsed = Some(Address::parse(peer_url))
-      } catch {
-        _ => ()
-      }
-      match parsed {
-        Some(addr) =>
-          if addr.protocol == transport.protocol_type() {
-            ctx.root.spawn_bg(async fn() {
-              ignore(send_message(transport, peer_url, hello_msg))
-            })
-            break
+    if !sender_addrs.is_empty() {
+      for transport in get_registered_transports() {
+        if has_direct_connection_for_protocol(
+            msg.source_id,
+            transport.protocol(),
+            transport.protocol_type(),
+          ) {
+          continue
+        }
+        let local_addr = transport.protocol() + "://" + transport.local_addr()
+        let our_addresses = get_our_addresses(local_addr)
+        let hello_msg = create_hello_message(
+          get_config().id,
+          local_addr,
+          1,
+          peers=our_addresses,
+        )
+        for peer_url in sender_addrs {
+          let mut parsed : Address? = None
+          try {
+            parsed = Some(Address::parse(peer_url))
+          } catch {
+            _ => ()
           }
-        None => ()
+          match parsed {
+            Some(addr) =>
+              if addr.protocol == transport.protocol_type() {
+                ctx.root.spawn_bg(async fn() {
+                  ignore(send_message(transport, peer_url, hello_msg))
+                })
+                break
+              }
+            None => ()
+          }
+        }
       }
     }
   }
-}
-
-///|
-fn collect_rebroadcast_targets(ctx : MessageContext) -> Map[String, String] {
-  let known_peers = get_all_known_peers()
-  let targets : Map[String, String] = {}
-  for peer_url in known_peers {
-    if peer_url == ctx.sender_addr || is_bind_all_address(peer_url) {
-      continue
-    }
-    let peer_id_opt = get_global_peer_manager().get_peer_id_by_address(peer_url)
-    let mut parsed : Address? = None
-    try {
-      parsed = Some(Address::parse(peer_url))
-    } catch {
-      _ => ()
-    }
-    match parsed {
-      Some(a) =>
-        if a.protocol == ctx.transport.protocol_type() {
-          let key = match peer_id_opt {
-            Some(pid) =>
-              pid + "|" + a.protocol.to_string() + "|" + a.port.to_string()
-            None => peer_url
-          }
-          match targets.get(key) {
-            Some(_) => ()
-            None => targets[key] = peer_url
-          }
-        }
-      None =>
-        match targets.get(peer_url) {
-          Some(_) => ()
-          None => targets[peer_url] = peer_url
-        }
-    }
-  }
-  targets
-}
-
-///|
-fn handle_hello_message(ctx : MessageContext) -> Unit {
-  let msg = ctx.msg
-  if ctx.should_skip_hello_callback {
-    return
-  }
-  if !verify_peer_secret(msg) {
-    return
-  }
-
-  ensure_peer_exists_from_hello(ctx)
-
-  let sender_addrs = collect_sender_addrs_from_hello(msg, ctx.local_addr)
-  try_probe_sender_addrs(ctx, sender_addrs)
 
   if should_rebroadcast_hello(msg.source_id) {
     record_hello_time(msg.source_id)
-    let targets = collect_rebroadcast_targets(ctx)
+    let known_peers = get_all_known_peers()
+    let targets : Map[String, String] = {}
+    for peer_url in known_peers {
+      if peer_url != ctx.sender_addr && !is_bind_all_address(peer_url) {
+        let peer_id_opt = get_global_peer_manager().get_peer_id_by_address(
+          peer_url,
+        )
+        let mut parsed : Address? = None
+        try {
+          parsed = Some(Address::parse(peer_url))
+        } catch {
+          _ => ()
+        }
+        match parsed {
+          Some(a) =>
+            if a.protocol == ctx.transport.protocol_type() {
+              let key = match peer_id_opt {
+                Some(pid) =>
+                  pid + "|" + a.protocol.to_string() + "|" + a.port.to_string()
+                None => peer_url
+              }
+              match targets.get(key) {
+                Some(_) => ()
+                None => targets[key] = peer_url
+              }
+            }
+          None =>
+            match targets.get(peer_url) {
+              Some(_) => ()
+              None => targets[peer_url] = peer_url
+            }
+        }
+      }
+    }
     for _, peer_url in targets {
       ctx.root.spawn_bg(async fn() {
         ignore(send_message(ctx.transport, peer_url, msg))
@@ -285,9 +243,6 @@ fn handle_text_message(ctx : MessageContext) -> Unit {
 fn handle_response_message(ctx : MessageContext) -> Unit {
   match ctx.msg.payload {
     Some(correlation_id) => {
-      log_debug(
-        "ResponseMessage: recv msg_id=\{ctx.msg.id} correlation=\{correlation_id} from=\{ctx.msg.source_id}",
-      )
       let final_data = match ctx.msg.body {
         Binary(raw) => decode_binary_payload(raw)
         _ => ctx.msg.body
@@ -298,11 +253,10 @@ fn handle_response_message(ctx : MessageContext) -> Unit {
         ctx.msg.attachment,
         ctx.msg.source_id,
       )
-      ignore(remove_pending_message_by_id(correlation_id))
     }
     None =>
       log_warn(
-        "Response message missing payload correlation id from \{ctx.msg.source_id}, msg_id=\{ctx.msg.id}",
+        "Response message missing payload correlation id from \{ctx.msg.source_id}",
       )
   }
 }
@@ -330,7 +284,11 @@ fn handle_pong_message(ctx : MessageContext) -> Unit {
     "DEBUG: pong recv protocol=\{ctx.transport.protocol()} from=\{ctx.sender_addr} peer=\{peer_id}",
   )
   let peer_conns = get_global_connection_manager().get_peer_connections(peer_id)
-  let addr_key = normalize_sender_addr(ctx)
+  let addr_key = if ctx.sender_addr.contains("://") {
+    ctx.sender_addr
+  } else {
+    ctx.transport.protocol() + "://" + ctx.sender_addr
+  }
   for conn in peer_conns {
     let current_time = @env.now()
     match conn.last_ping_time {
@@ -368,68 +326,11 @@ fn handle_ack_message(ctx : MessageContext) -> Unit {
 }
 
 ///|
-fn connection_to_peer_info(conn : Connection) -> PeerConnectionInfo {
-  PeerConnectionInfo::{
-    peer_id: conn.peer_id,
-    latency_ms: conn.latency_ms,
-    bandwidth_mbps: conn.bandwidth_mbps,
-    packet_loss_rate: conn.packet_loss_rate,
-    id: conn.id,
-    ports: conn.ports,
-    last_seen: conn.last_seen,
-    quality: conn.quality,
-    relay: conn.relay,
-    metadata: conn.metadata,
-    latency_history: conn.latency_history,
-    packets_sent: conn.packets_sent,
-    packets_lost: conn.packets_lost,
-    bytes_sent: conn.bytes_sent,
-    bytes_received: conn.bytes_received,
-    last_ping_time: conn.last_ping_time,
-    nat_type: conn.nat_type,
-  }
-}
-
-///|
-fn ensure_route_and_peer(
-  my_id : String,
-  source_id : String,
-  conn : Connection,
-) -> Unit {
-  let peer_id = conn.peer_id
-  if peer_id == my_id {
-    return
-  }
-  let new_hops = conn.relay + 1
-  log_debug(
-    "DEBUG: update_route target=\{peer_id} via=\{source_id} hops=\{new_hops}",
-  )
-  global_state.peer_manager = global_state.peer_manager.update_route(
-    peer_id, source_id, new_hops,
-  )
-
-  match get_global_peer_manager().get_peer(peer_id) {
-    Some(_) => ()
-    None => {
-      let peer_node = PeerNode::new(
-        id=peer_id,
-        version=conn.version,
-        addresses=[],
-        metadata={},
-      )
-      global_state.peer_manager = global_state.peer_manager.add_peer(peer_node)
-    }
-  }
-}
-
-///|
 fn handle_sync_message(ctx : MessageContext) -> Unit {
   let msg = ctx.msg
   match msg.body {
     Array(conn_entries) => {
       let sender_connections : Array[PeerConnectionInfo] = []
-      let mut source_metadata : Map[String, String]? = None
-
       if msg.peers is Some(peer_addrs) {
         let known_list : Array[String] = []
         for peer_addr_obj in peer_addrs {
@@ -443,41 +344,67 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
       for entry in conn_entries {
         match Connection::from_msgpack(entry) {
           Some(conn) => {
+            let peer_id = conn.peer_id
+            let relay_depth = conn.relay
             log_debug(
-              "DEBUG: sync entry peer=\{conn.peer_id} relay=\{conn.relay} source=\{msg.source_id}",
+              "DEBUG: sync entry peer=\{peer_id} relay=\{relay_depth} source=\{msg.source_id}",
             )
+            if relay_depth == 1 && peer_id != msg.source_id {
+              sender_connections.push(PeerConnectionInfo::{
+                peer_id,
+                latency_ms: conn.latency_ms,
+                bandwidth_mbps: conn.bandwidth_mbps,
+                packet_loss_rate: conn.packet_loss_rate,
+                id: conn.id,
+                ports: conn.ports,
+                last_seen: conn.last_seen,
+                quality: conn.quality,
+                relay: conn.relay,
+                metadata: conn.metadata,
+                latency_history: conn.latency_history,
+                packets_sent: conn.packets_sent,
+                packets_lost: conn.packets_lost,
+                bytes_sent: conn.bytes_sent,
+                bytes_received: conn.bytes_received,
+                last_ping_time: conn.last_ping_time,
+                nat_type: conn.nat_type,
+              })
+            }
+            if peer_id != ctx.my_id {
+              let new_hops = relay_depth + 1
+              log_debug(
+                "DEBUG: update_route target=\{peer_id} via=\{msg.source_id} hops=\{new_hops}",
+              )
+              global_state.peer_manager = global_state.peer_manager.update_route(
+                peer_id,
+                msg.source_id,
+                new_hops,
+              )
 
-            if source_metadata is None {
-              match conn.metadata {
-                Some(metadata) => source_metadata = Some(metadata)
-                None => ()
+              match get_global_peer_manager().get_peer(peer_id) {
+                None => {
+                  let peer_node = PeerNode::new(
+                    id=peer_id,
+                    version=conn.version,
+                    addresses=[],
+                    metadata={},
+                  )
+                  global_state.peer_manager = global_state.peer_manager.add_peer(
+                    peer_node,
+                  )
+                }
+                Some(_) => ()
               }
             }
-
-            if conn.relay == 1 && conn.peer_id != msg.source_id {
-              sender_connections.push(connection_to_peer_info(conn))
-            }
-
-            ensure_route_and_peer(ctx.my_id, msg.source_id, conn)
           }
           None => ()
         }
       }
-
       if !sender_connections.is_empty() {
         global_state.peer_manager = global_state.peer_manager.update_peer_connections(
           msg.source_id,
           sender_connections,
         )
-      }
-
-      match source_metadata {
-        Some(metadata) =>
-          global_state.peer_manager = global_state.peer_manager.update_peer_metadata(
-            msg.source_id,
-            metadata,
-          )
-        None => ()
       }
     }
     _ => ()

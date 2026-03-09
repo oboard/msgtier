@@ -9,7 +9,7 @@
     "gmlewis/io": "0.23.2"
   },
   "bin-deps": {
-    "oboard/morm": "0.2.8"
+    "oboard/morm": "0.2.9"
   },
   "readme": "README.mbt.md",
   "repository": "",
