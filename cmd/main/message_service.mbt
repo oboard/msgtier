@@ -114,6 +114,7 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
   // Create a message that includes all current connections of this node
   let all_conns = get_global_connection_manager().get_all_connections()
   let connections_data : Array[@msgpack.Value] = []
+  let local_metadata = get_local_node_metadata()
 
   // Include direct connections (hops=1)
   for conn in all_conns {
@@ -124,6 +125,7 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
       ..conn,
       bandwidth_mbps,
       packet_loss_rate,
+      metadata: Some(local_metadata),
       version: conn.version,
     }
     let conn_val = updated_conn.to_msgpack()

@@ -331,6 +331,7 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
   match msg.body {
     Array(conn_entries) => {
       let sender_connections : Array[PeerConnectionInfo] = []
+      let sender_metadata : Ref[Map[String, String]?] = Ref::new(None)
       if msg.peers is Some(peer_addrs) {
         let known_list : Array[String] = []
         for peer_addr_obj in peer_addrs {
@@ -346,6 +347,10 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
           Some(conn) => {
             let peer_id = conn.peer_id
             let relay_depth = conn.relay
+            match sender_metadata.val {
+              Some(_) => ()
+              None => sender_metadata.val = conn.metadata
+            }
             log_debug(
               "DEBUG: sync entry peer=\{peer_id} relay=\{relay_depth} source=\{msg.source_id}",
             )
@@ -398,6 +403,28 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
             }
           }
           None => ()
+        }
+      }
+      match get_global_peer_manager().get_peer(msg.source_id) {
+        Some(_) =>
+          match sender_metadata.val {
+            Some(metadata) =>
+              global_state.peer_manager = global_state.peer_manager.update_peer_metadata(
+                msg.source_id,
+                metadata,
+              )
+            None => ()
+          }
+        None => {
+          let peer_node = PeerNode::new(
+            id=msg.source_id,
+            version=msg.version.unwrap_or(VERSION),
+            addresses=if msg.source_addr is Some(addr) { [addr] } else { [] },
+            metadata=sender_metadata.val.unwrap_or({}),
+          )
+          global_state.peer_manager = global_state.peer_manager.add_peer(
+            peer_node,
+          )
         }
       }
       if !sender_connections.is_empty() {

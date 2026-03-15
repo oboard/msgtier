@@ -258,7 +258,7 @@ async fn handle_reconnects(
   let transport_protocol = transport.protocol()
   let transport_protocol_type = transport.protocol_type()
   let reconnect_interval = 5000 // Fixed interval: 5s
-  for {
+  for ;; {
     // Sleep with fixed interval
     @async.sleep(reconnect_interval)
 
@@ -698,7 +698,7 @@ async fn handle_pending_messages(
   let mut pending_generation = get_pending_generation()
 
   root.spawn_bg(async fn() {
-    for {
+    for ;; {
       let entry : PendingEntry = queue.get()
       // Spawn a new task for each message to avoid head-of-line blocking
       root.spawn_bg(async fn() {
@@ -712,7 +712,7 @@ async fn handle_pending_messages(
     }
   })
 
-  for {
+  for ;; {
     // Wake immediately for new messages, but still sweep periodically for retries/timeouts.
     pending_generation = wait_for_pending_change(pending_generation, 100)
     let now = @env.now()
@@ -751,7 +751,7 @@ async fn handle_heartbeat(
   log_debug(
     "DEBUG: handle_heartbeat start protocol=\{transport.protocol()} local=\{local_addr} from=\{from}",
   )
-  for {
+  for ;; {
     @async.sleep(heartbeat_interval)
     let current_time = @env.now()
     let all_peers = get_global_peer_manager().get_all_peers()
@@ -974,7 +974,7 @@ async fn handle_periodic_updates(my_id : String, local_addr : String) -> Unit {
   log_debug(
     "DEBUG: handle_periodic_updates start id=\{my_id} local=\{local_addr}",
   )
-  for {
+  for ;; {
     @async.sleep(update_interval)
     log_debug("DEBUG: periodic_updates tick id=\{my_id}")
     broadcast_sync(my_id, local_addr)
