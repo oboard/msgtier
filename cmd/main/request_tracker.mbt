@@ -116,7 +116,7 @@ fn push_stream_chunk(
         req.chunks[index] = data
         req.received = req.received + 1
       }
-      for {
+      for ;; {
         match req.chunks.get(req.next_index) {
           Some(chunk) => {
             req.queue.push(chunk)
@@ -209,7 +209,7 @@ async fn wait_stream_chunk(
   match global_stream_requests.val.get(id) {
     Some(req) => {
       let result = @async.with_timeout_opt(timeout_ms, async fn() {
-        for {
+        for ;; {
           match take_stream_chunk(id) {
             Some(chunk) => break chunk
             None => req.cond.wait()
@@ -246,7 +246,7 @@ async fn wait_for_response(
   match global_request_tracker.pending.get(id) {
     Some(req) => {
       let result = @async.with_timeout_opt(timeout_ms.reinterpret_as_int(), async fn() {
-        for {
+        for ;; {
           match req.response {
             Some(r) => break (r, req.headers)
             None => req.cond.wait()

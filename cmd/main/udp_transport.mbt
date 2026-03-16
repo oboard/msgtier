@@ -34,7 +34,7 @@ impl Transport for UdpTransport with listen(
   _on_disconnect,
 ) {
   let buf = FixedArray::make(65536, b'0')
-  for {
+  for ;; {
     try {
       let (n, sender) = self.server.recvfrom(buf)
       let bytes = buf.unsafe_reinterpret_as_bytes()[0:n].to_bytes()

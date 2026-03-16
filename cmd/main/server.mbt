@@ -1129,9 +1129,7 @@ async fn handle_incoming_message(
                 }
               }
               if idx != -1 {
-                sender_addr[:idx].to_string() catch {
-                  _ => sender_addr
-                }
+                sender_addr[:idx].to_string()
               } else {
                 sender_addr
               }

@@ -182,11 +182,12 @@ fn decompress_deflate_blocks_bytes(compressed : Bytes) -> Bytes raise {
     None => ()
   }
   let output = @io.Buffer::new()
-  let reader : &@io.ReadCloser = &@flate.Reader::new(input)
+  let reader = &@flate.Reader::new(input)
+  let closer : &@io.Closer = reader
   let (_, copy_err) = @io.copy(output, reader)
   match copy_err {
     Some(e) => {
-      let close_err = reader.close()
+      let close_err = closer.close()
       match close_err {
         Some(close_e) =>
           fail(
@@ -200,7 +201,7 @@ fn decompress_deflate_blocks_bytes(compressed : Bytes) -> Bytes raise {
     }
     None => ()
   }
-  let close_err = reader.close()
+  let close_err = closer.close()
   match close_err {
     Some(e) => fail("Deflate close failed: " + e.to_string())
     None => ()

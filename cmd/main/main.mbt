@@ -69,7 +69,7 @@ fn start_listener(
       let host = url.get_host()
       let scheme = url.scheme
       let _ : @async.Task[Unit] = root.spawn(async fn() {
-        for {
+        for ;; {
           try {
             log_info("Attempting to listen on \{listener}")
             let transport = create_transport(scheme, host)

@@ -71,7 +71,7 @@ impl Transport for WebSocketTransport with send(self, target, data) {
                   self.reader_started[target_key] = true
                   root.spawn_bg(async fn() {
                     try {
-                      for {
+                      for ;; {
                         let msg = wrapper.conn.recv()
                         match msg.kind {
                           Text => {
@@ -167,7 +167,7 @@ impl Transport for WebSocketTransport with listen(
         self.reader_started.remove(client_addr)
         on_disconnect(client_addr)
       }
-      for {
+      for ;; {
         let msg = ws.recv()
         match msg.kind {
           Text => {

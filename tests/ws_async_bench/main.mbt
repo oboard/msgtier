@@ -47,7 +47,7 @@ async fn run_download_bench(port : Int, total_bytes : Int) -> Double {
   defer ws.close()
   let mut received = 0
   let start = @env.now()
-  for {
+  for ;; {
     let msg = ws.recv()
     match msg.kind {
       Binary => {

@@ -264,7 +264,7 @@ async fn handle_ws_connection(
       ws.close()
       ws_clients.val.remove(client_addr)
     }
-    for {
+    for ;; {
       let msg = ws.recv()
       match msg.kind {
         Text => {
@@ -659,7 +659,7 @@ async fn proxy_http_request_stream(
   let mut status_code = 200
   let mut last_chunk_time = start
   let mut total_bytes = 0
-  for {
+  for ;; {
     let now = @env.now()
     if now - start > timeout_ms_u64 {
       if !response_sent {
@@ -904,7 +904,7 @@ fn parse_range_str(header : String) -> (Int, Int?)? {
   if !header.has_prefix("bytes=") {
     return None
   }
-  let s = header[6:] catch { _ => return None }
+  let s = header[6:]
   let parts = s.split("-").to_array()
   if parts.length() < 1 {
     return None
@@ -1364,7 +1364,7 @@ async fn start_http_service(
   // Store the config globally for handlers to access
   init_upload_dir()
   init_chat_store()
-  for {
+  for ;; {
     try {
       let server = @http.Server::new(@socket.Addr::parse(addr), reuse_addr=true)
       server.run_forever((req, body, conn) => {

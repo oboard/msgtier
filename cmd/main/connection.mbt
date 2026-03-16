@@ -241,9 +241,7 @@ fn extract_host(addr : String) -> String {
       i = i + 1
     }
     if end_idx != -1 {
-      s[1:end_idx].to_string() catch {
-        _ => s
-      }
+      s[1:end_idx].to_string()
     } else {
       s
     }

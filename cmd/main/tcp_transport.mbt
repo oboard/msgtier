@@ -80,7 +80,7 @@ impl Transport for TcpTransport with send(self, target, data) {
                   root.spawn_bg(async fn() {
                     let reader = BufferedReader::new(conn)
                     try {
-                      for {
+                      for ;; {
                         let header_buf = FixedArray::make(4, b'\x00')
                         reader.read_exact(header_buf, 4)
                         let header_bytes = header_buf.unsafe_reinterpret_as_bytes()
@@ -158,7 +158,7 @@ impl Transport for TcpTransport with listen(self, root, handler, on_disconnect) 
     let reader = BufferedReader::new(conn)
     try {
       // TCP Connection Handler - Read loop with framing
-      for {
+      for ;; {
         // Read 4 bytes length header
         let header_buf = FixedArray::make(4, b'\x00')
         reader.read_exact(header_buf, 4)

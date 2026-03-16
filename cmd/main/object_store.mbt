@@ -87,7 +87,7 @@ pub async fn save_object_from_reader(id : String, reader : &@io.Reader) -> Unit 
   defer file.close()
 
   let buf = FixedArray::make(4194304, b'\x00') // 4MB buffer
-  for {
+  for ;; {
     let n = reader.read(buf)
     if n <= 0 {
       break

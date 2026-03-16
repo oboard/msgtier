@@ -24,7 +24,7 @@ pub async fn Endpoint::listen(
   handler : (Connection, Stream) -> Unit,
 ) -> Unit {
   let buf = FixedArray::make(65536, b'\x00')
-  for {
+  for ;; {
     try {
       let (n, sender_addr) = self.socket.recvfrom(buf)
       let bytes = slice(Bytes::from_array(buf), 0, n)
