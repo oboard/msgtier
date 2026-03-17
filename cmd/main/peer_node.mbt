@@ -1,4 +1,19 @@
 ///|
+fn peer_node_metadata_to_json_map(
+  metadata : Map[String, String],
+) -> Map[String, Json] {
+  let result : Map[String, Json] = {}
+  for key, value in metadata {
+    if key == "scripts" {
+      result[key] = @json.parse(value) catch { _ => value.to_json() }
+    } else {
+      result[key] = value.to_json()
+    }
+  }
+  result
+}
+
+///|
 /// PeerNode represents a logical node in the P2P network
 /// A peer is identified by its unique ID and may have multiple network connections
 struct PeerNode {
@@ -14,7 +29,7 @@ impl ToJson for PeerNode with to_json(self) {
   {
     "id": self.id,
     "version": self.version,
-    "metadata": self.metadata,
+    "metadata": peer_node_metadata_to_json_map(self.metadata),
     "addresses": self.addresses,
     "connections": self.connections,
   }
