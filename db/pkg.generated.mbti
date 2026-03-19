@@ -5,6 +5,7 @@ import {
   "moonbitlang/core/json",
   "oboard/morm",
   "oboard/morm/engine",
+  "oboard/morm/table",
 }
 
 // Values
@@ -21,7 +22,7 @@ pub(all) struct Message {
   timestamp : String
 }
 pub fn Message::from_row(Json) -> Self
-pub fn Message::table() -> @morm.Table
+pub fn Message::table() -> @table.Table
 pub impl ToJson for Message
 pub impl @json.FromJson for Message
 pub impl @morm.Entity for Message
@@ -37,6 +38,5 @@ pub impl MessageMapper for MessageMapperImpl
 // Traits
 pub trait MessageMapper {
   async save(Self, Message) -> Message
-  async find_all(Self) -> FixedArray[Message]
 }
 

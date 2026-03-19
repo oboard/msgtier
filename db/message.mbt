@@ -1,7 +1,7 @@
 ///|
 #morm.entity
 pub(all) struct Message {
-  #morm.primary_key
+  #morm.id
   #morm.uuid
   id : String
   #morm.varchar(length="255")

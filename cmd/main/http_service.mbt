@@ -135,31 +135,6 @@ fn parse_chat_query(query : String?) -> (String, Int, UInt64?) {
 }
 
 ///|
-fn is_message_in_chat(
-  msg : @db.Message,
-  my_id : String,
-  peer_id : String,
-) -> Bool {
-  if peer_id == "broadcast" {
-    return match msg.target_id {
-      None => true
-      Some(t) => t == "broadcast"
-    }
-  } else {
-    let incoming_target = match msg.target_id {
-      Some(t) => t == my_id
-      None => false
-    }
-    let outgoing_target = match msg.target_id {
-      Some(t) => t == peer_id
-      None => false
-    }
-    return (msg.source_id == peer_id && incoming_target) ||
-      (msg.source_id == my_id && outgoing_target)
-  }
-}
-
-///|
 fn to_chat_message_json(msg : @db.Message) -> Json {
   let content = @json.parse(msg.content) catch { _ => msg.content.to_json() }
   {
@@ -173,59 +148,151 @@ fn to_chat_message_json(msg : @db.Message) -> Json {
 }
 
 ///|
+fn apply_before_cursor(q : @morm.Query, before : UInt64?) -> @morm.Query {
+  match before {
+    Some(cursor) => q.where_lt("timestamp", cursor.to_string())
+    None => q
+  }
+}
+
+///|
+fn merge_sorted_messages(
+  groups : Array[FixedArray[@db.Message]],
+) -> Array[@db.Message] {
+  let out : Array[@db.Message] = []
+  let seen : Map[String, Bool] = {}
+  for group in groups {
+    for msg in group {
+      if seen.contains(msg.id) {
+        continue
+      }
+      seen[msg.id] = true
+      out.push(msg)
+    }
+  }
+  out.sort_by(fn(a, b) {
+    let at = parse_chat_timestamp(a.timestamp)
+    let bt = parse_chat_timestamp(b.timestamp)
+    if at > bt {
+      -1
+    } else if at < bt {
+      1
+    } else {
+      0
+    }
+  })
+  out
+}
+
+///|
 async fn list_chat_messages_page_json(
   peer_id : String,
   limit : Int,
   before : UInt64?,
 ) -> Json {
   let my_id = get_config().id
-  match chat_mapper.val {
-    Some(mapper) => {
-      let filtered : Array[@db.Message] = []
-      let all = mapper.find_all() catch {
-        e => {
-          log_warn("Failed to load chat messages: \{e}")
-          let empty : Array[Json] = []
-          return {
-            "items": empty.to_json(),
-            "has_more": false,
-            "next_before": (-1).to_json(),
+  match chat_engine.val {
+    Some(engine) => {
+      let page_size = limit + 1
+      let all_rows : Array[FixedArray[@db.Message]] = []
+      if peer_id == "broadcast" {
+        let null_target_q = apply_before_cursor(
+          @morm.select_from("message")
+          .where_eq("target_id", ())
+          .order_by(Desc("timestamp"))
+          .limit(page_size),
+          before,
+        )
+        let null_target_rows = engine.exec(null_target_q).rows.map(row => {
+          @db.Message::from_row(row)
+        }) catch {
+          e => {
+            log_warn("Failed to load broadcast NULL-target messages: \{e}")
+            let empty : Array[Json] = []
+            return {
+              "items": empty.to_json(),
+              "has_more": false,
+              "next_before": (-1).to_json(),
+            }
           }
         }
-      }
+        all_rows.push(null_target_rows)
 
-      for msg in all {
-        if !is_message_in_chat(msg, my_id, peer_id) {
-          continue
+        let broadcast_q = apply_before_cursor(
+          @morm.select_from("message")
+          .where_eq("target_id", "broadcast")
+          .order_by(Desc("timestamp"))
+          .limit(page_size),
+          before,
+        )
+        let broadcast_rows = engine.exec(broadcast_q).rows.map(row => {
+          @db.Message::from_row(row)
+        }) catch {
+          e => {
+            log_warn("Failed to load broadcast messages: \{e}")
+            let empty : Array[Json] = []
+            return {
+              "items": empty.to_json(),
+              "has_more": false,
+              "next_before": (-1).to_json(),
+            }
+          }
         }
-        let ts = parse_chat_timestamp(msg.timestamp)
-        match before {
-          Some(cursor) => if ts >= cursor { continue }
-          None => ()
-        }
-        filtered.push(msg)
-      }
-
-      filtered.sort_by(fn(a, b) {
-        let at = parse_chat_timestamp(a.timestamp)
-        let bt = parse_chat_timestamp(b.timestamp)
-        if at > bt {
-          -1
-        } else if at < bt {
-          1
-        } else {
-          0
-        }
-      })
-
-      let page : Array[@db.Message] = []
-      let take_n = if filtered.length() < limit {
-        filtered.length()
+        all_rows.push(broadcast_rows)
       } else {
-        limit
+        let incoming_q = apply_before_cursor(
+          @morm.select_from("message")
+          .where_eq("source_id", peer_id)
+          .where_eq("target_id", my_id)
+          .order_by(Desc("timestamp"))
+          .limit(page_size),
+          before,
+        )
+        let incoming_rows = engine.exec(incoming_q).rows.map(row => {
+          @db.Message::from_row(row)
+        }) catch {
+          e => {
+            log_warn("Failed to load incoming direct messages: \{e}")
+            let empty : Array[Json] = []
+            return {
+              "items": empty.to_json(),
+              "has_more": false,
+              "next_before": (-1).to_json(),
+            }
+          }
+        }
+        all_rows.push(incoming_rows)
+
+        let outgoing_q = apply_before_cursor(
+          @morm.select_from("message")
+          .where_eq("source_id", my_id)
+          .where_eq("target_id", peer_id)
+          .order_by(Desc("timestamp"))
+          .limit(page_size),
+          before,
+        )
+        let outgoing_rows = engine.exec(outgoing_q).rows.map(row => {
+          @db.Message::from_row(row)
+        }) catch {
+          e => {
+            log_warn("Failed to load outgoing direct messages: \{e}")
+            let empty : Array[Json] = []
+            return {
+              "items": empty.to_json(),
+              "has_more": false,
+              "next_before": (-1).to_json(),
+            }
+          }
+        }
+        all_rows.push(outgoing_rows)
       }
+
+      let rows = merge_sorted_messages(all_rows)
+      let has_more = rows.length() > limit
+      let take_n = if has_more { limit } else { rows.length() }
+      let page : Array[@db.Message] = []
       for i = 0; i < take_n; i = i + 1 {
-        page.push(filtered[i])
+        page.push(rows[i])
       }
 
       let items : Array[Json] = []
@@ -235,7 +302,6 @@ async fn list_chat_messages_page_json(
         items.push(to_chat_message_json(page[i]))
       }
 
-      let has_more = filtered.length() > take_n
       let next_before = if page.is_empty() {
         (-1).to_json()
       } else {

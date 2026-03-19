@@ -12,7 +12,7 @@ pub fn Message::table() -> @morm.Table {
     columns: [
       {
         name: "id",
-        column_type: @morm.ColumnType::VarChar(36),
+        column_type: VarChar(36),
         size: 0,
         nullable: false,
         auto_increment: false,
@@ -26,7 +26,7 @@ pub fn Message::table() -> @morm.Table {
       },
       {
         name: "source_id",
-        column_type: @morm.ColumnType::VarChar(255),
+        column_type: VarChar(255),
         size: 0,
         nullable: false,
         auto_increment: false,
@@ -40,7 +40,7 @@ pub fn Message::table() -> @morm.Table {
       },
       {
         name: "target_id",
-        column_type: @morm.ColumnType::VarChar(255),
+        column_type: VarChar(255),
         size: 0,
         nullable: true,
         auto_increment: false,
@@ -54,7 +54,7 @@ pub fn Message::table() -> @morm.Table {
       },
       {
         name: "kind",
-        column_type: @morm.ColumnType::VarChar(255),
+        column_type: VarChar(255),
         size: 0,
         nullable: false,
         auto_increment: false,
@@ -68,7 +68,7 @@ pub fn Message::table() -> @morm.Table {
       },
       {
         name: "content",
-        column_type: @morm.ColumnType::Text,
+        column_type: Text,
         size: 0,
         nullable: false,
         auto_increment: false,
@@ -82,7 +82,7 @@ pub fn Message::table() -> @morm.Table {
       },
       {
         name: "timestamp",
-        column_type: @morm.ColumnType::VarChar(255),
+        column_type: VarChar(255),
         size: 0,
         nullable: false,
         auto_increment: false,

@@ -128,7 +128,6 @@ type ObjectStore
 
 type PeerConnectionInfo
 pub impl Show for PeerConnectionInfo
-pub impl ToJson for PeerConnectionInfo
 
 type PeerManager
 pub impl Show for PeerManager

@@ -8,13 +8,13 @@ options(
   "pre-build": [
     {
       "command": "$mod_dir/.mooncakes/oboard/morm/morm-gen $input -o $output && moonfmt -w $output",
-      "input": "entities.mbt",
-      "output": "entities.g.mbt",
+      "input": "message.mbt",
+      "output": "message.g.mbt",
     },
     {
       "command": "$mod_dir/.mooncakes/oboard/morm/morm-gen $input -o $output && moonfmt -w $output",
-      "input": "mapper.mbt",
-      "output": "mapper.g.mbt",
+      "input": "message_mapper.mbt",
+      "output": "message_mapper.g.mbt",
     },
   ],
 )
