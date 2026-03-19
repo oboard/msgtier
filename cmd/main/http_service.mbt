@@ -77,26 +77,200 @@ async fn persist_chat_message(msg : Message) -> Unit {
 }
 
 ///|
-async fn list_chat_messages_json() -> Json {
+fn parse_chat_timestamp(timestamp : String) -> UInt64 {
+  match parse_decimal_opt(timestamp) {
+    Some(v) => if v < 0 { 0UL } else { v.to_uint64() }
+    None => 0UL
+  }
+}
+
+///|
+fn parse_chat_limit(raw : String?) -> Int {
+  let default_limit = 30
+  match raw {
+    Some(s) =>
+      match parse_decimal_opt(s) {
+        Some(v) => if v < 1 { default_limit } else if v > 100 { 100 } else { v }
+        None => default_limit
+      }
+    None => default_limit
+  }
+}
+
+///|
+fn parse_chat_before(raw : String?) -> UInt64? {
+  match raw {
+    Some(s) =>
+      match parse_decimal_opt(s) {
+        Some(v) => if v < 0 { None } else { Some(v.to_uint64()) }
+        None => None
+      }
+    None => None
+  }
+}
+
+///|
+fn parse_chat_query(query : String?) -> (String, Int, UInt64?) {
+  let mut peer_id = "broadcast"
+  let mut limit_raw = None
+  let mut before_raw = None
+
+  if query is Some(q) {
+    for part in q.split("&") {
+      let p = part.to_string()
+      if p.has_prefix("peer=") {
+        let v = p[5:].to_string()
+        peer_id = if v == "" { "broadcast" } else { v }
+      } else if p.has_prefix("limit=") {
+        limit_raw = Some(p[6:].to_string())
+      } else if p.has_prefix("before=") {
+        before_raw = Some(p[7:].to_string())
+      }
+    }
+  }
+
+  let limit = parse_chat_limit(limit_raw)
+  let before = parse_chat_before(before_raw)
+  (peer_id, limit, before)
+}
+
+///|
+fn is_message_in_chat(
+  msg : @db.Message,
+  my_id : String,
+  peer_id : String,
+) -> Bool {
+  if peer_id == "broadcast" {
+    return match msg.target_id {
+      None => true
+      Some(t) => t == "broadcast"
+    }
+  } else {
+    let incoming_target = match msg.target_id {
+      Some(t) => t == my_id
+      None => false
+    }
+    let outgoing_target = match msg.target_id {
+      Some(t) => t == peer_id
+      None => false
+    }
+    return (msg.source_id == peer_id && incoming_target) ||
+      (msg.source_id == my_id && outgoing_target)
+  }
+}
+
+///|
+fn to_chat_message_json(msg : @db.Message) -> Json {
+  let content = @json.parse(msg.content) catch { _ => msg.content.to_json() }
+  {
+    "id": msg.id,
+    "kind": msg.kind,
+    "source_id": msg.source_id,
+    "target_id": msg.target_id.unwrap_or("broadcast"),
+    "timestamp": parse_chat_timestamp(msg.timestamp),
+    "content": content,
+  }
+}
+
+///|
+async fn list_chat_messages_page_json(
+  peer_id : String,
+  limit : Int,
+  before : UInt64?,
+) -> Json {
+  let my_id = get_config().id
   match chat_mapper.val {
-    Some(mapper) =>
-      mapper.find_all().map(fn(m) { m.to_json() }).to_json() catch {
+    Some(mapper) => {
+      let filtered : Array[@db.Message] = []
+      let all = mapper.find_all() catch {
         e => {
           log_warn("Failed to load chat messages: \{e}")
           let empty : Array[Json] = []
-          empty.to_json()
+          return {
+            "items": empty.to_json(),
+            "has_more": false,
+            "next_before": (-1).to_json(),
+          }
         }
       }
+
+      for msg in all {
+        if !is_message_in_chat(msg, my_id, peer_id) {
+          continue
+        }
+        let ts = parse_chat_timestamp(msg.timestamp)
+        match before {
+          Some(cursor) => if ts >= cursor { continue }
+          None => ()
+        }
+        filtered.push(msg)
+      }
+
+      filtered.sort_by(fn(a, b) {
+        let at = parse_chat_timestamp(a.timestamp)
+        let bt = parse_chat_timestamp(b.timestamp)
+        if at > bt {
+          -1
+        } else if at < bt {
+          1
+        } else {
+          0
+        }
+      })
+
+      let page : Array[@db.Message] = []
+      let take_n = if filtered.length() < limit {
+        filtered.length()
+      } else {
+        limit
+      }
+      for i = 0; i < take_n; i = i + 1 {
+        page.push(filtered[i])
+      }
+
+      let items : Array[Json] = []
+      let mut i = page.length()
+      while i > 0 {
+        i = i - 1
+        items.push(to_chat_message_json(page[i]))
+      }
+
+      let has_more = filtered.length() > take_n
+      let next_before = if page.is_empty() {
+        (-1).to_json()
+      } else {
+        let oldest_ts = parse_chat_timestamp(page[page.length() - 1].timestamp)
+        if oldest_ts > 0UL {
+          (oldest_ts - 1UL).to_json()
+        } else {
+          (0).to_json()
+        }
+      }
+
+      {
+        "items": items.to_json(),
+        "has_more": has_more,
+        "next_before": next_before,
+      }
+    }
     None => {
       let empty : Array[Json] = []
-      empty.to_json()
+      {
+        "items": empty.to_json(),
+        "has_more": false,
+        "next_before": (-1).to_json(),
+      }
     }
   }
 }
 
 ///|
-async fn chat_messages_handler(conn : @http.ServerConnection) -> Unit {
-  let body = list_chat_messages_json().stringify()
+async fn chat_messages_handler(
+  conn : @http.ServerConnection,
+  query : String?,
+) -> Unit {
+  let (peer_id, limit, before) = parse_chat_query(query)
+  let body = list_chat_messages_page_json(peer_id, limit, before).stringify()
   conn
   ..send_response(200, "OK", extra_headers={
     "Content-Type": "application/json",
@@ -882,14 +1056,21 @@ async fn handle_internal_http_request(
       resp_headers,
       ResponseBody::Bytes(@utf8.encode(config.to_json().stringify())),
     )
-  } else if http_method == "GET" && path == "/api/chat/messages" {
+  } else if http_method == "GET" &&
+    @url.Url::parse("http://localhost" + path)
+    is Some({ path: Segments(["api", "chat", "messages"]), query, .. }) {
+    let (peer_id, limit, before) = parse_chat_query(query)
     let resp_headers : Map[String, String] = {
       "Content-Type": "application/json",
     }
     (
       200,
       resp_headers,
-      ResponseBody::Bytes(@utf8.encode(list_chat_messages_json().stringify())),
+      ResponseBody::Bytes(
+        @utf8.encode(
+          list_chat_messages_page_json(peer_id, limit, before).stringify(),
+        ),
+      ),
     )
   } else {
     let resp_headers : Map[String, String] = {}
@@ -1155,6 +1336,13 @@ async fn handle_http_request(
     return
   }
 
+  if request is { meth: Get, path, .. } &&
+    @url.Url::parse("http://localhost" + path)
+    is Some({ path: Segments(["api", "chat", "messages"]), query, .. }) {
+    chat_messages_handler(conn, query)
+    return
+  }
+
   if request is { path, .. } &&
     @url.Url::parse("http://localhost" + path)
     is Some({ path: Segments(["api", "proxy"]), query, .. }) {
@@ -1230,7 +1418,7 @@ async fn handle_http_request(
 
   match (request.meth, request.path) {
     (Get, "/api/ws") => handle_ws_connection(request, conn)
-    (Get, "/api/chat/messages") => chat_messages_handler(conn)
+    (Get, "/api/chat/messages") => chat_messages_handler(conn, None)
     (Get, "/api/config") => get_config_handler(conn)
     (Get, "/api/status") => status_handler(conn)
     (Get, "/api/download") => download_handler(conn)
