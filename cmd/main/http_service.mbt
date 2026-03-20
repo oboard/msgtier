@@ -8,26 +8,24 @@ struct WsClient {
 }
 
 ///|
-let ws_clients : Ref[Map[String, WsClient]] = Ref::new({})
+struct HttpServiceState {
+  ws_clients : Map[String, WsClient]
+  last_emitted_ids : Map[String, UInt64]
+  last_emitted_order : Array[String]
+  mut chat_db_file : String
+  mut chat_engine : @sqlite3.SQLiteEngine?
+  mut chat_mapper : @db.MessageMapperImpl?
+}
 
 ///|
-
-///|
-
-///|
-let last_emitted_ids : Ref[Map[String, UInt64]] = Ref::new({})
-
-///|
-let last_emitted_order : Ref[Array[String]] = Ref::new([])
-
-///|
-let chat_db_file : Ref[String] = Ref::new("")
-
-///|
-let chat_engine : Ref[@sqlite3.SQLiteEngine?] = Ref::new(None)
-
-///|
-let chat_mapper : Ref[@db.MessageMapperImpl?] = Ref::new(None)
+let http_state : HttpServiceState = {
+  ws_clients: {},
+  last_emitted_ids: {},
+  last_emitted_order: [],
+  chat_db_file: "",
+  chat_engine: None,
+  chat_mapper: None,
+}
 
 ///|
 fn is_persistable_chat_kind(kind : String) -> Bool {
@@ -43,13 +41,14 @@ async fn init_chat_store() -> Unit {
   }
 
   let db_file = db_dir + "/chat.sqlite3"
-  chat_db_file.val = db_file
+  println("Chat DB file: \{db_file}")
+  http_state.chat_db_file = db_file
   try {
     let engine = @sqlite3.SQLiteEngine::open(db_file)
     @morm.auto_migrate(engine, [@db.Message::table()])
     let mapper = @db.MessageMapperImpl::new(engine)
-    chat_mapper.val = Some(mapper)
-    chat_engine.val = Some(engine)
+    http_state.chat_mapper = Some(mapper)
+    http_state.chat_engine = Some(engine)
   } catch {
     e => log_warn("Failed to initialize chat store: \{e}")
   }
@@ -60,12 +59,12 @@ async fn persist_chat_message(msg : Message) -> Unit {
   if !is_persistable_chat_kind(msg.kind) {
     return
   }
-  if chat_mapper.val is Some(mapper) {
+  if http_state.chat_mapper is Some(mapper) {
     ignore(
       mapper.save(@db.Message::{
         id: msg.id,
         source_id: msg.source_id,
-        target_id: msg.target_id,
+        target_id: Some(msg.target_id.unwrap_or("broadcast")),
         kind: msg.kind,
         content: msg.body.to_json().stringify(),
         timestamp: msg.timestamp.to_string(),
@@ -156,6 +155,26 @@ fn apply_before_cursor(q : @morm.Query, before : UInt64?) -> @morm.Query {
 }
 
 ///|
+fn empty_chat_page_json() -> Json {
+  let empty : Array[Json] = []
+  { "items": empty.to_json(), "has_more": false, "next_before": (-1).to_json() }
+}
+
+///|
+async fn load_chat_rows_or_empty(
+  engine : @sqlite3.SQLiteEngine,
+  q : @morm.Query,
+  log_prefix : String,
+) -> FixedArray[@db.Message]? {
+  Some(engine.exec(q).rows.map(row => @db.Message::from_row(row))) catch {
+    e => {
+      log_warn("\{log_prefix}: \{e}")
+      None
+    }
+  }
+}
+
+///|
 fn merge_sorted_messages(
   groups : Array[FixedArray[@db.Message]],
 ) -> Array[@db.Message] {
@@ -191,33 +210,11 @@ async fn list_chat_messages_page_json(
   before : UInt64?,
 ) -> Json {
   let my_id = get_config().id
-  match chat_engine.val {
+  match http_state.chat_engine {
     Some(engine) => {
       let page_size = limit + 1
       let all_rows : Array[FixedArray[@db.Message]] = []
       if peer_id == "broadcast" {
-        let null_target_q = apply_before_cursor(
-          @morm.select_from("message")
-          .where_eq("target_id", ())
-          .order_by(Desc("timestamp"))
-          .limit(page_size),
-          before,
-        )
-        let null_target_rows = engine.exec(null_target_q).rows.map(row => {
-          @db.Message::from_row(row)
-        }) catch {
-          e => {
-            log_warn("Failed to load broadcast NULL-target messages: \{e}")
-            let empty : Array[Json] = []
-            return {
-              "items": empty.to_json(),
-              "has_more": false,
-              "next_before": (-1).to_json(),
-            }
-          }
-        }
-        all_rows.push(null_target_rows)
-
         let broadcast_q = apply_before_cursor(
           @morm.select_from("message")
           .where_eq("target_id", "broadcast")
@@ -225,20 +222,14 @@ async fn list_chat_messages_page_json(
           .limit(page_size),
           before,
         )
-        let broadcast_rows = engine.exec(broadcast_q).rows.map(row => {
-          @db.Message::from_row(row)
-        }) catch {
-          e => {
-            log_warn("Failed to load broadcast messages: \{e}")
-            let empty : Array[Json] = []
-            return {
-              "items": empty.to_json(),
-              "has_more": false,
-              "next_before": (-1).to_json(),
-            }
-          }
+        if load_chat_rows_or_empty(
+            engine, broadcast_q, "Failed to load broadcast messages",
+          )
+          is Some(broadcast_rows) {
+          all_rows.push(broadcast_rows)
+        } else {
+          return empty_chat_page_json()
         }
-        all_rows.push(broadcast_rows)
       } else {
         let incoming_q = apply_before_cursor(
           @morm.select_from("message")
@@ -248,20 +239,14 @@ async fn list_chat_messages_page_json(
           .limit(page_size),
           before,
         )
-        let incoming_rows = engine.exec(incoming_q).rows.map(row => {
-          @db.Message::from_row(row)
-        }) catch {
-          e => {
-            log_warn("Failed to load incoming direct messages: \{e}")
-            let empty : Array[Json] = []
-            return {
-              "items": empty.to_json(),
-              "has_more": false,
-              "next_before": (-1).to_json(),
-            }
-          }
+        if load_chat_rows_or_empty(
+            engine, incoming_q, "Failed to load incoming direct messages",
+          )
+          is Some(incoming_rows) {
+          all_rows.push(incoming_rows)
+        } else {
+          return empty_chat_page_json()
         }
-        all_rows.push(incoming_rows)
 
         let outgoing_q = apply_before_cursor(
           @morm.select_from("message")
@@ -271,20 +256,14 @@ async fn list_chat_messages_page_json(
           .limit(page_size),
           before,
         )
-        let outgoing_rows = engine.exec(outgoing_q).rows.map(row => {
-          @db.Message::from_row(row)
-        }) catch {
-          e => {
-            log_warn("Failed to load outgoing direct messages: \{e}")
-            let empty : Array[Json] = []
-            return {
-              "items": empty.to_json(),
-              "has_more": false,
-              "next_before": (-1).to_json(),
-            }
-          }
+        if load_chat_rows_or_empty(
+            engine, outgoing_q, "Failed to load outgoing direct messages",
+          )
+          is Some(outgoing_rows) {
+          all_rows.push(outgoing_rows)
+        } else {
+          return empty_chat_page_json()
         }
-        all_rows.push(outgoing_rows)
       }
 
       let rows = merge_sorted_messages(all_rows)
@@ -319,14 +298,7 @@ async fn list_chat_messages_page_json(
         "next_before": next_before,
       }
     }
-    None => {
-      let empty : Array[Json] = []
-      {
-        "items": empty.to_json(),
-        "has_more": false,
-        "next_before": (-1).to_json(),
-      }
-    }
+    None => empty_chat_page_json()
   }
 }
 
@@ -356,7 +328,7 @@ async fn emit_ws_message(msg : Message) -> Unit {
   // Deduplicate messages within a short window
   let now = @env.now()
   let id = msg.id
-  match last_emitted_ids.val.get(id) {
+  match http_state.last_emitted_ids.get(id) {
     Some(ts) =>
       if now - ts < 10000UL {
         // Already emitted recently
@@ -366,16 +338,16 @@ async fn emit_ws_message(msg : Message) -> Unit {
   }
 
   // Update or insert timestamp
-  last_emitted_ids.val[id] = now
+  http_state.last_emitted_ids[id] = now
 
   // Track order for FIFO eviction
-  last_emitted_order.val.push(id)
+  http_state.last_emitted_order.push(id)
 
   // Cleanup old IDs to maintain max size (FIFO)
-  while last_emitted_order.val.length() > 1000 {
-    let old_id = last_emitted_order.val[0]
-    last_emitted_order.val.remove(0) |> ignore
-    last_emitted_ids.val.remove(old_id)
+  while http_state.last_emitted_order.length() > 1000 {
+    let old_id = http_state.last_emitted_order[0]
+    http_state.last_emitted_order.remove(0) |> ignore
+    http_state.last_emitted_ids.remove(old_id)
   }
 
   let m : Json = {
@@ -391,7 +363,7 @@ async fn emit_ws_message(msg : Message) -> Unit {
   let to_remove = []
   // Snapshot clients to avoid concurrent modification issues during async loop
   let clients = []
-  for client_id, client in ws_clients.val {
+  for client_id, client in http_state.ws_clients {
     clients.push((client_id, client))
   }
   for pair in clients {
@@ -412,7 +384,7 @@ async fn emit_ws_message(msg : Message) -> Unit {
     }
   }
   for client_id in to_remove {
-    ws_clients.val.remove(client_id)
+    http_state.ws_clients.remove(client_id)
   }
 }
 
@@ -499,10 +471,13 @@ async fn handle_ws_connection(
   try {
     let ws = @websocket.from_http_server(request, conn)
     let sending_lock = Ref::new(false)
-    ws_clients.val[client_addr] = WsClient::{ conn: ws, sending: sending_lock }
+    http_state.ws_clients[client_addr] = WsClient::{
+      conn: ws,
+      sending: sending_lock,
+    }
     defer {
       ws.close()
-      ws_clients.val.remove(client_addr)
+      http_state.ws_clients.remove(client_addr)
     }
     for ;; {
       let msg = ws.recv()

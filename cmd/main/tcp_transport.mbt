@@ -10,6 +10,7 @@ let tcp_max_frame_size : Int = 64 * 1024 * 1024
 struct TcpConnection {
   socket : @socket.Tcp
   sending : Ref[Bool]
+  outbound : Bool
 }
 
 ///|
@@ -55,13 +56,20 @@ impl Transport for TcpTransport with send(self, target, data) {
     try {
       // Get or create connection
       // We use a mutable variable to avoid complex match/async interaction issues
-      let mut conn_opt = self.connections.get(target)
+      let mut conn_opt = match self.connections.get(target) {
+        Some(wrapper) => if wrapper.outbound { Some(wrapper) } else { None }
+        None => None
+      }
       let mut created = false
       if conn_opt is None {
         try {
           let target_addr = @socket.Addr::parse(target)
           let c = @socket.Tcp::connect(target_addr)
-          let wrapper = TcpConnection::{ socket: c, sending: Ref::new(false) }
+          let wrapper = TcpConnection::{
+            socket: c,
+            sending: Ref::new(false),
+            outbound: true,
+          }
           self.connections[target] = wrapper
           conn_opt = Some(wrapper)
           created = true
@@ -69,68 +77,65 @@ impl Transport for TcpTransport with send(self, target, data) {
           _ => () // Will be handled by outer try/catch or loop
         }
       }
-      match conn_opt {
-        Some(wrapper) => {
-          let conn = wrapper.socket
-          if created {
-            if self.reader_started.get(target) is None {
-              match (self.root, self.handler, self.on_disconnect) {
-                (Some(root), Some(handler), Some(on_disconnect)) => {
-                  self.reader_started[target] = true
-                  root.spawn_bg(async fn() {
-                    let reader = BufferedReader::new(conn)
-                    try {
-                      for ;; {
-                        let header_buf = FixedArray::make(4, b'\x00')
-                        reader.read_exact(header_buf, 4)
-                        let header_bytes = header_buf.unsafe_reinterpret_as_bytes()
-                        let len = (header_bytes[0].to_int() << 24) |
-                          (header_bytes[1].to_int() << 16) |
-                          (header_bytes[2].to_int() << 8) |
-                          header_bytes[3].to_int()
-                        if len > tcp_max_frame_size {
-                          break
-                        }
-                        let data_buf = FixedArray::make(len, b'\x00')
-                        reader.read_exact(data_buf, len)
-                        let data_bytes = data_buf.unsafe_reinterpret_as_bytes()
-                        handler(data_bytes, target)
-                      }
-                    } catch {
-                      _ => {
-                        self.connections.remove(target)
-                        self.reader_started.remove(target)
-                        on_disconnect(target)
-                      }
-                    }
-                  })
-                }
-                _ => ()
-              }
-            }
-          }
-          // Spinlock to prevent concurrent writes
-          while wrapper.sending.val {
-            @async.sleep(1)
-          }
-          wrapper.sending.val = true
-          try {
-            conn.write(header_bytes)
-            conn.write(data)
-            wrapper.sending.val = false
-            return true
-          } catch {
-            e => {
-              wrapper.sending.val = false
-              raise e
-            }
-          }
+      guard conn_opt is Some({ socket: conn, sending, .. }) else {
+        // Connection creation failed
+        if i == 1 {
+          return false
         }
-        None =>
-          // Connection creation failed
-          if i == 1 {
-            return false
+        continue
+      }
+
+      if created && self.reader_started.get(target) is None {
+        match (self.root, self.handler, self.on_disconnect) {
+          (Some(root), Some(handler), Some(on_disconnect)) => {
+            self.reader_started[target] = true
+            root.spawn_bg(async fn() {
+              let reader = BufferedReader::new(conn)
+              try {
+                for ;; {
+                  let header_buf = FixedArray::make(4, b'\x00')
+                  reader.read_exact(header_buf, 4)
+                  let header_bytes = header_buf.unsafe_reinterpret_as_bytes()
+                  let len = (header_bytes[0].to_int() << 24) |
+                    (header_bytes[1].to_int() << 16) |
+                    (header_bytes[2].to_int() << 8) |
+                    header_bytes[3].to_int()
+                  if len > tcp_max_frame_size {
+                    break
+                  }
+                  let data_buf = FixedArray::make(len, b'\x00')
+                  reader.read_exact(data_buf, len)
+                  let data_bytes = data_buf.unsafe_reinterpret_as_bytes()
+                  handler(data_bytes, target)
+                }
+              } catch {
+                _ => {
+                  self.connections.remove(target)
+                  self.reader_started.remove(target)
+                  on_disconnect(target)
+                }
+              }
+            })
           }
+          _ => ()
+        }
+      }
+
+      // Spinlock to prevent concurrent writes
+      while sending.val {
+        @async.sleep(1)
+      }
+      sending.val = true
+      try {
+        conn.write(header_bytes)
+        conn.write(data)
+        sending.val = false
+        return true
+      } catch {
+        e => {
+          sending.val = false
+          raise e
+        }
       }
     } catch {
       _ => { // Connection failed or write failed
@@ -153,6 +158,7 @@ impl Transport for TcpTransport with listen(self, root, handler, on_disconnect) 
     self.connections[remote_addr_str] = TcpConnection::{
       socket: conn,
       sending: Ref::new(false),
+      outbound: false,
     }
     self.reader_started[remote_addr_str] = true
     let reader = BufferedReader::new(conn)
