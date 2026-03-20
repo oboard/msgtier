@@ -8,21 +8,25 @@ pub struct PendingEntry {
 }
 
 ///|
-let global_pending_messages : Array[PendingEntry] = []
+struct PendingState {
+  messages : Array[PendingEntry]
+  cond : @cond_var.Cond
+  mut generation : Int
+  send_times : Map[String, UInt64]
+}
 
 ///|
-let global_pending_cond : @cond_var.Cond = @cond_var.Cond::new()
-
-///|
-let global_pending_generation : Ref[Int] = Ref::new(0)
-
-///|
-let pending_send_times : Ref[Map[String, UInt64]] = Ref::new({})
+let pending_state : PendingState = {
+  messages: [],
+  cond: @cond_var.Cond::new(),
+  generation: 0,
+  send_times: {},
+}
 
 ///|
 fn notify_pending_changed() -> Unit {
-  global_pending_generation.val = global_pending_generation.val + 1
-  global_pending_cond.signal()
+  pending_state.generation = pending_state.generation + 1
+  pending_state.cond.signal()
 }
 
 ///|
@@ -43,7 +47,7 @@ fn should_send_message(
 ) -> Bool {
   let now = @env.now()
   let key = make_send_key(msg_id, peer_id, protocol)
-  match pending_send_times.val.get(key) {
+  match pending_state.send_times.get(key) {
     Some(last) => if now > last { now - last >= min_interval_ms } else { true }
     None => true
   }
@@ -56,12 +60,12 @@ fn record_message_sent(
   protocol : String,
 ) -> Unit {
   let key = make_send_key(msg_id, peer_id, protocol)
-  pending_send_times.val[key] = @env.now()
+  pending_state.send_times[key] = @env.now()
 }
 
 ///|
 fn clear_message_send_state(msg_id : String) -> Unit {
-  let times = pending_send_times.val
+  let times = pending_state.send_times
   let keys = []
   for k, _ in times {
     if k.has_prefix(msg_id + "|") {
@@ -75,7 +79,7 @@ fn clear_message_send_state(msg_id : String) -> Unit {
 
 ///|
 fn add_pending_message(msg : Message) -> Unit {
-  let messages = global_pending_messages
+  let messages = pending_state.messages
   if msg.kind == "sync" {
     messages.retain(fn(entry) {
       entry.msg.kind != "sync" || entry.msg.target_id != msg.target_id
@@ -95,7 +99,7 @@ fn add_pending_message(msg : Message) -> Unit {
 fn take_pending_messages(
   predicate : (PendingEntry) -> Bool,
 ) -> Array[PendingEntry] {
-  let messages = global_pending_messages
+  let messages = pending_state.messages
   if messages.is_empty() {
     []
   } else {
@@ -127,9 +131,9 @@ fn remove_pending_message(message : Message) -> Bool {
 
 ///|
 fn remove_pending_message_by_id(id : String) -> Bool {
-  let len_before = global_pending_messages.length()
-  global_pending_messages.retain(entry => entry.msg.id != id)
-  let len_after = global_pending_messages.length()
+  let len_before = pending_state.messages.length()
+  pending_state.messages.retain(entry => entry.msg.id != id)
+  let len_after = pending_state.messages.length()
   clear_message_send_state(id)
   if len_before != len_after {
     notify_pending_changed()
@@ -143,7 +147,7 @@ fn mark_pending_message_attempted(
   peer_id : String,
   protocol : String,
 ) -> Bool {
-  let messages = global_pending_messages
+  let messages = pending_state.messages
   for i = 0; i < messages.length(); i = i + 1 {
     let entry = messages[i]
     if entry.msg.id == msg_id {
@@ -164,7 +168,7 @@ fn mark_pending_message_attempted(
 
 ///|
 fn get_pending_generation() -> Int {
-  global_pending_generation.val
+  pending_state.generation
 }
 
 ///|
@@ -175,19 +179,19 @@ async fn wait_for_pending_change(
   ignore(
     @async.with_timeout_opt(timeout_ms, async fn() {
       for ;; {
-        if global_pending_generation.val != last_generation {
+        if pending_state.generation != last_generation {
           break ()
         }
-        global_pending_cond.wait()
+        pending_state.cond.wait()
       }
     }),
   )
-  global_pending_generation.val
+  pending_state.generation
 }
 
 ///|
 fn is_pending_message(id : String) -> Bool {
-  for entry in global_pending_messages {
+  for entry in pending_state.messages {
     if entry.msg.id == id {
       return true
     }
@@ -197,7 +201,7 @@ fn is_pending_message(id : String) -> Bool {
 
 ///|
 fn mark_pending_message_acked(msg_id : String, peer_id : String) -> Unit {
-  let messages = global_pending_messages
+  let messages = pending_state.messages
   let mut idx_to_remove = -1
   for i = 0; i < messages.length(); i = i + 1 {
     let entry = messages[i]
@@ -228,7 +232,7 @@ fn update_pending_message_state(
   retry_count : Int,
   last_attempt : UInt64,
 ) -> Unit {
-  let messages = global_pending_messages
+  let messages = pending_state.messages
   for i = 0; i < messages.length(); i = i + 1 {
     if messages[i].msg.id == msg_id {
       let old = messages[i]

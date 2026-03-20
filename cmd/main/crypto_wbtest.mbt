@@ -9,7 +9,7 @@ test "hash_secret produces consistent hash" {
 ///|
 test "encryption and decryption roundtrip" {
   // Setup config
-  global_config.val = Some({
+  app_state.config = Some({
     id: "test_node",
     secret: "test_secret_123",
     peers: [],
@@ -44,7 +44,7 @@ test "encryption and decryption roundtrip" {
 ///|
 test "decryption fails with wrong message id" {
   // Setup config
-  global_config.val = Some({
+  app_state.config = Some({
     id: "test_node",
     secret: "test_secret_123",
     peers: [],
@@ -81,7 +81,7 @@ test "decryption fails with wrong message id" {
 ///|
 test "decryption fails with wrong secret" {
   // Setup config
-  global_config.val = Some({
+  app_state.config = Some({
     id: "test_node",
     secret: "secret_A",
     peers: [],
@@ -104,7 +104,7 @@ test "decryption fails with wrong secret" {
   let encrypted = encrypt_with_message_key(message_id, data)
 
   // Change secret
-  global_config.val = Some({
+  app_state.config = Some({
     id: "test_node",
     secret: "secret_B", // Different secret
     peers: [],

@@ -1,6 +1,6 @@
 ///|
 test "sync message includes local script metadata" {
-  global_config.val = Some({
+  app_state.config = Some({
     id: "node-a",
     secret: "secret",
     peers: [],

@@ -1,20 +1,24 @@
 ///|
-let processed_messages_cache : Ref[Map[String, UInt64]] = Ref::new({})
+struct AppDataHandlerState {
+  processed_messages_cache : Map[String, UInt64]
+  pending_response_chunks : Map[String, ResponseChunkState]
+  response_chunk_size : Int
+  http_proxy_no_encrypt_threshold : Int
+  stream_priority_chunks : Int
+  stream_frame_magic : Bytes
+  stream_frame_version : Int
+}
 
 ///|
-let response_chunk_size : Int = 1048576
-
-///|
-let http_proxy_no_encrypt_threshold : Int = 1048576
-
-///|
-let stream_priority_chunks : Int = 4
-
-///|
-let stream_frame_magic : Bytes = b"MSTR"
-
-///|
-let stream_frame_version : Int = 1
+let app_data_handler_state : AppDataHandlerState = {
+  processed_messages_cache: {},
+  pending_response_chunks: {},
+  response_chunk_size: 1048576,
+  http_proxy_no_encrypt_threshold: 1048576,
+  stream_priority_chunks: 4,
+  stream_frame_magic: b"MSTR",
+  stream_frame_version: 1,
+}
 
 ///|
 struct ResponseChunkState {
@@ -26,9 +30,6 @@ struct ResponseChunkState {
 }
 
 ///|
-let pending_response_chunks : Ref[Map[String, ResponseChunkState]] = Ref::new({})
-
-///|
 fn check_and_mark_processed(id : String, timestamp : UInt64) -> Bool {
   let now = @env.now()
   // TTL Check (30s)
@@ -36,7 +37,7 @@ fn check_and_mark_processed(id : String, timestamp : UInt64) -> Bool {
     log_warn("Dropping expired message \{id}, age=\{now - timestamp}ms")
     return true
   }
-  let cache = processed_messages_cache.val
+  let cache = app_data_handler_state.processed_messages_cache
   if cache.contains(id) {
     return true
   }
@@ -132,11 +133,11 @@ fn encode_stream_frame(
   }
   let total_len = 24 + corr_bytes.length() + meta_len + payload.length()
   let buf = FixedArray::make(total_len, b'\x00')
-  buf[0] = stream_frame_magic[0]
-  buf[1] = stream_frame_magic[1]
-  buf[2] = stream_frame_magic[2]
-  buf[3] = stream_frame_magic[3]
-  buf[4] = stream_frame_version.to_byte()
+  buf[0] = app_data_handler_state.stream_frame_magic[0]
+  buf[1] = app_data_handler_state.stream_frame_magic[1]
+  buf[2] = app_data_handler_state.stream_frame_magic[2]
+  buf[3] = app_data_handler_state.stream_frame_magic[3]
+  buf[4] = app_data_handler_state.stream_frame_version.to_byte()
   let flags = if encrypted { 1 } else { 0 }
   buf[5] = flags.to_byte()
   write_u16(buf, 6, header_pairs.length())
@@ -176,11 +177,11 @@ fn decode_stream_frame(
   raw : Bytes,
 ) -> (String, Int, Int, Bytes, Map[String, String]?, Bool)? {
   if raw.length() < 24 ||
-    raw[0] != stream_frame_magic[0] ||
-    raw[1] != stream_frame_magic[1] ||
-    raw[2] != stream_frame_magic[2] ||
-    raw[3] != stream_frame_magic[3] ||
-    raw[4].to_int() != stream_frame_version {
+    raw[0] != app_data_handler_state.stream_frame_magic[0] ||
+    raw[1] != app_data_handler_state.stream_frame_magic[1] ||
+    raw[2] != app_data_handler_state.stream_frame_magic[2] ||
+    raw[3] != app_data_handler_state.stream_frame_magic[3] ||
+    raw[4].to_int() != app_data_handler_state.stream_frame_version {
     return None
   }
   let flags = raw[5].to_int()
@@ -497,7 +498,7 @@ fn store_response_chunk(
   status : String?,
   headers : Map[String, String]?,
 ) -> (Bytes, String?, Map[String, String]?)? {
-  let cache = pending_response_chunks.val
+  let cache = app_data_handler_state.pending_response_chunks
   let state = match cache.get(request_id) {
     Some(existing) =>
       if existing.total != total {
@@ -863,7 +864,8 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
         resp_map["status"] = @msgpack.string(status_code.to_string())
         resp_map["headers"] = headers_to_msgpack(resp_headers)
         resp_map["data"] = @msgpack.binary(b)
-        let use_encryption = if b.length() >= http_proxy_no_encrypt_threshold {
+        let use_encryption = if b.length() >=
+          app_data_handler_state.http_proxy_no_encrypt_threshold {
           false
         } else {
           msg.encrypted
@@ -989,7 +991,8 @@ async fn send_chunked_helper(
   headers : Map[String, String]?,
   prefer_stream_frame : Bool,
 ) -> Unit {
-  let total = (data.length() + response_chunk_size - 1) / response_chunk_size
+  let total = (data.length() + app_data_handler_state.response_chunk_size - 1) /
+    app_data_handler_state.response_chunk_size
   let stream_routes = if prefer_stream_frame {
     collect_stream_routes(transport, target_id, resolved_addr)
   } else {
@@ -1006,11 +1009,12 @@ async fn send_chunked_helper(
       None
     }
     for i = 0; i < total; i = i + 1 {
-      let start = i * response_chunk_size
-      let end = if start + response_chunk_size > data.length() {
+      let start = i * app_data_handler_state.response_chunk_size
+      let end = if start + app_data_handler_state.response_chunk_size >
+        data.length() {
         data.length()
       } else {
-        start + response_chunk_size
+        start + app_data_handler_state.response_chunk_size
       }
       let chunk = slice_bytes(data, start, end)
       send_chunk_frame_or_fallback(
@@ -1025,18 +1029,19 @@ async fn send_chunked_helper(
     return
   }
 
-  let prefix_end = if total < stream_priority_chunks {
+  let prefix_end = if total < app_data_handler_state.stream_priority_chunks {
     total
   } else {
-    stream_priority_chunks
+    app_data_handler_state.stream_priority_chunks
   }
   let primary_route = stream_routes[0]
   for i = 0; i < prefix_end; i = i + 1 {
-    let start = i * response_chunk_size
-    let end = if start + response_chunk_size > data.length() {
+    let start = i * app_data_handler_state.response_chunk_size
+    let end = if start + app_data_handler_state.response_chunk_size >
+      data.length() {
       data.length()
     } else {
-      start + response_chunk_size
+      start + app_data_handler_state.response_chunk_size
     }
     let chunk = slice_bytes(data, start, end)
     send_chunk_frame_or_fallback(
@@ -1080,11 +1085,12 @@ async fn send_chunked_helper(
       let route = primary_route
       root.spawn_bg(async fn() {
         for i = prefix_end; i < primary_end; i = i + 1 {
-          let start = i * response_chunk_size
-          let end = if start + response_chunk_size > data.length() {
+          let start = i * app_data_handler_state.response_chunk_size
+          let end = if start + app_data_handler_state.response_chunk_size >
+            data.length() {
             data.length()
           } else {
-            start + response_chunk_size
+            start + app_data_handler_state.response_chunk_size
           }
           let chunk = slice_bytes(data, start, end)
           send_chunk_frame_or_fallback(
@@ -1119,11 +1125,12 @@ async fn send_chunked_helper(
       }
       root.spawn_bg(async fn() {
         for i = start_index; i < end_index; i = i + 1 {
-          let start = i * response_chunk_size
-          let end = if start + response_chunk_size > data.length() {
+          let start = i * app_data_handler_state.response_chunk_size
+          let end = if start + app_data_handler_state.response_chunk_size >
+            data.length() {
             data.length()
           } else {
-            start + response_chunk_size
+            start + app_data_handler_state.response_chunk_size
           }
           let chunk = slice_bytes(data, start, end)
           send_chunk_frame_or_fallback(
@@ -1192,7 +1199,7 @@ async fn send_file_stream_helper(
       return
     }
   }
-  let chunk_size_64 = response_chunk_size.to_int64()
+  let chunk_size_64 = app_data_handler_state.response_chunk_size.to_int64()
   let total_64 = (file_size + chunk_size_64 - 1) / chunk_size_64
   let total = total_64.to_int()
   let stream_routes = if prefer_stream_frame {
@@ -1219,7 +1226,7 @@ async fn send_file_stream_helper(
         let expected_len = if offset + chunk_size_64 > file_size {
           (file_size - offset).to_int()
         } else {
-          response_chunk_size
+          app_data_handler_state.response_chunk_size
         }
         let chunk_buf = FixedArray::make(expected_len, b'\x00')
         let bytes_read = file.read_at(chunk_buf, position=offset)
@@ -1258,10 +1265,10 @@ async fn send_file_stream_helper(
     return
   }
 
-  let prefix_end = if total < stream_priority_chunks {
+  let prefix_end = if total < app_data_handler_state.stream_priority_chunks {
     total
   } else {
-    stream_priority_chunks
+    app_data_handler_state.stream_priority_chunks
   }
   let primary_route = stream_routes[0]
   try {
@@ -1272,7 +1279,7 @@ async fn send_file_stream_helper(
       let expected_len = if offset + chunk_size_64 > file_size {
         (file_size - offset).to_int()
       } else {
-        response_chunk_size
+        app_data_handler_state.response_chunk_size
       }
       let chunk_buf = FixedArray::make(expected_len, b'\x00')
       let bytes_read = file.read_at(chunk_buf, position=offset)
@@ -1339,7 +1346,7 @@ async fn send_file_stream_helper(
             let expected_len = if offset + chunk_size_64 > file_size {
               (file_size - offset).to_int()
             } else {
-              response_chunk_size
+              app_data_handler_state.response_chunk_size
             }
             let chunk_buf = FixedArray::make(expected_len, b'\x00')
             let bytes_read = file.read_at(chunk_buf, position=offset)
@@ -1394,7 +1401,7 @@ async fn send_file_stream_helper(
             let expected_len = if offset + chunk_size_64 > file_size {
               (file_size - offset).to_int()
             } else {
-              response_chunk_size
+              app_data_handler_state.response_chunk_size
             }
             let chunk_buf = FixedArray::make(expected_len, b'\x00')
             let bytes_read = file.read_at(chunk_buf, position=offset)
@@ -1462,7 +1469,7 @@ async fn send_response_message_direct(
     ResponseSource::MsgPack(response_data) =>
       match response_data {
         Binary(b) =>
-          if b.length() >= response_chunk_size {
+          if b.length() >= app_data_handler_state.response_chunk_size {
             send_chunked_helper(
               transport,
               resolved_addr,
@@ -1501,7 +1508,7 @@ async fn send_response_message_direct(
           }
           match (status, data) {
             (Some(status), Some(data)) =>
-              if data.length() >= response_chunk_size {
+              if data.length() >= app_data_handler_state.response_chunk_size {
                 send_chunked_helper(
                   transport,
                   resolved_addr,

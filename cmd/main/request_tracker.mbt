@@ -27,28 +27,34 @@ pub struct RequestTracker {
 }
 
 ///|
-let global_request_tracker : RequestTracker = { pending: {} }
+struct RequestTrackerState {
+  tracker : RequestTracker
+  streams : Map[String, StreamRequest]
+}
 
 ///|
-let global_stream_requests : Ref[Map[String, StreamRequest]] = Ref::new({})
+let request_tracker_state : RequestTrackerState = {
+  tracker: { pending: {} },
+  streams: {},
+}
 
 ///|
 fn add_pending_request(id : String) -> Unit {
   // Cleanup old requests if map gets too large (simple garbage collection)
-  if global_request_tracker.pending.length() > 100 {
+  if request_tracker_state.tracker.pending.length() > 100 {
     let now = @env.now()
     let to_remove = []
-    for k, v in global_request_tracker.pending {
+    for k, v in request_tracker_state.tracker.pending {
       // Remove requests older than 60 seconds
       if now - v.created_at > 60000UL {
         to_remove.push(k)
       }
     }
     for k in to_remove {
-      global_request_tracker.pending.remove(k)
+      request_tracker_state.tracker.pending.remove(k)
     }
   }
-  global_request_tracker.pending[id] = {
+  request_tracker_state.tracker.pending[id] = {
     cond: @cond_var.Cond::new(),
     headers: {},
     response: None,
@@ -58,7 +64,7 @@ fn add_pending_request(id : String) -> Unit {
 
 ///|
 fn add_stream_request(id : String) -> Unit {
-  let streams = global_stream_requests.val
+  let streams = request_tracker_state.streams
   if streams.length() > 100 {
     let now = @env.now()
     let to_remove = []
@@ -88,7 +94,7 @@ fn add_stream_request(id : String) -> Unit {
 
 ///|
 fn is_stream_request(id : String) -> Bool {
-  global_stream_requests.val.contains(id)
+  request_tracker_state.streams.contains(id)
 }
 
 ///|
@@ -99,7 +105,7 @@ fn push_stream_chunk(
   data : Bytes,
   headers : Map[String, String]?,
 ) -> Unit {
-  let streams = global_stream_requests.val
+  let streams = request_tracker_state.streams
   match streams.get(id) {
     Some(req) => {
       if total <= 0 {
@@ -142,7 +148,7 @@ fn push_stream_data(
   data : Bytes,
   headers : Map[String, String]?,
 ) -> Unit {
-  let streams = global_stream_requests.val
+  let streams = request_tracker_state.streams
   match streams.get(id) {
     Some(req) => {
       match headers {
@@ -159,7 +165,7 @@ fn push_stream_data(
 
 ///|
 fn take_stream_chunk(id : String) -> (Bytes, Bool, Map[String, String]?)? {
-  let streams = global_stream_requests.val
+  let streams = request_tracker_state.streams
   match streams.get(id) {
     Some(req) =>
       if req.queue.length() > req.queue_head {
@@ -206,7 +212,7 @@ async fn wait_stream_chunk(
   id : String,
   timeout_ms : Int,
 ) -> (Bytes, Bool, Map[String, String]?)? {
-  match global_stream_requests.val.get(id) {
+  match request_tracker_state.streams.get(id) {
     Some(req) => {
       let result = @async.with_timeout_opt(timeout_ms, async fn() {
         for ;; {
@@ -228,7 +234,7 @@ fn resolve_request(
   headers : Map[String, String],
   response : Bytes,
 ) -> Unit {
-  match global_request_tracker.pending.get(id) {
+  match request_tracker_state.tracker.pending.get(id) {
     Some(req) => {
       req.response = Some(response)
       req.headers.merge_in_place(headers)
@@ -243,7 +249,7 @@ async fn wait_for_response(
   id : String,
   timeout_ms : UInt,
 ) -> (Bytes, Map[String, String])? {
-  match global_request_tracker.pending.get(id) {
+  match request_tracker_state.tracker.pending.get(id) {
     Some(req) => {
       let result = @async.with_timeout_opt(timeout_ms.reinterpret_as_int(), async fn() {
         for ;; {
@@ -253,7 +259,7 @@ async fn wait_for_response(
           }
         }
       })
-      global_request_tracker.pending.remove(id)
+      request_tracker_state.tracker.pending.remove(id)
       result
     }
     None => {

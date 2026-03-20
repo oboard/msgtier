@@ -14,7 +14,7 @@ fn ScriptOutput::to_msgpack(self : ScriptOutput) -> @msgpack.Value {
 
 ///|
 async fn execute_script_handler(content : String) -> ScriptOutput? {
-  match global_config.val {
+  match app_state.config {
     Some({ scripts: Some(scripts), .. }) =>
       Some(process_script_execution(content, scripts))
     _ => None

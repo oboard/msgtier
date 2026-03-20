@@ -61,7 +61,7 @@ fn Connection::new(my_id : String, peer_id : String) -> Connection {
   } else {
     (peer_id, my_id)
   }
-  let secret_hash = match global_config.val {
+  let secret_hash = match app_state.config {
     Some(config) => bytes_to_hex(hash_secret(config.secret))
     None => bytes_to_hex(hash_secret(""))
   }

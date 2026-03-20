@@ -1,7 +1,4 @@
 ///|
-const PAGE_404 : Bytes = b"<html><head></head><body>Page Not Found</body></html>"
-
-///|
 struct WsClient {
   conn : @websocket.Conn
   sending : Ref[Bool]
@@ -12,7 +9,7 @@ struct HttpServiceState {
   ws_clients : Map[String, WsClient]
   last_emitted_ids : Map[String, UInt64]
   last_emitted_order : Array[String]
-  mut chat_db_file : String
+  page_404 : Bytes
   mut chat_engine : @sqlite3.SQLiteEngine?
   mut chat_mapper : @db.MessageMapperImpl?
 }
@@ -22,7 +19,7 @@ let http_state : HttpServiceState = {
   ws_clients: {},
   last_emitted_ids: {},
   last_emitted_order: [],
-  chat_db_file: "",
+  page_404: b"<html><head></head><body>Page Not Found</body></html>",
   chat_engine: None,
   chat_mapper: None,
 }
@@ -42,7 +39,6 @@ async fn init_chat_store() -> Unit {
 
   let db_file = db_dir + "/chat.sqlite3"
   println("Chat DB file: \{db_file}")
-  http_state.chat_db_file = db_file
   try {
     let engine = @sqlite3.SQLiteEngine::open(db_file)
     @morm.auto_migrate(engine, [@db.Message::table()])
@@ -443,7 +439,7 @@ async fn handle_ws_incoming(text : String) -> String? {
         target_id?=target_id_opt,
         body~,
         relay=1,
-        version=VERSION,
+        version=app_state.version,
         timeout_ms=30000,
       )
 
@@ -803,7 +799,7 @@ async fn proxy_http_request(
     kind="http_proxy",
     source_id=get_config().id,
     relay=1,
-    version=VERSION,
+    version=app_state.version,
     body=@msgpack.map(body_map),
     encrypted=is_encrypted,
     timeout_ms=timeout_ms_uint,
@@ -857,7 +853,7 @@ async fn proxy_http_request_stream(
     kind="http_proxy",
     source_id=get_config().id,
     relay=1,
-    version=VERSION,
+    version=app_state.version,
     body=@msgpack.map(body_map),
     encrypted=is_encrypted,
     timeout_ms=timeout_ms_uint,
@@ -1508,7 +1504,7 @@ async fn handle_http_request(
         kind~,
         source_id=my_id,
         relay=1,
-        version=VERSION,
+        version=app_state.version,
         target_id~,
         body=data_val,
         encrypted=is_encrypted,
@@ -1745,7 +1741,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
   }
   let me = PeerNode::new(
     id=my_id,
-    version=VERSION,
+    version=app_state.version,
     addresses=my_addrs,
     metadata=get_local_node_metadata(),
   )
@@ -1790,7 +1786,7 @@ async fn notfound_handler(conn : @http.ServerConnection) -> Unit {
   ..send_response(404, "Not Found", extra_headers={
     "Content-Type": "text/html",
   })
-  ..write(PAGE_404)
+  ..write(http_state.page_404)
   .end_response()
 }
 

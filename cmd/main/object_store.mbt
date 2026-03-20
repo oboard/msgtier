@@ -5,7 +5,16 @@ struct ObjectStore {
 }
 
 ///|
-let global_object_store : ObjectStore = { objects: {} }
+struct ObjectStoreState {
+  store : ObjectStore
+  mut default_upload_dir : String
+}
+
+///|
+let object_store_state : ObjectStoreState = {
+  store: { objects: {} },
+  default_upload_dir: "",
+}
 
 ///|
 pub fn register_object(path : String, id? : String) -> String {
@@ -13,36 +22,33 @@ pub fn register_object(path : String, id? : String) -> String {
     Some(id) => id
     None => @nanoid.nanoid().unwrap_or(@env.now().to_string())
   }
-  global_object_store.objects[object_id] = path
+  object_store_state.store.objects[object_id] = path
   object_id
 }
 
 ///|
-let default_upload_dir : Ref[String] = Ref::new("")
-
-///|
 async fn init_upload_dir() -> Unit {
-  default_upload_dir.val = @fs.tmpdir(prefix="msgtier")
+  object_store_state.default_upload_dir = @fs.tmpdir(prefix="msgtier")
 }
 
 ///|
 pub fn get_runtime_tmp_dir() -> String {
-  default_upload_dir.val
+  object_store_state.default_upload_dir
 }
 
 ///|
 fn get_upload_dir() -> String {
   match get_config().upload_dir {
     Some(dir) => dir
-    None => default_upload_dir.val
+    None => object_store_state.default_upload_dir
   }
 }
 
 ///|
 pub async fn get_object_path(id : String) -> String? {
   // Check registered objects first
-  if global_object_store.objects.contains(id) {
-    match global_object_store.objects.get(id) {
+  if object_store_state.store.objects.contains(id) {
+    match object_store_state.store.objects.get(id) {
       Some(path) => if @fs.exists(path) { return Some(path) }
       None => ()
     }
@@ -100,5 +106,5 @@ pub async fn save_object_from_reader(id : String, reader : &@io.Reader) -> Unit 
 
 ///|
 pub fn has_object(id : String) -> Bool {
-  global_object_store.objects.contains(id)
+  object_store_state.store.objects.contains(id)
 }

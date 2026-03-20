@@ -1,10 +1,4 @@
 ///|
-const VERSION = "0.1.0"
-
-///|
-let global_config : Ref[Config?] = Ref::new(None)
-
-///|
 async fn main {
   @async.with_task_group(async fn(root) {
     let args = @env.args()[1:]
@@ -14,7 +8,7 @@ async fn main {
         return
       }
       ["--version"] => {
-        log_info("Version: \{VERSION}")
+        log_info("Version: \{app_state.version}")
         return
       }
       [config] => run_with_config(root, config)
@@ -34,7 +28,7 @@ async fn run_with_config(
   config_path : String,
 ) -> Unit {
   let config = Config::from_file(config_path)
-  global_config.val = Some(config)
+  app_state.config = Some(config)
   reset_bench_trace()
   start_bench_trace_flusher(root)
   log_debug(config.to_json().stringify(indent=2))

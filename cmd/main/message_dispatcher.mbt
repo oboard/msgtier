@@ -88,7 +88,7 @@ fn handle_hello_message(ctx : MessageContext) -> Unit {
   if ctx.should_skip_hello_callback {
     return
   }
-  let secret_valid = match global_config.val {
+  let secret_valid = match app_state.config {
     Some(config) => {
       let our_secret_hash = bytes_to_hex(hash_secret(config.secret))
       match msg.secret_hash {
@@ -119,7 +119,7 @@ fn handle_hello_message(ctx : MessageContext) -> Unit {
     None => {
       let peer_node = PeerNode::new(
         id=msg.source_id,
-        version=VERSION,
+        version=app_state.version,
         addresses=if msg.source_addr is Some(addr) { [addr] } else { [] },
         metadata={},
       )
@@ -418,7 +418,7 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
         None => {
           let peer_node = PeerNode::new(
             id=msg.source_id,
-            version=msg.version.unwrap_or(VERSION),
+            version=msg.version.unwrap_or(app_state.version),
             addresses=if msg.source_addr is Some(addr) { [addr] } else { [] },
             metadata=sender_metadata.val.unwrap_or({}),
           )

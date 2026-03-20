@@ -4,7 +4,14 @@ suberror TransportError {
 } derive(Show)
 
 ///|
-let tcp_max_frame_size : Int = 64 * 1024 * 1024
+struct TcpTransportState {
+  max_frame_size : Int
+}
+
+///|
+let tcp_transport_state : TcpTransportState = {
+  max_frame_size: 64 * 1024 * 1024,
+}
 
 ///|
 struct TcpConnection {
@@ -100,7 +107,7 @@ impl Transport for TcpTransport with send(self, target, data) {
                     (header_bytes[1].to_int() << 16) |
                     (header_bytes[2].to_int() << 8) |
                     header_bytes[3].to_int()
-                  if len > tcp_max_frame_size {
+                  if len > tcp_transport_state.max_frame_size {
                     break
                   }
                   let data_buf = FixedArray::make(len, b'\x00')
@@ -175,7 +182,7 @@ impl Transport for TcpTransport with listen(self, root, handler, on_disconnect) 
           header_bytes[3].to_int()
 
         // Sanity check: 10MB limit
-        if len > tcp_max_frame_size {
+        if len > tcp_transport_state.max_frame_size {
           break
         }
 

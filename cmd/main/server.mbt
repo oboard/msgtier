@@ -1,11 +1,16 @@
 ///|
-const CONNECTION_TIMEOUT_MS : UInt64 = 60000 // 60 seconds timeout
+struct ServerState {
+  connection_timeout_ms : UInt64
+  mut last_sync_broadcast_time : UInt64
+  received_message_cache : Map[String, UInt64]
+}
 
 ///|
-let last_sync_broadcast_time : Ref[UInt64] = Ref::new(0)
-
-///|
-let received_message_cache : Ref[Map[String, UInt64]] = Ref::new({})
+let server_state : ServerState = {
+  connection_timeout_ms: 60000,
+  last_sync_broadcast_time: 0,
+  received_message_cache: {},
+}
 
 ///|
 fn check_and_mark_received(id : String, timestamp : UInt64) -> Bool {
@@ -13,7 +18,7 @@ fn check_and_mark_received(id : String, timestamp : UInt64) -> Bool {
   if now > timestamp && now - timestamp > 30000 {
     return true
   }
-  let cache = received_message_cache.val
+  let cache = server_state.received_message_cache
   if cache.contains(id) {
     return true
   }
@@ -49,17 +54,10 @@ fn extract_port_tuple(
   let local_port = parse_port_from_addr(local_addr, protocol)
   let remote_port = parse_port_from_addr(remote_addr, protocol)
   let proto = Protocol::parse(protocol[:])
-  match local_port {
-    Some(lp) =>
-      match remote_port {
-        Some(rp) =>
-          match proto {
-            Some(p) => Some((lp, p, rp))
-            None => None
-          }
-        None => None
-      }
-    None => None
+  if (local_port, remote_port, proto) is (Some(lp), Some(rp), Some(p)) {
+    Some((lp, p, rp))
+  } else {
+    None
   }
 }
 
@@ -71,7 +69,7 @@ fn has_direct_connection_for_protocol(
 ) -> Bool {
   get_global_connection_manager()
   .get_peer_connections(peer_id)
-  .any(fn(conn) {
+  .any(conn => {
     if conn.relay != 1 {
       return false
     }
@@ -132,24 +130,21 @@ fn handle_new_connection(
       info.id,
       remote_addr,
     )
-    match info.peers {
-      Some(peer_addrs) => {
-        let my_listeners = get_our_addresses(local_addr).map(fn(a) { a.address })
-        for peer_addr_obj in peer_addrs {
-          let addr = peer_addr_obj.address
-          if addr.is_empty() || is_bind_all_address(addr) {
-            continue
-          }
-          if my_listeners.contains(addr) {
-            continue
-          }
-          global_state.peer_manager = global_state.peer_manager.add_peer_address(
-            info.id,
-            addr,
-          )
+    if info.peers is Some(peer_addrs) {
+      let my_listeners = get_our_addresses(local_addr).map(fn(a) { a.address })
+      for peer_addr_obj in peer_addrs {
+        let addr = peer_addr_obj.address
+        if addr.is_empty() || is_bind_all_address(addr) {
+          continue
         }
+        if my_listeners.contains(addr) {
+          continue
+        }
+        global_state.peer_manager = global_state.peer_manager.add_peer_address(
+          info.id,
+          addr,
+        )
       }
-      None => ()
     }
   } else {
     // Only create peer if it doesn't exist yet
@@ -161,7 +156,7 @@ fn handle_new_connection(
       None => {
         let peer_node = PeerNode::new(
           id=actual_peer_id,
-          version=VERSION,
+          version=app_state.version,
           addresses=[remote_addr],
           metadata={},
         )
@@ -288,51 +283,48 @@ async fn handle_reconnects(
         } catch {
           _ => ()
         }
-        match parsed {
-          Some(addr) => {
-            if addr.protocol != transport_protocol_type {
-              continue
-            }
-            let key = peer.id +
-              "|" +
-              addr.protocol.to_string() +
-              "|" +
-              addr.port.to_string()
-            let mut use_new = false
-            match targets.get(key) {
-              None => use_new = true
-              Some(existing) => {
-                let mut existing_parsed : Address? = None
-                try {
-                  existing_parsed = Some(Address::parse(existing))
-                } catch {
-                  _ => ()
-                }
-                match existing_parsed {
-                  Some(existing_addr) => {
-                    let new_loop = is_loopback(addr.host)
-                    let old_loop = is_loopback(existing_addr.host)
-                    if old_loop && !new_loop {
+        if parsed is Some(addr) {
+          if addr.protocol != transport_protocol_type {
+            continue
+          }
+          let key = peer.id +
+            "|" +
+            addr.protocol.to_string() +
+            "|" +
+            addr.port.to_string()
+          let mut use_new = false
+          match targets.get(key) {
+            None => use_new = true
+            Some(existing) => {
+              let mut existing_parsed : Address? = None
+              try {
+                existing_parsed = Some(Address::parse(existing))
+              } catch {
+                _ => ()
+              }
+              match existing_parsed {
+                Some(existing_addr) => {
+                  let new_loop = is_loopback(addr.host)
+                  let old_loop = is_loopback(existing_addr.host)
+                  if old_loop && !new_loop {
+                    use_new = true
+                  } else if !old_loop && new_loop {
+                    use_new = false
+                  } else {
+                    let new_private = is_private(addr.host)
+                    let old_private = is_private(existing_addr.host)
+                    if old_private && !new_private {
                       use_new = true
-                    } else if !old_loop && new_loop {
-                      use_new = false
-                    } else {
-                      let new_private = is_private(addr.host)
-                      let old_private = is_private(existing_addr.host)
-                      if old_private && !new_private {
-                        use_new = true
-                      }
                     }
                   }
-                  None => use_new = true
                 }
+                None => use_new = true
               }
             }
-            if use_new {
-              targets[key] = addr_str
-            }
           }
-          None => ()
+          if use_new {
+            targets[key] = addr_str
+          }
         }
       }
     }
@@ -492,36 +484,34 @@ async fn process_pending_message(
     }
     let target_connections = cm.get_peer_connections(target_peer_id)
     if target_connections.is_empty() {
-      match pick_peer_lan_address(target_peer_id, transport.protocol()) {
-        Some(addr) => {
-          let target_addr = if addr.contains("://") {
-            addr
-          } else {
-            transport.protocol() + "://" + addr
-          }
-          if !target_addr.is_empty() && target_addr != "routed" {
-            let msg = pending_msg
-            log_debug("PendingMessage: lan addr=\{target_addr} id=\{msg.id}")
-            let success = send_message(transport, target_addr, msg)
-            log_debug(
-              "DEBUG: pending lan send protocol=\{transport.protocol()} addr=\{target_addr} id=\{msg.id} ok=\{success}",
-            )
-            if success {
-              sent = true
-              if transport.protocol() == "udp" {
-                record_message_sent(pending_msg.id, target_peer_id, "udp")
-              } else {
-                mark_pending_message_attempted(
-                  pending_msg.id,
-                  target_peer_id,
-                  transport.protocol(),
-                )
-                |> ignore
-              }
+      if pick_peer_lan_address(target_peer_id, transport.protocol())
+        is Some(addr) {
+        let target_addr = if addr.contains("://") {
+          addr
+        } else {
+          transport.protocol() + "://" + addr
+        }
+        if !target_addr.is_empty() && target_addr != "routed" {
+          let msg = pending_msg
+          log_debug("PendingMessage: lan addr=\{target_addr} id=\{msg.id}")
+          let success = send_message(transport, target_addr, msg)
+          log_debug(
+            "DEBUG: pending lan send protocol=\{transport.protocol()} addr=\{target_addr} id=\{msg.id} ok=\{success}",
+          )
+          if success {
+            sent = true
+            if transport.protocol() == "udp" {
+              record_message_sent(pending_msg.id, target_peer_id, "udp")
+            } else {
+              mark_pending_message_attempted(
+                pending_msg.id,
+                target_peer_id,
+                transport.protocol(),
+              )
+              |> ignore
             }
           }
         }
-        None => ()
       }
       if sent {
         continue
@@ -594,53 +584,47 @@ async fn process_pending_message(
       }
     }
 
-    match get_global_peer_manager().get_peer(target_peer_id) {
-      Some(peer) => {
-        let lan_addrs : Array[String] = []
-        let wan_addrs : Array[String] = []
-        for addr_str in peer.addresses {
-          if addr_str.is_empty() ||
-            addr_str == "routed" ||
-            is_bind_all_address(addr_str) {
-            continue
+    if get_global_peer_manager().get_peer(target_peer_id) is Some(peer) {
+      let lan_addrs : Array[String] = []
+      let wan_addrs : Array[String] = []
+      for addr_str in peer.addresses {
+        if addr_str.is_empty() ||
+          addr_str == "routed" ||
+          is_bind_all_address(addr_str) {
+          continue
+        }
+        let mut parsed : Address? = None
+        try {
+          parsed = Some(Address::parse(addr_str))
+        } catch {
+          _ => ()
+        }
+        if parsed is Some(addr) &&
+          addr.protocol.to_string() == transport.protocol() {
+          let host = extract_host(addr_str)
+          let full_addr = if addr_str.contains("://") {
+            addr_str
+          } else {
+            transport.protocol() + "://" + addr_str
           }
-          let mut parsed : Address? = None
-          try {
-            parsed = Some(Address::parse(addr_str))
-          } catch {
-            _ => ()
-          }
-          match parsed {
-            Some(addr) =>
-              if addr.protocol.to_string() == transport.protocol() {
-                let host = extract_host(addr_str)
-                let full_addr = if addr_str.contains("://") {
-                  addr_str
-                } else {
-                  transport.protocol() + "://" + addr_str
-                }
 
-                if !seen_candidates.contains(full_addr) {
-                  if is_private(host) || is_loopback(host) {
-                    lan_addrs.push(full_addr)
-                  } else {
-                    wan_addrs.push(full_addr)
-                  }
-                  seen_candidates[full_addr] = true
-                }
-              }
-            None => ()
+          if !seen_candidates.contains(full_addr) {
+            if is_private(host) || is_loopback(host) {
+              lan_addrs.push(full_addr)
+            } else {
+              wan_addrs.push(full_addr)
+            }
+            seen_candidates[full_addr] = true
           }
-        }
-        // Append LAN then WAN addresses from PeerManager to candidates
-        for addr in lan_addrs {
-          candidates.push(addr)
-        }
-        for addr in wan_addrs {
-          candidates.push(addr)
         }
       }
-      None => ()
+      // Append LAN then WAN addresses from PeerManager to candidates
+      for addr in lan_addrs {
+        candidates.push(addr)
+      }
+      for addr in wan_addrs {
+        candidates.push(addr)
+      }
     }
 
     // Send to candidates
@@ -775,7 +759,7 @@ async fn handle_heartbeat(
               kind="ping",
               source_id=from,
               source_addr=local_addr,
-              version=VERSION,
+              version=app_state.version,
             )
             // Use relay_message to forward
             ignore(relay_message(transport, from, ping_msg, peer_id))
@@ -793,28 +777,23 @@ async fn handle_heartbeat(
           kind="ping",
           source_id=from,
           source_addr=ping_local_addr,
-          version=VERSION,
+          version=app_state.version,
         )
 
         // Get all candidate addresses for this peer and protocol
         let candidate_addrs : Array[String] = []
-        match get_global_peer_manager().get_peer(peer_id) {
-          Some(peer_node) =>
-            for addr in peer_node.addresses {
-              let target_addr = if addr.contains("://") {
-                addr
-              } else {
-                transport.protocol() + "://" + addr
-              }
-              match @url.Url::parse(target_addr) {
-                Some(u) =>
-                  if u.scheme == transport.protocol() {
-                    candidate_addrs.push(target_addr)
-                  }
-                None => ()
-              }
+        if get_global_peer_manager().get_peer(peer_id) is Some(peer_node) {
+          for addr in peer_node.addresses {
+            let target_addr = if addr.contains("://") {
+              addr
+            } else {
+              transport.protocol() + "://" + addr
             }
-          None => ()
+            if @url.Url::parse(target_addr) is Some(u) &&
+              u.scheme == transport.protocol() {
+              candidate_addrs.push(target_addr)
+            }
+          }
         }
 
         // Also include the currently connected address if known
@@ -822,9 +801,8 @@ async fn handle_heartbeat(
 
         if candidate_addrs.is_empty() {
           // Fallback to pick_peer_address if no addresses found (e.g. routed?)
-          match pick_peer_address(peer_id, transport.protocol()) {
-            Some(addr) => candidate_addrs.push(addr)
-            None => ()
+          if pick_peer_address(peer_id, transport.protocol()) is Some(addr) {
+            candidate_addrs.push(addr)
           }
         }
 
@@ -863,7 +841,7 @@ async fn handle_heartbeat(
           global_state.connection_manager = global_state.connection_manager.prune_connection_ports(
             conn.id,
             current_time,
-            CONNECTION_TIMEOUT_MS,
+            server_state.connection_timeout_ms,
           )
         }
 
@@ -873,7 +851,8 @@ async fn handle_heartbeat(
               Some(pong_time) => pong_time >= ping_time
               None => false
             }
-            current_time - ping_time > CONNECTION_TIMEOUT_MS && !pong_ok
+            current_time - ping_time > server_state.connection_timeout_ms &&
+            !pong_ok
           }
           None => false
         }
@@ -914,8 +893,8 @@ async fn handle_heartbeat(
         let route_expired = match get_global_peer_manager().get_route(peer_id) {
           Some(route) => {
             let now = @env.now()
-            // 30s timeout for routes? Or use CONNECTION_TIMEOUT_MS?
-            now - route.timestamp > CONNECTION_TIMEOUT_MS
+            // 30s timeout for routes? Or use server_state.connection_timeout_ms?
+            now - route.timestamp > server_state.connection_timeout_ms
           }
           None => true // No route, effectively expired/non-existent
         }
@@ -939,13 +918,13 @@ async fn handle_heartbeat(
 ///|
 fn broadcast_sync(my_id : String, local_addr : String) -> Unit {
   let now = @env.now()
-  if now - last_sync_broadcast_time.val < 1000 {
+  if now - server_state.last_sync_broadcast_time < 1000 {
     log_debug(
-      "DEBUG: broadcast_sync throttled (last was \{now - last_sync_broadcast_time.val}ms ago)",
+      "DEBUG: broadcast_sync throttled (last was \{now - server_state.last_sync_broadcast_time}ms ago)",
     )
     return
   }
-  last_sync_broadcast_time.val = now
+  server_state.last_sync_broadcast_time = now
   // Create base message to reuse body
   let base_msg = create_sync_message(my_id, local_addr)
   let all_peers = get_global_peer_manager().get_all_peers()
@@ -961,7 +940,7 @@ fn broadcast_sync(my_id : String, local_addr : String) -> Unit {
       source_addr=local_addr,
       target_id=peer.id,
       body=base_msg.body,
-      version=VERSION,
+      version=app_state.version,
     )
     log_debug("DEBUG: broadcast_sync enqueue to=\{peer.id} msg=\{msg.id}")
     ignore(add_pending_message(msg))
@@ -1173,7 +1152,7 @@ async fn handle_incoming_message(
         id: msg.source_id,
         version: match msg.version {
           Some(v) => v
-          None => VERSION
+          None => app_state.version
         },
         addresses: addrs,
         peers: msg.peers,
@@ -1277,7 +1256,7 @@ async fn handle_incoming_message(
 
   // Handle message relaying: if target is set and we're not the target, forward it
   if msg.target_id is Some(target_peer_id) {
-    if global_config.val is Some({ id, .. }) && id == target_peer_id {
+    if app_state.config is Some({ id, .. }) && id == target_peer_id {
       // Message is for us, continue to process
     } else {
       // Message is for someone else, forward it
@@ -1367,21 +1346,19 @@ async fn start_listener_service(
     },
     fn(remote_addr) {
       let remote_addr = transport.protocol() + "://" + remote_addr
-      match get_global_peer_manager().get_peer_id_by_address(remote_addr) {
-        Some(peer_id) => {
-          let conns = get_global_connection_manager().get_peer_connections(
-            peer_id,
-          )
-          for conn in conns {
-            if conn.relay == 1 {
-              global_state.connection_manager = global_state.connection_manager.remove_connection(
-                conn.id,
-              )
-              log_warn("[disconnect]\t\{conn.peer_id}(\{remote_addr})")
-            }
+      if get_global_peer_manager().get_peer_id_by_address(remote_addr)
+        is Some(peer_id) {
+        let conns = get_global_connection_manager().get_peer_connections(
+          peer_id,
+        )
+        for conn in conns {
+          if conn.relay == 1 {
+            global_state.connection_manager = global_state.connection_manager.remove_connection(
+              conn.id,
+            )
+            log_warn("[disconnect]\t\{conn.peer_id}(\{remote_addr})")
           }
         }
-        None => ()
       }
     },
   )

@@ -17,6 +17,15 @@ struct Config {
 } derive(Show, ToJson, FromJson)
 
 ///|
+struct AppState {
+  version : String
+  mut config : Config?
+}
+
+///|
+let app_state : AppState = { version: "0.1.0", config: None }
+
+///|
 async fn Config::from_file(path : String) -> Config {
   @fs.read_file(path).text() |> @json5.parse |> @json.from_json
 }
@@ -28,7 +37,7 @@ fn Config::is_encrypt(self : Config) -> Bool {
 
 ///|
 fn get_config() -> Config {
-  match global_config.val {
+  match app_state.config {
     Some(config) => config
     None =>
       {

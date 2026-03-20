@@ -16,14 +16,20 @@ fn ForeignNetworkManager::new(relay_bps_limit? : Int) -> ForeignNetworkManager {
 }
 
 ///|
-let global_foreign_network_manager : Ref[ForeignNetworkManager] = Ref::new(
-  ForeignNetworkManager::new(),
-)
+struct ForeignNetworkState {
+  mut manager : ForeignNetworkManager
+}
+
+///|
+let foreign_network_state : ForeignNetworkState = {
+  manager: ForeignNetworkManager::new(),
+}
 
 ///|
 fn init_foreign_network_manager() -> Unit {
   let limit = get_config().foreign_relay_bps_limit.unwrap_or(0)
-  global_foreign_network_manager.val = ForeignNetworkManager::new(
+  foreign_network_state.manager = ForeignNetworkManager::new(
     relay_bps_limit=limit,
   )
+  ignore(foreign_network_state.manager.relay_bps_limit)
 }

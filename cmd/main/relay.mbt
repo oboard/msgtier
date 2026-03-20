@@ -1,5 +1,10 @@
 ///|
-let message_timeout_ms : UInt = 30000
+struct RelayState {
+  default_timeout_ms : UInt
+}
+
+///|
+let relay_state : RelayState = { default_timeout_ms: 30000 }
 
 ///|
 pub async fn relay_message(
@@ -11,7 +16,7 @@ pub async fn relay_message(
 ) -> Bool noraise {
   // Check for timeout
   let now = @env.now()
-  let timeout = msg.timeout_ms.unwrap_or(message_timeout_ms)
+  let timeout = msg.timeout_ms.unwrap_or(relay_state.default_timeout_ms)
   let timeout_u64 = timeout.to_uint64()
   if now > msg.timestamp && now - msg.timestamp > timeout_u64 {
     log_warn(

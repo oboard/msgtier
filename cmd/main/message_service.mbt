@@ -1,6 +1,6 @@
 ///|
 fn get_identity_info() -> String {
-  match global_config.val {
+  match app_state.config {
     Some(config) => bytes_to_hex(hash_secret(config.secret))
     None => abort("No config found")
   }
@@ -33,7 +33,7 @@ fn get_local_interface_ips() -> Array[String] {
 
 ///|
 fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
-  match global_config.val {
+  match app_state.config {
     Some(config) => {
       let addrs : Array[NetworkAddress] = []
       let local_ips = get_local_interface_ips()
@@ -87,7 +87,7 @@ fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
 
 ///|
 fn get_local_node_metadata() -> Map[String, String] {
-  match global_config.val {
+  match app_state.config {
     Some(config) => {
       let metadata = config.metadata.unwrap_or({})
       let script_names : Array[String] = []
@@ -231,7 +231,7 @@ fn create_hello_message(
     source_id=peer_id,
     source_addr=local_addr,
     relay~,
-    version=VERSION,
+    version=app_state.version,
     peers?=peers_opt,
     secret_hash~,
   )

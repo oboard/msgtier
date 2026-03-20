@@ -1,7 +1,7 @@
 ///|
 fn reset_pending_state() -> Unit {
-  global_pending_messages.clear()
-  pending_send_times.val.clear()
+  pending_state.messages.clear()
+  pending_state.send_times.clear()
 }
 
 ///|

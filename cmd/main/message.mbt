@@ -19,9 +19,6 @@ struct Message {
 } derive(Show, Eq)
 
 ///|
-let message_id_counter : Ref[Int] = Ref::new(0)
-
-///|
 fn Message::is_broadcast(self : Message) -> Bool {
   self.target_id is None
 }
@@ -45,7 +42,6 @@ fn Message::new(
   timeout_ms? : UInt,
   attachment? : Bytes,
 ) -> Message {
-  message_id_counter.val += 1
   {
     id: id.unwrap_or(@nanoid.nanoid().unwrap_or(@env.now().to_string())),
     kind,
