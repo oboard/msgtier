@@ -4,7 +4,10 @@ fn peer_node_metadata_to_json_map(
 ) -> Map[String, Json] {
   let result : Map[String, Json] = {}
   for key, value in metadata {
-    if key == "scripts" || key == "channels" || key == "openclaw" {
+    if key == "scripts" ||
+      key == "channels" ||
+      key == "openclaw" ||
+      key == "port_forwards" {
       result[key] = @json.parse(value) catch { _ => value.to_json() }
     } else {
       result[key] = value.to_json()

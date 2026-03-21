@@ -38,6 +38,7 @@ async fn run_with_config(
   }
   ensure_managed_openclaw_plugin()
   init_openclaw_registry(root)
+  init_port_forward_registry(root)
   init_foreign_network_manager()
   start_listeners(root, config.listeners, id)
   start_http_api(root, config.web_api)

@@ -63,7 +63,12 @@ fn build_message_dispatcher_with_plugins(
 
 ///|
 fn get_default_plugins() -> Array[MessagePlugin] {
-  [core_message_plugin(), script_message_plugin(), object_message_plugin()]
+  [
+    core_message_plugin(),
+    script_message_plugin(),
+    object_message_plugin(),
+    port_forward_message_plugin(),
+  ]
 }
 
 ///|

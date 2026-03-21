@@ -11,6 +11,8 @@ test "sync message includes local script metadata" {
     openclaw: None,
     openclaw_plugin_version: None,
     openclaw_token: None,
+    port_forward_exposes: None,
+    port_forward_forwards: None,
     log: None,
     port: None,
     relay_network_whitelist: None,
@@ -43,6 +45,10 @@ test "sync message includes local script metadata" {
       )
       inspect(metadata.get("channels").unwrap().has_prefix("["), content="true")
       inspect(metadata.get("openclaw").unwrap().has_prefix("["), content="true")
+      inspect(
+        metadata.get("port_forwards").unwrap().has_prefix("["),
+        content="true",
+      )
     }
     _ => fail("sync message body should be an array")
   }

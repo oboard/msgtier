@@ -177,6 +177,28 @@ type PendingRequest
 
 type PendingState
 
+type PortForwardAuditEntry
+
+type PortForwardExposeRule
+pub impl Show for PortForwardExposeRule
+pub impl ToJson for PortForwardExposeRule
+pub impl @json.FromJson for PortForwardExposeRule
+
+type PortForwardForwardRule
+pub impl Show for PortForwardForwardRule
+pub impl ToJson for PortForwardForwardRule
+pub impl @json.FromJson for PortForwardForwardRule
+
+type PortForwardRegistryState
+
+type PortForwardTcpEndpoint
+
+type PortForwardUdpExposeSession
+
+type PortForwardUdpForwardRuntime
+
+type PortForwardUdpForwardSession
+
 type PortMapping
 pub impl Show for PortMapping
 pub impl ToJson for PortMapping
