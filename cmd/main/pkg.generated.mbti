@@ -66,7 +66,15 @@ pub impl Show for AddressStats
 pub impl ToJson for AddressStats
 pub impl @json.FromJson for AddressStats
 
+type AppDataHandlerState
+
+type AppState
+
 type BufferedReader
+
+type ChannelInstance
+pub impl Eq for ChannelInstance
+pub impl Show for ChannelInstance
 
 type Config
 pub impl Show for Config
@@ -89,7 +97,11 @@ pub impl Show for ForeignNetworkPacket
 pub impl ToJson for ForeignNetworkPacket
 pub impl @json.FromJson for ForeignNetworkPacket
 
+type ForeignNetworkState
+
 type GlobalState
+
+type HttpServiceState
 
 type LogLevel
 pub impl Eq for LogLevel
@@ -126,6 +138,18 @@ pub impl @json.FromJson for NetworkDiscoveryInfo
 
 type ObjectStore
 
+type ObjectStoreState
+
+type OpenClawPublicInstance
+pub impl Eq for OpenClawPublicInstance
+pub impl Show for OpenClawPublicInstance
+
+type OpenClawRuntimeInstance
+pub impl Eq for OpenClawRuntimeInstance
+pub impl Show for OpenClawRuntimeInstance
+
+type OpenClawState
+
 type PeerConnectionInfo
 pub impl Show for PeerConnectionInfo
 
@@ -150,6 +174,8 @@ pub struct PendingEntry {
 }
 
 type PendingRequest
+
+type PendingState
 
 type PortMapping
 pub impl Show for PortMapping
@@ -176,9 +202,13 @@ pub struct QuicTransport {
   connections : Map[String, @quic.Connection]
 }
 
+type RelayState
+
 pub struct RequestTracker {
   pending : Map[String, PendingRequest]
 }
+
+type RequestTrackerState
 
 type ResponseBody
 
@@ -197,6 +227,8 @@ pub impl ToJson for RouteInfo
 type ScriptOutput
 pub impl ToJson for ScriptOutput
 
+type ServerState
+
 type StatusInfo
 pub impl ToJson for StatusInfo
 
@@ -207,6 +239,8 @@ type StreamRoute
 type TcpConnection
 
 type TcpTransport
+
+type TcpTransportState
 
 type UdpTransport
 

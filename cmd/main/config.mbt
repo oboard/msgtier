@@ -7,6 +7,9 @@ struct Config {
   scripts : Map[String, String]?
   web_api : String?
   metadata : Map[String, String]?
+  openclaw : Bool?
+  openclaw_plugin_version : String?
+  openclaw_token : String?
   log : LogLevel?
   port : Map[String, String]?
   relay_network_whitelist : Array[String]?
@@ -48,6 +51,9 @@ fn get_config() -> Config {
         scripts: None,
         web_api: None,
         metadata: None,
+        openclaw: None,
+        openclaw_plugin_version: None,
+        openclaw_token: None,
         log: None,
         port: None,
         relay_network_whitelist: None,

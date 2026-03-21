@@ -148,6 +148,16 @@ fn push_stream_data(
   data : Bytes,
   headers : Map[String, String]?,
 ) -> Unit {
+  push_stream_data_part(id, data, headers, true)
+}
+
+///|
+fn push_stream_data_part(
+  id : String,
+  data : Bytes,
+  headers : Map[String, String]?,
+  done : Bool,
+) -> Unit {
   let streams = request_tracker_state.streams
   match streams.get(id) {
     Some(req) => {
@@ -156,7 +166,9 @@ fn push_stream_data(
         None => ()
       }
       req.queue.push(data)
-      req.closed = true
+      if done {
+        req.closed = true
+      }
       req.cond.signal()
     }
     None => ()

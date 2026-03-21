@@ -25,6 +25,7 @@ import {
   "moonbitlang/async/cond_var",
   "moonbitlang/async/aqueue",
   "moonbitlang/x/crypto",
+  "moonbitlang/x/sys",
   "oboard/morm",
   "oboard/msgtier/db",
   "oboard/morm/engine/sqlite3",

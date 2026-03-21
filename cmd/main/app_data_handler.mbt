@@ -490,6 +490,18 @@ fn parse_response_chunk_array(
 }
 
 ///|
+fn stream_done_from_headers(headers : Map[String, String]?) -> Bool {
+  match headers {
+    Some(h) =>
+      match h.get("x-msgtier-stream-done") {
+        Some(v) => v == "1"
+        None => false
+      }
+    None => false
+  }
+}
+
+///|
 fn store_response_chunk(
   request_id : String,
   index : Int,
@@ -847,6 +859,21 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
     details="req=\{correlation_id} from=\{msg.source_id} path=\{path} stream=\{prefer_stream_frame}",
   )
   ctx.root.spawn_bg(async fn() {
+    if prefer_stream_frame &&
+      http_method == "POST" &&
+      path == "/api/channels/chat/local/stream" {
+      stream_internal_channel_chat_request(
+        ctx.transport,
+        ctx.sender_addr,
+        ctx.my_id,
+        ctx.local_addr,
+        msg.source_id,
+        correlation_id,
+        body,
+        msg.encrypted,
+      )
+      return
+    }
     let (status_code, resp_headers, resp_body) = handle_internal_http_request(
       http_method, path, headers, body,
     )
@@ -1585,6 +1612,109 @@ async fn send_response_message_direct(
 }
 
 ///|
+async fn stream_internal_channel_chat_request(
+  transport : &Transport,
+  target_addr : String,
+  source_id : String,
+  source_addr : String,
+  target_id : String,
+  correlation_id : String,
+  body : Bytes,
+  is_encrypted : Bool,
+) -> Unit {
+  let body_str = @utf8.decode(body)
+  match parse_channel_chat_request(body_str) {
+    Some((peer_id, channel_id, channel_type, messages, session_key, _)) => {
+      let (status_code, response_body) = local_channel_chat_request(
+        channel_id, channel_type, messages, session_key, false,
+      )
+      if status_code < 200 || status_code >= 300 {
+        let resp_map : Map[String, @msgpack.Value] = Map::new()
+        resp_map["status"] = @msgpack.string(status_code.to_string())
+        resp_map["headers"] = headers_to_msgpack({
+          "Content-Type": "application/json",
+          "x-msgtier-stream-done": "1",
+        })
+        resp_map["data"] = @msgpack.binary(
+          @utf8.encode(response_body.stringify()),
+        )
+        send_response_message_direct(
+          transport,
+          target_addr,
+          source_id,
+          source_addr,
+          target_id,
+          correlation_id,
+          ResponseSource::MsgPack(@msgpack.map(resp_map)),
+          Some(is_encrypted),
+          false,
+        )
+        return
+      }
+      let events = make_channel_stream_events(
+        peer_id, channel_id, channel_type, response_body,
+      )
+      let mut idx = 0
+      for event_chunk in events {
+        let headers : Map[String, String] = if idx == 0 {
+          {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "x-msgtier-stream-done": "0",
+          }
+        } else if idx == events.length() - 1 {
+          { "x-msgtier-stream-done": "1" }
+        } else {
+          { "x-msgtier-stream-done": "0" }
+        }
+        let resp_map : Map[String, @msgpack.Value] = Map::new()
+        resp_map["status"] = @msgpack.string("200")
+        resp_map["headers"] = headers_to_msgpack(headers)
+        resp_map["data"] = @msgpack.binary(@utf8.encode(event_chunk))
+        send_response_message_direct(
+          transport,
+          target_addr,
+          source_id,
+          source_addr,
+          target_id,
+          correlation_id,
+          ResponseSource::MsgPack(@msgpack.map(resp_map)),
+          Some(is_encrypted),
+          false,
+        )
+        idx = idx + 1
+        @async.sleep(10)
+      }
+    }
+    None => {
+      let resp_map : Map[String, @msgpack.Value] = Map::new()
+      resp_map["status"] = @msgpack.string("400")
+      resp_map["headers"] = headers_to_msgpack({
+        "Content-Type": "application/json",
+        "x-msgtier-stream-done": "1",
+      })
+      resp_map["data"] = @msgpack.binary(
+        @utf8.encode(
+          { "error": "invalid_channel_chat_request" }.to_json().stringify(),
+        ),
+      )
+      send_response_message_direct(
+        transport,
+        target_addr,
+        source_id,
+        source_addr,
+        target_id,
+        correlation_id,
+        ResponseSource::MsgPack(@msgpack.map(resp_map)),
+        Some(is_encrypted),
+        false,
+      )
+    }
+  }
+}
+
+///|
 fn handle_data_response(
   correlation_id : String,
   response_data : @msgpack.Value,
@@ -1650,14 +1780,24 @@ fn handle_data_response(
             match (status, data) {
               (Some(status), Some(data)) => {
                 let merged_headers = Some(ensure_status_header(status, headers))
-                push_stream_data(correlation_id, data, merged_headers)
+                push_stream_data_part(
+                  correlation_id,
+                  data,
+                  merged_headers,
+                  stream_done_from_headers(merged_headers),
+                )
               }
               _ => {
                 let output = match m.get("output") {
                   Some(String(s)) => s
                   _ => response_data.to_string().unwrap_or("error")
                 }
-                push_stream_data(correlation_id, @utf8.encode(output), None)
+                push_stream_data_part(
+                  correlation_id,
+                  @utf8.encode(output),
+                  None,
+                  true,
+                )
               }
             }
           }

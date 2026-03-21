@@ -8,6 +8,9 @@ test "sync message includes local script metadata" {
     scripts: Some({ "ping": "echo ping", "build": "echo build" }),
     web_api: None,
     metadata: Some({ "role": "worker" }),
+    openclaw: None,
+    openclaw_plugin_version: None,
+    openclaw_token: None,
     log: None,
     port: None,
     relay_network_whitelist: None,
@@ -38,6 +41,8 @@ test "sync message includes local script metadata" {
         metadata.get("scripts").unwrap().contains("build"),
         content="true",
       )
+      inspect(metadata.get("channels").unwrap().has_prefix("["), content="true")
+      inspect(metadata.get("openclaw").unwrap().has_prefix("["), content="true")
     }
     _ => fail("sync message body should be an array")
   }

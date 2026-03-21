@@ -36,6 +36,8 @@ async fn run_with_config(
   for peer_url in config.peers {
     add_known_peer(peer_url)
   }
+  ensure_managed_openclaw_plugin()
+  init_openclaw_registry(root)
   init_foreign_network_manager()
   start_listeners(root, config.listeners, id)
   start_http_api(root, config.web_api)
