@@ -97,6 +97,39 @@ async fn run_command_capture(program : String, args : Array[String]) -> String? 
 }
 
 ///|
+async fn run_command_capture_status(
+  program : String,
+  args : Array[String],
+) -> (Int, String)? {
+  let (stdout_r, stdout_w) = @pipe.pipe() catch { _ => return None }
+  let exit_code = @process.run(program, args, stdout=stdout_w) catch {
+    _ => {
+      stdout_w.close()
+      stdout_r.close()
+      return None
+    }
+  }
+  stdout_w.close()
+  let output = stdout_r.read_all().text() catch {
+      _ => {
+        stdout_r.close()
+        return None
+      }
+    }
+  stdout_r.close()
+  Some((exit_code, output))
+}
+
+///|
+async fn run_shell_capture(command : String) -> (Int, String)? {
+  if is_windows_platform() {
+    run_command_capture_status("cmd", ["/C", command])
+  } else {
+    run_command_capture_status("zsh", ["-lc", command])
+  }
+}
+
+///|
 async fn file_exists(path : String) -> Bool {
   @fs.exists(path) catch {
     _ => false
@@ -190,6 +223,31 @@ fn msgtier_openclaw_index_js() -> String {
 }
 
 ///|
+fn openclaw_extensions_dir(state_dir : String) -> String {
+  path_join(state_dir, "extensions")
+}
+
+///|
+fn msgtier_managed_plugin_root(state_dir : String) -> String {
+  path_join(state_dir, "managed-plugins")
+}
+
+///|
+fn msgtier_managed_plugin_source_dir(state_dir : String) -> String {
+  path_join(msgtier_managed_plugin_root(state_dir), "msgtier-src")
+}
+
+///|
+fn msgtier_installed_plugin_dir(state_dir : String) -> String {
+  path_join(openclaw_extensions_dir(state_dir), msgtier_openclaw_plugin_id)
+}
+
+///|
+fn openclaw_config_path(state_dir : String) -> String {
+  path_join(state_dir, "openclaw.json")
+}
+
+///|
 async fn ensure_dir_exists(path : String) -> Unit {
   @fs.mkdir(path, permission=0o755) catch {
     _ => ()
@@ -210,11 +268,14 @@ async fn write_text_file_if_changed(path : String, contents : String) -> Bool {
 }
 
 ///|
-async fn ensure_msgtier_openclaw_plugin_files(state_dir : String) -> Bool {
-  let extensions_dir = path_join(state_dir, "extensions")
-  let plugin_dir = path_join(extensions_dir, msgtier_openclaw_plugin_id)
-  ensure_dir_exists(state_dir)
-  ensure_dir_exists(extensions_dir)
+async fn ensure_msgtier_openclaw_plugin_files(plugin_dir : String) -> Bool {
+  let parent_dir = match find_last_path_sep(plugin_dir) {
+    Some(pos) => plugin_dir[:pos].to_string()
+    None => ""
+  }
+  if parent_dir != "" {
+    ensure_dir_exists(parent_dir)
+  }
   ensure_dir_exists(plugin_dir)
   let mut changed = false
   changed = write_text_file_if_changed(
@@ -233,6 +294,30 @@ async fn ensure_msgtier_openclaw_plugin_files(state_dir : String) -> Bool {
     ) ||
     changed
   changed
+}
+
+///|
+fn find_last_path_sep(path : String) -> Int? {
+  let mut idx = path.length()
+  while idx > 0 {
+    idx = idx - 1
+    let ch = path[idx]
+    if ch == '/' || ch == '\\' {
+      return Some(idx)
+    }
+  }
+  None
+}
+
+///|
+async fn ensure_msgtier_openclaw_plugin_source_files(
+  state_dir : String,
+) -> Bool {
+  ensure_dir_exists(state_dir)
+  ensure_dir_exists(msgtier_managed_plugin_root(state_dir))
+  ensure_msgtier_openclaw_plugin_files(
+    msgtier_managed_plugin_source_dir(state_dir),
+  )
 }
 
 ///|
@@ -261,19 +346,13 @@ async fn discover_openclaw_agent_ids(state_dir : String) -> Array[String] {
 }
 
 ///|
-async fn ensure_openclaw_plugin_enabled(plugin_id : String) -> Bool {
-  match run_command_capture("openclaw", ["plugins", "enable", plugin_id]) {
-    Some(_) => true
-    None => false
-  }
-}
-
-///|
-async fn ensure_openclaw_plugin_allowed(
+async fn set_openclaw_plugin_config_state(
   state_dir : String,
   plugin_id : String,
+  allow_enabled : Bool,
+  entry_enabled : Bool?,
 ) -> Bool {
-  let config_path = path_join(state_dir, "openclaw.json")
+  let config_path = openclaw_config_path(state_dir)
   match parse_json_file_map(config_path) {
     Some(root) => {
       let plugins = match root.get("plugins") {
@@ -284,15 +363,53 @@ async fn ensure_openclaw_plugin_allowed(
         Some(Array(items)) => items
         _ => []
       }
+      let next_allow : Array[Json] = []
+      let mut allow_found = false
       for item in allow_items {
         if item is String(existing) && existing == plugin_id {
-          return false
+          allow_found = true
+          continue
         }
+        next_allow.push(item)
       }
-      let next_allow = allow_items.copy()
-      next_allow.push(plugin_id.to_json())
+      if allow_enabled {
+        next_allow.push(plugin_id.to_json())
+      }
+      let entries = match plugins.get("entries") {
+        Some(Object(obj)) => obj
+        _ => {}
+      }
+      let next_entries = entries.copy()
+      let mut entry_changed = false
+      match entry_enabled {
+        Some(enabled) => {
+          let next_entry = { "enabled": enabled }.to_json()
+          match next_entries.get(plugin_id) {
+            Some(existing) =>
+              if existing != next_entry {
+                next_entries[plugin_id] = next_entry
+                entry_changed = true
+              }
+            None => {
+              next_entries[plugin_id] = next_entry
+              entry_changed = true
+            }
+          }
+        }
+        None =>
+          if next_entries.contains(plugin_id) {
+            next_entries.remove(plugin_id)
+            entry_changed = true
+          }
+      }
+      let allow_changed = allow_found != allow_enabled ||
+        next_allow.length() != allow_items.length()
+      if !allow_changed && !entry_changed {
+        return false
+      }
       let next_plugins = plugins.copy()
       next_plugins["allow"] = next_allow.to_json()
+      next_plugins["entries"] = next_entries.to_json()
       let next_root = root.copy()
       next_root["plugins"] = next_plugins.to_json()
       @fs.write_file(
@@ -309,6 +426,84 @@ async fn ensure_openclaw_plugin_allowed(
 }
 
 ///|
+async fn remove_openclaw_plugin_config_refs(
+  state_dir : String,
+  plugin_id : String,
+) -> Bool {
+  set_openclaw_plugin_config_state(state_dir, plugin_id, false, None)
+}
+
+///|
+async fn ensure_openclaw_plugin_enabled_and_allowed(
+  state_dir : String,
+  plugin_id : String,
+) -> Bool {
+  set_openclaw_plugin_config_state(state_dir, plugin_id, true, Some(true))
+}
+
+///|
+fn shell_quote(path : String) -> String {
+  if is_windows_platform() {
+    "\"" + path.replace(old="\"", new="\"\"") + "\""
+  } else {
+    "'" + path.replace(old="'", new="'\"'\"'") + "'"
+  }
+}
+
+///|
+async fn remove_path_recursive(path : String) -> Bool {
+  if !file_exists(path) {
+    return false
+  }
+  let cmd = if is_windows_platform() {
+    "rmdir /S /Q " + shell_quote(path)
+  } else {
+    "rm -rf " + shell_quote(path)
+  }
+  match run_shell_capture(cmd + " 2>&1") {
+    Some((exit_code, _)) => exit_code == 0
+    None => false
+  }
+}
+
+///|
+async fn install_openclaw_plugin_link(source_dir : String) -> Bool {
+  let cmd = "openclaw plugins install --link " +
+    shell_quote(source_dir) +
+    " 2>&1"
+  match run_shell_capture(cmd) {
+    Some((exit_code, _)) => exit_code == 0
+    None => false
+  }
+}
+
+///|
+async fn openclaw_plugin_needs_provenance_migration(plugin_id : String) -> Bool {
+  let cmd = "openclaw plugins info " + plugin_id + " 2>&1"
+  match run_shell_capture(cmd) {
+    Some((_, output)) => output.contains("without install/load-path provenance")
+    None => true
+  }
+}
+
+///|
+async fn ensure_openclaw_plugin_install_record(
+  state_dir : String,
+  plugin_id : String,
+) -> Bool {
+  let install_dir = msgtier_installed_plugin_dir(state_dir)
+  let source_dir = msgtier_managed_plugin_source_dir(state_dir)
+  if !openclaw_plugin_needs_provenance_migration(plugin_id) {
+    return false
+  }
+  let mut changed = false
+  changed = remove_openclaw_plugin_config_refs(state_dir, plugin_id) || changed
+  changed = remove_path_recursive(install_dir) || changed
+  changed = install_openclaw_plugin_link(source_dir) || changed
+  changed
+}
+
+///|
 async fn restart_openclaw_gateway_service() -> Bool {
   match run_command_capture("openclaw", ["gateway", "restart"]) {
     Some(_) => true
@@ -322,12 +517,14 @@ async fn ensure_managed_openclaw_plugin() -> Unit {
     return
   }
   let state_dir = default_openclaw_state_dir()
-  let files_changed = ensure_msgtier_openclaw_plugin_files(state_dir)
-  let enabled = ensure_openclaw_plugin_enabled(msgtier_openclaw_plugin_id)
-  let allowed = ensure_openclaw_plugin_allowed(
+  let files_changed = ensure_msgtier_openclaw_plugin_source_files(state_dir)
+  let installed = ensure_openclaw_plugin_install_record(
     state_dir, msgtier_openclaw_plugin_id,
   )
-  if files_changed || enabled || allowed {
+  let enabled_or_allowed = ensure_openclaw_plugin_enabled_and_allowed(
+    state_dir, msgtier_openclaw_plugin_id,
+  )
+  if files_changed || installed || enabled_or_allowed {
     if restart_openclaw_gateway_service() {
       log_info("Restarted OpenClaw gateway after ensuring MsgTier plugin")
     } else {
