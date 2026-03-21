@@ -26,13 +26,13 @@ fn parse_long_header(data : BytesView) -> Header? {
   if data.length() < 6 + dcid_len + 1 {
     return None
   }
-  let dcid = data[6:dcid_len]
+  let dcid = data[6:6 + dcid_len]
   let offset = 6 + dcid_len
   let scid_len = data[offset].to_int()
   if data.length() < offset + 1 + scid_len {
     return None
   }
-  let scid = data[offset + 1:scid_len]
+  let scid = data[offset + 1:offset + 1 + scid_len]
   Some({
     first_byte: data[0],
     version: Some(version),

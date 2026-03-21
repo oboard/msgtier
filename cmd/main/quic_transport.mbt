@@ -23,6 +23,7 @@ impl Transport for QuicTransport with send(self, target, data) {
       }
     }
     let stream = conn.open_stream()
+    self.connections[target] = conn
     self.endpoint.send_stream_data(conn, stream.id, data)
     true
   } catch {

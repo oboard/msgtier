@@ -82,6 +82,7 @@ fn Endpoint::handle_packet(
       }
       for frame in frames {
         conn.handle_frame(frame)
+        self.connections[sender_addr] = conn
         match frame {
           Stream(s) =>
             match conn.streams.get(s.stream_id) {

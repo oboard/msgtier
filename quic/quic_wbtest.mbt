@@ -111,3 +111,54 @@ async test "quic_integration" {
     ()
   })
 }
+
+///|
+async test "quic_connection_state_persists_across_stream_opens" {
+  let endpoint = Endpoint::new("127.0.0.1:0")
+  let conn1 = endpoint.connect("127.0.0.1:1234")
+  let stream1 = conn1.open_stream()
+  endpoint.connections["127.0.0.1:1234"] = conn1
+
+  let conn2 = endpoint.connect("127.0.0.1:1234")
+  let stream2 = conn2.open_stream()
+
+  inspect(stream1.id.to_string(), content="0")
+  inspect(stream2.id.to_string(), content="1")
+}
+
+///|
+async test "quic_endpoint_persists_stream_data_across_packets" {
+  let endpoint = Endpoint::new("127.0.0.1:0")
+  let header : Header = {
+    first_byte: b'\x40',
+    version: None,
+    dest_cid: b""[:],
+    src_cid: None,
+    packet_number: 0L,
+    payload_length: None,
+  }
+  let frame1 = Frame::Stream({
+    stream_id: 0L,
+    offset: 0L,
+    fin: false,
+    data: b"Hello ",
+  })
+  let frame2 = Frame::Stream({
+    stream_id: 0L,
+    offset: 6L,
+    fin: true,
+    data: b"QUIC",
+  })
+  let packet1 = encode_packet(header, encode_frame(frame1))
+  let packet2 = encode_packet(header, encode_frame(frame2))
+  let mut received = b""
+
+  endpoint.handle_packet(packet1, "127.0.0.1:1234", fn(_c, s) {
+    received = s.incoming_data
+  })
+  endpoint.handle_packet(packet2, "127.0.0.1:1234", fn(_c, s) {
+    received = s.incoming_data
+  })
+
+  inspect(received, content="b\"Hello QUIC\"")
+}
