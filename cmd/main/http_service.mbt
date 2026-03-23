@@ -518,6 +518,7 @@ async fn serve_static_handler(
   conn : @http.ServerConnection,
   path : String,
 ) -> Unit {
+  @web.ensure_dist_loaded()
   let path = if path == "/" { "index.html" } else { path }
   if path.contains("..") {
     notfound_handler(conn)

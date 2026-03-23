@@ -91,19 +91,46 @@ fn parse_command_args(command : String) -> Array[String] {
 }
 
 ///|
+fn is_script_interpreter(token : String) -> Bool {
+  match token {
+    "bash" | "sh" | "zsh" | "fish" | "python" | "python3" | "node" | "deno" =>
+      true
+    _ => false
+  }
+}
+
+///|
+fn resolve_script_request(
+  content_str : String,
+  scripts : Map[String, String],
+) -> (String, Array[String]) {
+  let parts = parse_command_args(content_str)
+  match parts {
+    [name, .. args] => {
+      if scripts.contains(name) {
+        return (name, args.to_array())
+      }
+      match parts {
+        [interpreter, nested_name, .. nested_args] =>
+          if is_script_interpreter(interpreter) && scripts.contains(nested_name) {
+            (nested_name, nested_args.to_array())
+          } else {
+            (name, args.to_array())
+          }
+        _ => (name, args.to_array())
+      }
+    }
+    _ => ("", [])
+  }
+}
+
+///|
 async fn process_script_execution(
   content_str : String,
   scripts : Map[String, String],
 ) -> ScriptOutput {
-  let parts = content_str.split(" ").to_array()
-  let (name, args) = match parts {
-    [name, .. args] => (name, args)
-    _ => {
-      let empty : Array[StringView] = []
-      (""[:], empty[:])
-    }
-  }
-  match scripts.get(name.to_string()) {
+  let (name, args) = resolve_script_request(content_str, scripts)
+  match scripts.get(name) {
     Some(command) => {
       // Split command string into program and args using proper parser
       let cmd_parts = parse_command_args(command)

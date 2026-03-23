@@ -4,6 +4,8 @@ package "oboard/msgtier/web"
 // Values
 pub let dist : Map[StringView, Bytes]
 
+pub fn ensure_dist_loaded() -> Unit
+
 // Errors
 
 // Types and methods
