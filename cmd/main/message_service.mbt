@@ -39,6 +39,11 @@ fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
       let local_ips = get_local_interface_ips()
       // log_info("Local IPs: \{local_ips}")
       for listener_url in config.listeners {
+        for stun_addr in get_stun_public_addresses(listener_url) {
+          if !addrs.iter().any(fn(a) { a.address == stun_addr }) {
+            addrs.push(NetworkAddress::{ address: stun_addr })
+          }
+        }
         let mut parsed : Address? = None
         try {
           parsed = Some(Address::parse(listener_url))

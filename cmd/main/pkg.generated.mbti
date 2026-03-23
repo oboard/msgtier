@@ -24,6 +24,8 @@ pub async fn get_object_path(String) -> String?
 
 pub fn get_runtime_tmp_dir() -> String
 
+pub fn get_stun_discovery_snapshot() -> Array[StunDiscoveryInfo]
+
 pub fn has_object(String) -> Bool
 
 pub fn hash_secret(String) -> Bytes
@@ -257,6 +259,11 @@ pub impl ToJson for StatusInfo
 type StreamRequest
 
 type StreamRoute
+
+type StunDiscoveryInfo
+pub impl Eq for StunDiscoveryInfo
+pub impl Show for StunDiscoveryInfo
+pub impl ToJson for StunDiscoveryInfo
 
 type TcpConnection
 

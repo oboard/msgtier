@@ -636,6 +636,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
     listeners: config.listeners,
     known_peers,
     routes: routes_info,
+    stun: get_stun_discovery_snapshot(),
   }
   conn
   ..send_response(200, "OK", extra_headers={

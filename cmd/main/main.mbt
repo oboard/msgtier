@@ -69,6 +69,9 @@ fn start_listener(
         for ;; {
           try {
             log_info("Attempting to listen on \{listener}")
+            if scheme == "udp" {
+              probe_listener_stun(listener, host)
+            }
             let transport = create_transport(scheme, host)
             log_info("Successfully bound to \{listener}")
             start_listener_service(root, transport, id)

@@ -1,0 +1,117 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/stun"
+
+import {
+  "moonbitlang/async/socket",
+}
+
+// Values
+pub fn build_binding_request(change_ip? : Bool, change_port? : Bool, transaction_id? : Bytes, software? : String) -> Message
+
+pub fn classify_filtering_behavior(Bool, Bool) -> FilteringBehavior
+
+pub fn classify_mapping_behavior(String, String, String) -> MappingBehavior
+
+pub fn decode_message(Bytes) -> Message raise StunError
+
+pub fn encode_message(Message) -> Bytes raise StunError
+
+pub fn get_mapped_address(Message) -> String?
+
+pub fn get_other_address(Message) -> String?
+
+pub fn is_stun_message(Bytes) -> Bool
+
+pub async fn probe_binding(String, timeout_ms? : Int, bind_addr? : String) -> BindingProbeResult?
+
+pub async fn probe_binding_with_socket(@socket.UdpServer, @socket.Addr, Int, change_ip? : Bool, change_port? : Bool) -> BindingProbeResult?
+
+pub async fn probe_nat_behavior(String, timeout_ms? : Int, bind_addr? : String) -> NatProbeResult?
+
+pub fn random_transaction_id() -> Bytes
+
+pub async fn resolve_server(String) -> @socket.Addr?
+
+pub fn rewrite_socket_port(String, Int) -> String
+
+// Errors
+pub suberror StunError {
+  InvalidMessage(String)
+  EncodeError(String)
+}
+pub impl Show for StunError
+
+// Types and methods
+pub enum Attribute {
+  XorMappedAddress(String)
+  MappedAddress(String)
+  OtherAddress(String)
+  ChangeRequest(Bool, Bool)
+  Software(String)
+  ErrorCode(Int, String)
+  Fingerprint(UInt)
+  Unknown(Int, Bytes)
+}
+pub impl Eq for Attribute
+pub impl Show for Attribute
+
+pub struct BindingProbeResult {
+  server_address : String
+  mapped_address : String
+  other_address : String?
+  rtt_ms : Int
+  supports_rfc5780 : Bool
+}
+pub impl Eq for BindingProbeResult
+pub impl Show for BindingProbeResult
+
+pub enum FilteringBehavior {
+  EndpointIndependentFiltering
+  AddressDependentFiltering
+  AddressAndPortDependentFiltering
+  Unsupported
+  Unknown
+}
+pub impl Eq for FilteringBehavior
+pub impl Show for FilteringBehavior
+
+pub enum MappingBehavior {
+  EndpointIndependentMapping
+  AddressDependentMapping
+  AddressAndPortDependentMapping
+  Unsupported
+  Unknown
+}
+pub impl Eq for MappingBehavior
+pub impl Show for MappingBehavior
+
+pub struct Message {
+  class_ : MessageClass
+  msg_method : Int
+  transaction_id : Bytes
+  attributes : Array[Attribute]
+}
+pub impl Eq for Message
+pub impl Show for Message
+
+pub enum MessageClass {
+  Request
+  Indication
+  SuccessResponse
+  ErrorResponse
+}
+pub impl Eq for MessageClass
+pub impl Show for MessageClass
+
+pub struct NatProbeResult {
+  binding : BindingProbeResult
+  mapping_behavior : MappingBehavior
+  filtering_behavior : FilteringBehavior
+}
+pub impl Eq for NatProbeResult
+pub impl Show for NatProbeResult
+
+// Type aliases
+
+// Traits
+

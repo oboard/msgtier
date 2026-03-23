@@ -1,0 +1,12 @@
+import {
+  "moonbitlang/core/env" @env,
+  "moonbitlang/core/strconv" @strconv,
+  "moonbitlang/core/random" @random,
+  "moonbitlang/core/encoding/utf8" @utf8,
+  "moonbitlang/async" @async,
+  "moonbitlang/async/socket" @socket,
+}
+
+options(
+  deps: { "moonbitlang/core": "*" },
+)

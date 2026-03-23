@@ -7,4 +7,5 @@ struct StatusInfo {
   peers : Array[PeerNode]
   peers_count : Int
   routes : Array[RouteInfo]
+  stun : Array[StunDiscoveryInfo]
 } derive(ToJson)
