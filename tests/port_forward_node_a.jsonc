@@ -10,9 +10,9 @@
   "web_api": "127.0.0.1:19100",
   "log": "Debug",
   "forwards": {
-    "db": "tcp://node-b@127.0.0.1:15432",
-    "dns": "udp://node-b@127.0.0.1:1053",
-    "bench": "tcp://node-b@127.0.0.1:18081"
+    "node-b:db": "tcp://127.0.0.1:15432",
+    "node-b:dns": "udp://127.0.0.1:1053",
+    "node-b:bench": "tcp://127.0.0.1:18081"
   },
   "disable_encryption": true
 }

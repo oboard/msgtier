@@ -12,9 +12,9 @@ fn make_port_forward_test_config() -> Config {
     openclaw_plugin_version: None,
     openclaw_token: None,
     forwards: Some({
-      "db": "tcp://node-b@127.0.0.1:15432",
-      "dns": "udp://node-b@127.0.0.1:1053",
-      "broken": "icmp://node-b@127.0.0.1:1",
+      "node-b:db": "tcp://127.0.0.1:15432",
+      "node-b:dns": "udp://127.0.0.1:1053",
+      "node-b:broken": "icmp://127.0.0.1:1",
     }),
     exposes: Some({
       "db": "tcp://localhost:5432",
@@ -31,7 +31,7 @@ fn make_port_forward_test_config() -> Config {
 }
 
 ///|
-test "parse port forward map config" {
+test "parse port forward object config" {
   app_state.config = Some(make_port_forward_test_config())
   let exposes = get_port_forward_expose_rules()
   let forwards = get_port_forward_forward_rules()

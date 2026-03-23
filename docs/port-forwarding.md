@@ -22,7 +22,7 @@ MsgTier matches a tunnel by:
 
 If node A wants to reach node B's SSH service:
 
-- node A adds `forwards.ssh`
+- node A adds a `forwards` entry
 - node B adds `exposes.ssh`
 
 Once both nodes are online and connected, node A gets a local TCP port. Connecting to that local port forwards traffic to node B's configured target.
@@ -34,17 +34,18 @@ Once both nodes are online and connected, node A gets a local TCP port. Connecti
 ```json
 {
   "forwards": {
-    "ssh": "tcp://node-b@127.0.0.1:10022"
+    "node-b:ssh": "tcp://127.0.0.1:10022"
   }
 }
 ```
 
 Meaning:
 
-- rule key: `ssh`
-- protocol: `tcp`
-- target peer id: `node-b`
-- local listen address: `127.0.0.1:10022`
+- key format: `peer_id:rule_id`
+- key peer id: `node-b`
+- key rule id: `ssh`
+- value protocol: `tcp`
+- value local listen address: `127.0.0.1:10022`
 
 `exposes` uses this format:
 
@@ -88,7 +89,7 @@ Assume:
   ],
   "web_api": "127.0.0.1:19100",
   "forwards": {
-    "ssh": "tcp://node-b@127.0.0.1:10022"
+    "node-b:ssh": "tcp://127.0.0.1:10022"
   }
 }
 ```
@@ -155,7 +156,7 @@ UDP uses the same rule structure:
 ```json
 {
   "forwards": {
-    "dns": "udp://node-b@127.0.0.1:1053"
+    "node-b:dns": "udp://127.0.0.1:1053"
   },
   "exposes": {
     "dns": "udp://127.0.0.1:53"

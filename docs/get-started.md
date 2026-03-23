@@ -50,7 +50,7 @@ Create a `node.json` configuration file for each node:
 | `foreign_relay_bps_limit` | Number | Bandwidth limit (bytes/sec) for foreign network relay (default: 0 = unlimited) |
 | `web_api` | String | HTTP server address (optional) |
 | `scripts` | Object | Named scripts that can be triggered via messages |
-| `forwards` | Object | Bastion forward rules. Key is rule id, value is `protocol://peer_id@listen_host:listen_port` |
+| `forwards` | Object | Bastion forward rules. Key is `peer_id:rule_id`, value is `protocol://listen_host:listen_port` |
 | `exposes` | Object | Bastion expose rules. Key is rule id, value is `protocol://target_host:target_port` |
 
 ### Bastion Port Forwarding
@@ -65,7 +65,7 @@ Forward side:
 ```json
 {
   "forwards": {
-    "db": "tcp://node-b@127.0.0.1:15432"
+    "node-b:db": "tcp://127.0.0.1:15432"
   }
 }
 ```
@@ -80,14 +80,14 @@ Expose side:
 }
 ```
 
-The forward side chooses the remote peer and the local listening port. The expose side only declares the local target. MsgTier matches the tunnel by `peer_id + key`.
+The forward side chooses the remote peer and the local listening port. The expose side only declares the local target. MsgTier matches the tunnel by `peer_id:rule_id`.
 
 If you need UDP, the format is the same:
 
 ```json
 {
   "forwards": {
-    "dns": "udp://node-b@127.0.0.1:1053"
+    "node-b:dns": "udp://127.0.0.1:1053"
   },
   "exposes": {
     "dns": "udp://127.0.0.1:53"

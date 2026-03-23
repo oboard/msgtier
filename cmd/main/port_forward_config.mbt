@@ -72,11 +72,19 @@ fn parse_port_forward_forward_spec(
   if raw == "" {
     return None
   }
+  let key = id.trim().to_string()
+  let key_parts = key.split(":").to_array()
+  if key_parts.length() != 2 {
+    return None
+  }
+  let peer_id = key_parts[0].trim().to_string()
+  let rule_id = key_parts[1].trim().to_string()
+  if peer_id == "" || rule_id == "" {
+    return None
+  }
   let url = @url.Url::parse(raw)
   guard url is Some(url) else { return None }
-  let peer_id = url.get_username().trim().to_string()
   let port = parse_pf_port(url.get_port())
-  guard peer_id != "" else { return None }
   guard url.hostname() != "" && port is Some(_) else { return None }
   let addr = Address::parse(
     url.protocol() +
@@ -93,7 +101,7 @@ fn parse_port_forward_forward_spec(
     return None
   }
   Some({
-    id,
+    id: rule_id,
     protocol: normalized_protocol,
     peer_id,
     listen_host: addr.host,
@@ -119,7 +127,10 @@ fn get_port_forward_expose_rules() -> Array[PortForwardExposeRule] {
   let config = get_config()
   let out : Array[PortForwardExposeRule] = []
   let seen : Map[String, Bool] = {}
-  for id, spec in config.exposes.unwrap_or({}) {
+  let ids = config.exposes.unwrap_or({}).keys().to_array()
+  ids.sort_by(fn(a, b) { if a < b { -1 } else if a > b { 1 } else { 0 } })
+  for id in ids {
+    let spec = config.exposes.unwrap_or({}).get(id).unwrap_or("")
     let key_id = id.trim().to_string()
     if key_id == "" {
       continue
@@ -143,12 +154,19 @@ fn get_port_forward_forward_rules() -> Array[PortForwardForwardRule] {
   let config = get_config()
   let out : Array[PortForwardForwardRule] = []
   let seen : Map[String, Bool] = {}
-  for id, spec in config.forwards.unwrap_or({}) {
+  let ids = config.forwards.unwrap_or({}).keys().to_array()
+  ids.sort_by(fn(a, b) { if a < b { -1 } else if a > b { 1 } else { 0 } })
+  for id in ids {
+    let spec = config.forwards.unwrap_or({}).get(id).unwrap_or("")
     let key_id = id.trim().to_string()
     if key_id == "" {
       continue
     }
-    match parse_port_forward_forward_spec(key_id, spec) {
+    let raw = spec.trim().to_string()
+    if raw == "" {
+      continue
+    }
+    match parse_port_forward_forward_spec(key_id, raw) {
       Some(rule) => {
         let key = make_port_forward_forward_rule_key(rule)
         if !seen.contains(key) {
