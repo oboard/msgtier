@@ -43,9 +43,11 @@ fn record_port_forward_audit_close(
   audit : PortForwardAuditEntry,
   status : String,
 ) -> Unit {
-  audit.ended_at = Some(@env.now())
+  let ended_at = @env.now()
+  audit.ended_at = Some(ended_at)
   audit.status = status
+  let duration_ms = ended_at - audit.started_at
   log_info(
-    "port_forward close rule=\{audit.rule_id} protocol=\{audit.protocol} requester=\{audit.requester_peer_id} expose=\{audit.expose_peer_id} bytes_in=\{audit.bytes_in} bytes_out=\{audit.bytes_out} status=\{status}",
+    "port_forward close rule=\{audit.rule_id} protocol=\{audit.protocol} requester=\{audit.requester_peer_id} expose=\{audit.expose_peer_id} target=\{audit.target} started_at=\{audit.started_at} ended_at=\{audit.ended_at.unwrap_or(ended_at)} duration_ms=\{duration_ms} bytes_in=\{audit.bytes_in} bytes_out=\{audit.bytes_out} status=\{audit.status}",
   )
 }

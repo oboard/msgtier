@@ -80,10 +80,10 @@ fn parse_range_header(
         } else {
           let start_str = parts[0]
           let end_str = parts[1]
-          let start_opt = parse_decimal_opt(start_str)
-          let end_opt = parse_decimal_opt(end_str)
+          let start_opt = try? @strconv.parse_int(start_str)
+          let end_opt = try? @strconv.parse_int(end_str)
           match (start_opt, end_opt) {
-            (Some(start), Some(end)) =>
+            (Ok(start), Ok(end)) =>
               if start < 0 {
                 None
               } else {
@@ -96,13 +96,13 @@ fn parse_range_header(
                   Some((start, end))
                 }
               }
-            (Some(start), None) =>
+            (Ok(start), Err(_)) =>
               if start < 0 || start >= total_len {
                 None
               } else {
                 Some((start, total_len - 1))
               }
-            (None, Some(suffix_len)) =>
+            (Err(_), Ok(suffix_len)) =>
               if suffix_len <= 0 || suffix_len > total_len {
                 None
               } else {

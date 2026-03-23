@@ -66,80 +66,34 @@ pub fn Address::new(
 ///|
 /// Parse an address from a URL string like "tcp://127.0.0.1:9000"
 pub fn Address::parse(input : String) -> Address raise {
-  let input_view = input[:]
-
-  // Find "://" separator
-  let mut protocol_end = -1
-  let mut i = 0
-  for c in input_view {
-    if c == ':' && i + 2 < input.length() {
-      let next2 = input[i + 1:i + 3]
-      if next2 == "//" {
-        protocol_end = i
-        break
+  let protocol_str = lexmatch input[:] with longest {
+    (("[^:]+" as protocol) "://", _) => protocol.to_string()
+    _ => raise AddressParseError::MissingProtocol
+  }
+  guard Protocol::parse(protocol_str[:]) is Some(protocol) else {
+    raise AddressParseError::InvalidProtocol(protocol_str)
+  }
+  guard @url.Url::parse(input) is Some(url) else {
+    raise AddressParseError::InvalidFormat(input)
+  }
+  let host = match url.hostname() {
+    "" => raise AddressParseError::MissingHost
+    h =>
+      if h.has_prefix("[") && h.has_suffix("]") {
+        h[1:h.length() - 1].to_string()
+      } else {
+        h
       }
-    }
-    i = i + 1
   }
-  if protocol_end <= 0 {
-    raise AddressParseError::MissingProtocol
-  }
-  let protocol_str = input[0:protocol_end]
-  let protocol = match Protocol::parse(protocol_str[:]) {
-    Some(p) => p
-    None => raise AddressParseError::InvalidProtocol(protocol_str.to_string())
-  }
-
-  // Skip past "://"
-  let host_start = protocol_end + 3
-  if host_start >= input.length() {
-    raise AddressParseError::MissingHost
-  }
-  let rest = input[host_start:]
-
-  // Parse host and port
-  // Handle IPv6 addresses in brackets: [::1]:port
-  let (host, port_str) = if rest.has_prefix("[") {
-    // IPv6 address - find closing bracket
-    let mut bracket_end = -1
-    let mut j = 0
-    for c in rest {
-      if c == ']' {
-        bracket_end = j
-        break
+  let port_str = match url.get_port() {
+    "" =>
+      match protocol {
+        Ws => "80"
+        Wss => "443"
+        _ => raise AddressParseError::MissingPort
       }
-      j = j + 1
-    }
-    if bracket_end == -1 {
-      raise AddressParseError::InvalidFormat("Unclosed IPv6 bracket")
-    }
-    let ipv6_host = rest[1:bracket_end].to_string()
-    let after_bracket = rest[bracket_end + 1:]
-    if after_bracket.has_prefix(":") {
-      (ipv6_host, after_bracket[1:].to_string())
-    } else {
-      raise AddressParseError::MissingPort
-    }
-  } else {
-    // IPv4 or hostname - find last colon
-    let mut last_colon = -1
-    let mut k = 0
-    for c in rest {
-      if c == ':' {
-        last_colon = k
-      }
-      k = k + 1
-    }
-    if last_colon == -1 {
-      raise AddressParseError::MissingPort
-    }
-    (rest[0:last_colon].to_string(), rest[last_colon + 1:].to_string())
+    p => p
   }
-  if host.is_empty() {
-    raise AddressParseError::MissingHost
-  }
-
-  // Parse port number
   let port = parse_port(port_str) catch {
     _ => raise AddressParseError::InvalidPort(port_str)
   }
@@ -173,20 +127,15 @@ pub fn Address::socket_addr(self : Address) -> @socket.Addr raise {
 ///|
 /// Parse port number from string
 fn parse_port(s : String) -> UInt16 raise {
-  if s.is_empty() {
-    fail("empty port")
+  guard s != "" else { fail("empty port") }
+  let is_decimal = lexmatch s[:] with longest {
+    "[0-9]+" => true
+    _ => false
   }
-  let mut result = 0
-  for c in s {
-    if c < '0' || c > '9' {
-      fail("invalid digit")
-    }
-    result = result * 10 + (c.to_int() - '0'.to_int())
-    if result > 65535 {
-      fail("port out of range")
-    }
-  }
-  result.to_uint16()
+  guard is_decimal else { fail("invalid digit") }
+  let port = @strconv.parse_int(s) catch { _ => fail("invalid digit") }
+  guard port <= 65535 else { fail("port out of range") }
+  port.to_uint16()
 }
 
 ///|

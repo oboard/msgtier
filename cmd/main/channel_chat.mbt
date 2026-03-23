@@ -408,7 +408,7 @@ async fn proxy_channel_chat_request_stream(
             None => channel_stream_headers()
           }
           let status_code = match resp_headers.get("status") {
-            Some(s) => parse_decimal_int(s, 200)
+            Some(s) => @strconv.parse_int(s) catch { _ => 200 }
             None => 200
           }
           resp_headers.remove("status")

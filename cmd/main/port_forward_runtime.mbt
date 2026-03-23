@@ -1,4 +1,7 @@
 ///|
+let port_forward_tcp_chunk_size : Int = 256 * 1024
+
+///|
 fn close_port_forward_tcp_socket(socket : @socket.Tcp) -> Unit {
   socket.close()
 }
@@ -9,25 +12,194 @@ fn close_port_forward_udp_client(client : @socket.UdpClient) -> Unit {
 }
 
 ///|
-async fn write_port_forward_tcp(
+async fn write_port_forward_tcp_now(
   endpoint : PortForwardTcpEndpoint,
   data : Bytes,
 ) -> Bool {
-  while endpoint.sending.val {
-    @async.sleep(1)
-  }
-  endpoint.sending.val = true
   try {
     endpoint.socket.write(data)
-    endpoint.sending.val = false
     endpoint.audit.bytes_in = endpoint.audit.bytes_in + data.length()
     true
   } catch {
-    _ => {
-      endpoint.sending.val = false
-      false
+    _ => false
+  }
+}
+
+///|
+fn next_port_forward_tcp_seq(endpoint : PortForwardTcpEndpoint) -> Int {
+  let seq = endpoint.send_seq.val
+  endpoint.send_seq.val = seq + 1
+  seq
+}
+
+///|
+fn queue_port_forward_tcp_recv_chunk(
+  endpoint : PortForwardTcpEndpoint,
+  seq : Int,
+  data : Bytes,
+) -> Bool {
+  guard !endpoint.closed.val else { return false }
+  if seq < endpoint.recv_next_seq.val {
+    return true
+  }
+  endpoint.recv_buffer.val[seq] = data
+  let mut enqueued = false
+  for ;; {
+    let next_seq = endpoint.recv_next_seq.val
+    match endpoint.recv_buffer.val.get(next_seq) {
+      Some(chunk) => {
+        endpoint.recv_buffer.val.remove(next_seq)
+        endpoint.pending_writes.val.push(chunk)
+        endpoint.recv_next_seq.val = next_seq + 1
+        enqueued = true
+      }
+      None => break
     }
   }
+  if enqueued {
+    endpoint.cond.signal()
+  }
+  true
+}
+
+///|
+fn should_finalize_port_forward_tcp_remote_close(
+  endpoint : PortForwardTcpEndpoint,
+) -> Bool {
+  match endpoint.remote_close_seq.val {
+    Some(last_seq) =>
+      endpoint.recv_next_seq.val > last_seq &&
+      endpoint.pending_writes.val.is_empty() &&
+      !endpoint.draining.val
+    None => false
+  }
+}
+
+///|
+fn finalize_port_forward_tcp_remote_close(connection_id : String) -> Unit {
+  match remove_port_forward_tcp_forward_connection(connection_id) {
+    Some(endpoint) => {
+      endpoint.closed.val = true
+      if endpoint.audit.ended_at is None {
+        record_port_forward_audit_close(
+          endpoint.audit,
+          endpoint.error.unwrap_or("closed"),
+        )
+      }
+      close_port_forward_tcp_socket(endpoint.socket)
+      return
+    }
+    None => ()
+  }
+  match remove_port_forward_tcp_expose_connection(connection_id) {
+    Some(endpoint) => {
+      endpoint.closed.val = true
+      if endpoint.audit.ended_at is None {
+        record_port_forward_audit_close(
+          endpoint.audit,
+          endpoint.error.unwrap_or("closed"),
+        )
+      }
+      close_port_forward_tcp_socket(endpoint.socket)
+      return
+    }
+    None => ()
+  }
+}
+
+///|
+fn stop_port_forward_tcp_endpoint(endpoint : PortForwardTcpEndpoint) -> Unit {
+  endpoint.closed.val = true
+  endpoint.cond.signal()
+}
+
+///|
+fn close_port_forward_tcp_endpoint(endpoint : PortForwardTcpEndpoint) -> Unit {
+  stop_port_forward_tcp_endpoint(endpoint)
+  close_port_forward_tcp_socket(endpoint.socket)
+}
+
+///|
+async fn run_port_forward_tcp_writer(endpoint : PortForwardTcpEndpoint) -> Bool {
+  let mut ok = true
+  for ;; {
+    match endpoint.pending_writes.val {
+      [data, .. rest] => {
+        endpoint.pending_writes.val = rest.to_array()
+        if !write_port_forward_tcp_now(endpoint, data) {
+          ok = false
+          break
+        }
+      }
+      _ => if endpoint.closed.val { break } else { endpoint.cond.wait() }
+    }
+  }
+  endpoint.draining.val = false
+  if should_finalize_port_forward_tcp_remote_close(endpoint) {
+    finalize_port_forward_tcp_remote_close(endpoint.connection_id)
+    return ok
+  }
+  if endpoint.closed.val {
+    if endpoint.audit.ended_at is None {
+      record_port_forward_audit_close(
+        endpoint.audit,
+        endpoint.error.unwrap_or("closed"),
+      )
+    }
+    close_port_forward_tcp_socket(endpoint.socket)
+  }
+  ok
+}
+
+///|
+fn ensure_port_forward_tcp_writer(
+  root : @async.TaskGroup[Unit],
+  endpoint : PortForwardTcpEndpoint,
+) -> Unit {
+  if endpoint.draining.val {
+    return
+  }
+  endpoint.draining.val = true
+  root.spawn_bg(async fn() {
+    if !run_port_forward_tcp_writer(endpoint) {
+      stop_port_forward_tcp_endpoint(endpoint)
+    }
+  })
+}
+
+///|
+async fn send_port_forward_tcp_chunks(
+  endpoint : PortForwardTcpEndpoint,
+  data : Bytes,
+) -> Bool {
+  let mut offset = 0
+  while offset < data.length() {
+    let next_offset = if offset + port_forward_tcp_chunk_size > data.length() {
+      data.length()
+    } else {
+      offset + port_forward_tcp_chunk_size
+    }
+    let chunk = slice_bytes(data, offset, next_offset)
+    let seq = next_port_forward_tcp_seq(endpoint)
+    let ok = send_port_forward_message_via(
+      endpoint.peer_id,
+      "port_forward_data",
+      make_port_forward_data_body(
+        endpoint.rule_id,
+        endpoint.protocol,
+        endpoint.connection_id,
+        seq,
+      ),
+      Some(chunk),
+      route_protocol=endpoint.route_protocol,
+      route_addr=endpoint.route_addr,
+    )
+    if !ok {
+      return false
+    }
+    offset = next_offset
+  }
+  true
 }
 
 ///|
@@ -36,13 +208,22 @@ async fn send_port_forward_close_if_possible(
   rule_id : String,
   protocol : String,
   connection_id : String,
+  last_seq : Int?,
   error : String?,
+  route_protocol? : String,
+  route_addr? : String,
 ) -> Unit {
-  send_port_forward_message(
-    peer_id,
-    "port_forward_close",
-    make_port_forward_close_body(rule_id, protocol, connection_id, error),
-    None,
+  ignore(
+    send_port_forward_message_via(
+      peer_id,
+      "port_forward_close",
+      make_port_forward_close_body(
+        rule_id, protocol, connection_id, last_seq, error,
+      ),
+      None,
+      route_protocol?,
+      route_addr?,
+    ),
   )
 }
 
@@ -72,47 +253,41 @@ fn remove_port_forward_udp_expose_session(session_id : String) -> Unit {
 }
 
 ///|
-async fn run_port_forward_tcp_reader(
-  endpoint : PortForwardTcpEndpoint,
-  remote_peer_id : String,
-) -> Unit {
+async fn run_port_forward_tcp_reader(endpoint : PortForwardTcpEndpoint) -> Unit {
+  let buf = FixedArray::make(65536, b'\x00')
   try {
     for ;; {
-      match endpoint.socket.read_some() {
-        Some(chunk) =>
-          if chunk.length() == 0 {
-            break
-          } else {
-            endpoint.audit.bytes_out = endpoint.audit.bytes_out + chunk.length()
-            send_port_forward_message(
-              remote_peer_id,
-              "port_forward_data",
-              make_port_forward_data_body(
-                endpoint.rule_id,
-                endpoint.protocol,
-                endpoint.connection_id,
-              ),
-              Some(chunk),
-            )
-          }
-        None => break
+      let n = endpoint.socket.read(buf)
+      if n <= 0 {
+        break
+      }
+      let chunk = slice_bytes(buf.unsafe_reinterpret_as_bytes(), 0, n)
+      endpoint.audit.bytes_out = endpoint.audit.bytes_out + chunk.length()
+      if !send_port_forward_tcp_chunks(endpoint, chunk) {
+        break
       }
     }
   } catch {
     _ => ()
   }
   send_port_forward_close_if_possible(
-    remote_peer_id,
+    endpoint.peer_id,
     endpoint.rule_id,
     endpoint.protocol,
     endpoint.connection_id,
+    if endpoint.send_seq.val > 0 {
+      Some(endpoint.send_seq.val - 1)
+    } else {
+      None
+    },
     None,
+    route_protocol=endpoint.route_protocol,
+    route_addr=endpoint.route_addr,
   )
 }
 
 ///|
 async fn accept_port_forward_tcp_connection(
-  root : @async.TaskGroup[Unit],
   rule : PortForwardForwardRule,
   conn : @socket.Tcp,
 ) -> Unit {
@@ -126,38 +301,81 @@ async fn accept_port_forward_tcp_connection(
   )
   let endpoint = {
     socket: conn,
-    sending: Ref::new(false),
+    send_seq: Ref::new(0),
+    recv_next_seq: Ref::new(0),
+    remote_close_seq: Ref::new(None),
+    recv_buffer: Ref::new({}),
+    pending_writes: Ref::new([]),
+    draining: Ref::new(false),
+    closed: Ref::new(false),
     cond: @cond_var.Cond::new(),
     rule_id: rule.id,
     peer_id: rule.peer_id,
     protocol: "tcp",
     connection_id,
+    route_protocol: "",
+    route_addr: "",
     opened: false,
     failed: false,
     error: None,
     audit,
   }
   port_forward_registry_state.tcp_forward_connections[connection_id] = endpoint
-  send_port_forward_message(
+  let (sent, route_protocol, route_addr) = send_port_forward_message_select_route(
     rule.peer_id,
     "port_forward_open",
     make_port_forward_open_body(rule.id, "tcp", connection_id),
     None,
   )
+  if !sent {
+    log_debug(
+      "port_forward open send failed rule=\{rule.id} protocol=tcp peer=\{rule.peer_id} connection=\{connection_id}",
+    )
+    let closed = remove_port_forward_tcp_forward_connection(connection_id)
+    match closed {
+      Some(value) => {
+        record_port_forward_audit_close(value.audit, "peer_unavailable")
+        close_port_forward_tcp_endpoint(value)
+      }
+      None => ()
+    }
+    return
+  }
+  endpoint.route_protocol = route_protocol.unwrap_or("")
+  endpoint.route_addr = route_addr.unwrap_or("")
+  log_debug(
+    "port_forward open sent rule=\{rule.id} protocol=tcp peer=\{rule.peer_id} connection=\{connection_id} route=\{endpoint.route_protocol}:\{endpoint.route_addr}",
+  )
+  port_forward_registry_state.tcp_forward_connections[connection_id] = endpoint
   let opened = @async.with_timeout_opt(5000, async fn() {
     for ;; {
-      if endpoint.opened || endpoint.failed {
-        break endpoint.opened
+      match get_port_forward_tcp_forward_connection(connection_id) {
+        Some(current) =>
+          if current.opened || current.failed {
+            break current.opened
+          } else {
+            current.cond.wait()
+          }
+        None => break false
       }
-      endpoint.cond.wait()
     }
   })
   match opened {
-    Some(true) =>
-      root.spawn_bg(async fn() {
-        run_port_forward_tcp_reader(endpoint, rule.peer_id)
-      })
+    Some(true) => {
+      run_port_forward_tcp_reader(endpoint)
+      match remove_port_forward_tcp_forward_connection(connection_id) {
+        Some(value) => {
+          record_port_forward_audit_close(value.audit, "closed")
+          close_port_forward_tcp_endpoint(value)
+        }
+        None => ()
+      }
+    }
     _ => {
+      let open_error = endpoint.error.unwrap_or("open_timeout")
+      log_debug(
+        "port_forward open wait failed rule=\{rule.id} protocol=tcp peer=\{rule.peer_id} connection=\{connection_id} error=\{open_error}",
+      )
       let closed = remove_port_forward_tcp_forward_connection(connection_id)
       match closed {
         Some(value) => {
@@ -165,7 +383,7 @@ async fn accept_port_forward_tcp_connection(
             value.audit,
             value.error.unwrap_or("open_timeout"),
           )
-          close_port_forward_tcp_socket(value.socket)
+          close_port_forward_tcp_endpoint(value)
         }
         None => ()
       }
@@ -192,7 +410,7 @@ fn start_port_forward_tcp_listener(
   port_forward_registry_state.tcp_forward_started[rule_key] = true
   root.spawn_bg(async fn() {
     server.run_forever(async fn(conn, _remote_addr) {
-      accept_port_forward_tcp_connection(root, rule, conn)
+      accept_port_forward_tcp_connection(rule, conn)
     })
   })
 }
@@ -223,31 +441,42 @@ async fn run_port_forward_udp_forward_listener(
           let next_session_id = @nanoid.nanoid().unwrap_or(
             @env.now().to_string(),
           )
-          port_forward_registry_state.udp_forward_session_by_source[lookup_key] = next_session_id
-          port_forward_registry_state.udp_forward_session_by_id[next_session_id] = {
-            session_id: next_session_id,
-            rule_key,
-            rule_id: runtime.rule.id,
-            peer_id: runtime.rule.peer_id,
-            source_addr,
-            last_seen: @env.now(),
-          }
-          send_port_forward_message(
+          let (sent, route_protocol, route_addr) = send_port_forward_message_select_route(
             runtime.rule.peer_id,
             "port_forward_open",
             make_port_forward_open_body(runtime.rule.id, "udp", next_session_id),
             None,
           )
+          guard sent else { continue }
+          port_forward_registry_state.udp_forward_session_by_source[lookup_key] = next_session_id
+          port_forward_registry_state.udp_forward_session_by_id[next_session_id] = {
+            rule_key,
+            source_addr,
+            route_protocol: route_protocol.unwrap_or(""),
+            route_addr: route_addr.unwrap_or(""),
+            last_seen: @env.now(),
+          }
           next_session_id
         }
       }
       let chunk = slice_bytes(buf.unsafe_reinterpret_as_bytes(), 0, n)
-      send_port_forward_message(
-        runtime.rule.peer_id,
-        "port_forward_data",
-        make_port_forward_data_body(runtime.rule.id, "udp", session_id),
-        Some(chunk),
+      let route_session = port_forward_registry_state.udp_forward_session_by_id.get(
+        session_id,
       )
+      match route_session {
+        Some(session) =>
+          ignore(
+            send_port_forward_message_via(
+              runtime.rule.peer_id,
+              "port_forward_data",
+              make_port_forward_data_body(runtime.rule.id, "udp", session_id, 0),
+              Some(chunk),
+              route_protocol=session.route_protocol,
+              route_addr=session.route_addr,
+            ),
+          )
+        None => ()
+      }
     } catch {
       _ => @async.sleep(10)
     }

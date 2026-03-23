@@ -17,28 +17,19 @@ fn query_param(query : String?, key : String) -> String? {
 
 ///|
 fn parse_channel_target_id(target_id : String) -> (String, String)? {
-  if !target_id.has_prefix("channel::") {
-    return None
-  }
-  let rest = target_id[9:].to_string()
-  let parts = rest.split("::").to_array()
-  if parts.length() < 2 {
-    return None
-  }
-  let peer_id = parts[0].to_string()
-  let channel_id = parts[1:].map(fn(part) { part.to_string() }).join("::")
-  if peer_id == "" || channel_id == "" {
-    None
-  } else {
-    Some((peer_id, channel_id))
+  lexmatch target_id[:] with longest {
+    ("channel::" ("[^:]+" as peer_id) "::" (".+" as channel_id)) =>
+      Some((peer_id.to_string(), channel_id.to_string()))
+    _ => None
   }
 }
 
 ///|
 fn is_openclaw_channel_target_id(target_id : String) -> Bool {
-  match parse_channel_target_id(target_id) {
-    Some((_, channel_id)) => channel_id.has_prefix("openclaw:")
-    None => false
+  if parse_channel_target_id(target_id) is Some((_, channel_id)) {
+    channel_id.has_prefix("openclaw:")
+  } else {
+    false
   }
 }
 
@@ -55,56 +46,96 @@ fn chat_page_has_items(page : Json) -> Bool {
 }
 
 ///|
-fn parse_iso_decimal_segment(text : String, start : Int, end_ : Int) -> Int? {
-  parse_decimal_opt(text[start:end_].to_string())
+fn normalize_iso_millis(millis_text : String) -> Int {
+  let value = @strconv.parse_int(millis_text) catch { _ => 0 }
+  if millis_text.length() == 1 {
+    value * 100
+  } else if millis_text.length() == 2 {
+    value * 10
+  } else {
+    @strconv.parse_int(millis_text[:3]) catch {
+      _ => value
+    }
+  }
 }
 
 ///|
 fn parse_iso_utc_timestamp(timestamp : String) -> UInt64? {
-  if timestamp.length() < 20 || !timestamp.has_suffix("Z") {
-    return None
-  }
-  let year = match parse_iso_decimal_segment(timestamp, 0, 4) {
-    Some(v) => v
-    None => return None
-  }
-  let month = match parse_iso_decimal_segment(timestamp, 5, 7) {
-    Some(v) => v
-    None => return None
-  }
-  let day = match parse_iso_decimal_segment(timestamp, 8, 10) {
-    Some(v) => v
-    None => return None
-  }
-  let hour = match parse_iso_decimal_segment(timestamp, 11, 13) {
-    Some(v) => v
-    None => return None
-  }
-  let minute = match parse_iso_decimal_segment(timestamp, 14, 16) {
-    Some(v) => v
-    None => return None
-  }
-  let second = match parse_iso_decimal_segment(timestamp, 17, 19) {
-    Some(v) => v
-    None => return None
-  }
-  let mut millis = 0
-  if timestamp.length() > 20 && timestamp[19:20].to_string() == "." {
-    let millis_end = timestamp.length() - 1
-    let millis_text = timestamp[20:millis_end].to_string()
-    match parse_decimal_opt(millis_text) {
-      Some(v) =>
-        millis = if millis_text.length() == 1 {
-          v * 100
-        } else if millis_text.length() == 2 {
-          v * 10
-        } else if millis_text.length() >= 3 {
-          parse_decimal_opt(millis_text[:3].to_string()).unwrap_or(v)
-        } else {
-          0
-        }
-      None => ()
-    }
+  let (year, month, day, hour, minute, second, millis) = lexmatch
+    timestamp[:] with longest {
+    (
+      ("[0-9]{4}" as year)
+      "-"
+      ("[0-9]{2}" as month)
+      "-"
+      ("[0-9]{2}" as day)
+      "T"
+      ("[0-9]{2}" as hour)
+      ":"
+      ("[0-9]{2}" as minute)
+      ":"
+      ("[0-9]{2}" as second)
+      "."
+      ("[0-9]{1,9}" as millis_text)
+      "Z"
+    ) =>
+      (
+        @strconv.parse_int(year) catch {
+          _ => 0
+        },
+        @strconv.parse_int(month) catch {
+          _ => 0
+        },
+        @strconv.parse_int(day) catch {
+          _ => 0
+        },
+        @strconv.parse_int(hour) catch {
+          _ => 0
+        },
+        @strconv.parse_int(minute) catch {
+          _ => 0
+        },
+        @strconv.parse_int(second) catch {
+          _ => 0
+        },
+        normalize_iso_millis(millis_text.to_string()),
+      )
+    (
+      ("[0-9]{4}" as year)
+      "-"
+      ("[0-9]{2}" as month)
+      "-"
+      ("[0-9]{2}" as day)
+      "T"
+      ("[0-9]{2}" as hour)
+      ":"
+      ("[0-9]{2}" as minute)
+      ":"
+      ("[0-9]{2}" as second)
+      "Z"
+    ) =>
+      (
+        @strconv.parse_int(year) catch {
+          _ => 0
+        },
+        @strconv.parse_int(month) catch {
+          _ => 0
+        },
+        @strconv.parse_int(day) catch {
+          _ => 0
+        },
+        @strconv.parse_int(hour) catch {
+          _ => 0
+        },
+        @strconv.parse_int(minute) catch {
+          _ => 0
+        },
+        @strconv.parse_int(second) catch {
+          _ => 0
+        },
+        0,
+      )
+    _ => return None
   }
   let month_adj = if month <= 2 { month + 9 } else { month - 3 }
   let year_adj = if month <= 2 { year - 1 } else { year }
@@ -177,9 +208,8 @@ async fn load_openclaw_session_messages_json(
   limit : Int,
   before : UInt64?,
 ) -> Json {
-  let (peer_id, channel_id) = match parse_channel_target_id(target_id) {
-    Some(v) => v
-    None => return empty_chat_page_json()
+  guard parse_channel_target_id(target_id) is Some((peer_id, channel_id)) else {
+    return empty_chat_page_json()
   }
   let runtime = match get_openclaw_runtime(channel_id) {
     Some(v) => v

@@ -10,10 +10,9 @@ struct Config {
   openclaw : Bool?
   openclaw_plugin_version : String?
   openclaw_token : String?
-  port_forward_exposes : Array[PortForwardExposeRule]?
-  port_forward_forwards : Array[PortForwardForwardRule]?
+  forwards : Map[String, String]?
+  exposes : Map[String, String]?
   log : LogLevel?
-  port : Map[String, String]?
   relay_network_whitelist : Array[String]?
   relay_all_peer_rpc : Bool?
   foreign_relay_bps_limit : Int?
@@ -56,10 +55,9 @@ fn get_config() -> Config {
         openclaw: None,
         openclaw_plugin_version: None,
         openclaw_token: None,
-        port_forward_exposes: None,
-        port_forward_forwards: None,
+        forwards: None,
+        exposes: None,
         log: None,
-        port: None,
         relay_network_whitelist: None,
         relay_all_peer_rpc: None,
         foreign_relay_bps_limit: None,

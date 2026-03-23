@@ -220,46 +220,11 @@ fn Connection::get_best_address(
 
 ///|
 fn extract_host(addr : String) -> String {
-  let s = if addr.contains("://") {
-    let parts = addr.split("://").to_array()
-    if parts.length() > 1 {
-      parts[1].to_string()
-    } else {
-      addr
-    }
-  } else {
-    addr
-  }
-  if s.has_prefix("[") {
-    let mut end_idx = -1
-    let mut i = 0
-    for c in s {
-      if c == ']' {
-        end_idx = i
-        break
-      }
-      i = i + 1
-    }
-    if end_idx != -1 {
-      s[1:end_idx].to_string()
-    } else {
-      s
-    }
-  } else {
-    let mut colons = 0
-    for c in s {
-      if c == ':' {
-        colons = colons + 1
-      }
-    }
-    if colons > 1 {
-      s // IPv6 without brackets
-    } else if colons == 1 {
-      let parts = s.split(":").to_array()
-      parts[0].to_string()
-    } else {
-      s
-    }
+  let normalized = if addr.contains("://") { addr } else { "tcp://" + addr }
+  let parsed = try? Address::parse(normalized)
+  match parsed {
+    Ok(value) => value.host
+    Err(_) => addr
   }
 }
 
@@ -282,10 +247,10 @@ fn is_private(ip : String) -> Bool {
   if ip.has_prefix("172.") {
     let parts = ip.split(".").to_array()
     if parts.length() > 1 {
-      match parse_int_simple(parts[1].to_string()) {
-        Some(v) => return v >= 16 && v <= 31
-        None => return false
+      if parse_int_simple(parts[1].to_string()) is Some(v) {
+        return v >= 16 && v <= 31
       }
+      return false
     }
   }
   // IPv6 ULA (Unique Local Address) fc00::/7
@@ -297,14 +262,9 @@ fn is_private(ip : String) -> Bool {
 
 ///|
 fn parse_int_simple(s : String) -> Int? {
-  let mut res = 0
-  for c in s {
-    if c < '0' || c > '9' {
-      return None
-    }
-    res = res * 10 + (c.to_int() - '0'.to_int())
+  Some(@strconv.parse_int(s)) catch {
+    _ => None
   }
-  Some(res)
 }
 
 ///|

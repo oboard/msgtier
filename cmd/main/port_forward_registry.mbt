@@ -1,12 +1,20 @@
 ///|
 struct PortForwardTcpEndpoint {
   socket : @socket.Tcp
-  sending : Ref[Bool]
+  send_seq : Ref[Int]
+  recv_next_seq : Ref[Int]
+  remote_close_seq : Ref[Int?]
+  recv_buffer : Ref[Map[Int, Bytes]]
+  pending_writes : Ref[Array[Bytes]]
+  draining : Ref[Bool]
+  closed : Ref[Bool]
   cond : @cond_var.Cond
   rule_id : String
   peer_id : String
   protocol : String
   connection_id : String
+  mut route_protocol : String
+  mut route_addr : String
   mut opened : Bool
   mut failed : Bool
   mut error : String?
@@ -21,19 +29,18 @@ struct PortForwardUdpForwardRuntime {
 
 ///|
 struct PortForwardUdpForwardSession {
-  session_id : String
   rule_key : String
-  rule_id : String
-  peer_id : String
   source_addr : String
+  route_protocol : String
+  route_addr : String
   mut last_seen : UInt64
 }
 
 ///|
 struct PortForwardUdpExposeSession {
-  session_id : String
-  rule_id : String
   peer_id : String
+  route_protocol : String
+  route_addr : String
   client : @socket.UdpClient
   mut last_seen : UInt64
   audit : PortForwardAuditEntry
@@ -73,7 +80,6 @@ fn get_port_forward_metadata_json() -> String {
       "id": rule.id,
       "protocol": rule.protocol,
       "direction": "expose",
-      "peer_ids": rule.allow_from_peers,
       "state": if is_port_forward_rule_enabled(rule.enabled) {
         "configured"
       } else {

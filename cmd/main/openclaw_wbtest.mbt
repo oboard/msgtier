@@ -11,10 +11,9 @@ test "resolve_auth prefers config token" {
     openclaw: None,
     openclaw_plugin_version: None,
     openclaw_token: Some("config-token"),
-    port_forward_exposes: None,
-    port_forward_forwards: None,
+    forwards: None,
+    exposes: None,
     log: None,
-    port: None,
     relay_network_whitelist: None,
     relay_all_peer_rpc: None,
     foreign_relay_bps_limit: None,
@@ -40,10 +39,9 @@ test "resolve_auth reads nested gateway auth token from state config" {
     openclaw: None,
     openclaw_plugin_version: None,
     openclaw_token: None,
-    port_forward_exposes: None,
-    port_forward_forwards: None,
+    forwards: None,
+    exposes: None,
     log: None,
-    port: None,
     relay_network_whitelist: None,
     relay_all_peer_rpc: None,
     foreign_relay_bps_limit: None,
@@ -72,10 +70,9 @@ test "resolve_auth respects configured password mode" {
     openclaw: None,
     openclaw_plugin_version: None,
     openclaw_token: None,
-    port_forward_exposes: None,
-    port_forward_forwards: None,
+    forwards: None,
+    exposes: None,
     log: None,
-    port: None,
     relay_network_whitelist: None,
     relay_all_peer_rpc: None,
     foreign_relay_bps_limit: None,
@@ -110,10 +107,9 @@ test "openclaw auto manage flag and plugin assets are generated" {
     openclaw: Some(true),
     openclaw_plugin_version: Some("1.2.3"),
     openclaw_token: None,
-    port_forward_exposes: None,
-    port_forward_forwards: None,
+    forwards: None,
+    exposes: None,
     log: None,
-    port: None,
     relay_network_whitelist: None,
     relay_all_peer_rpc: None,
     foreign_relay_bps_limit: None,
@@ -249,6 +245,12 @@ test "parse_http_response decodes chunked json body case-insensitive header" {
 test "decode_chunked_body handles chunk extensions" {
   let body = "11;foo=bar\r\n{\"ok\":true,\"n\":1}\r\n0\r\n\r\n"
   inspect(decode_chunked_body(body), content="{\"ok\":true,\"n\":1}")
+}
+
+///|
+test "decode_chunked_body handles hex chunk sizes" {
+  let body = "A\r\n0123456789\r\n0\r\n\r\n"
+  inspect(decode_chunked_body(body), content="0123456789")
 }
 
 ///|

@@ -327,7 +327,7 @@ async fn handle_http_request(
     match (peer_id, proxy_path) {
       (Some(pid), Some(p)) => {
         let timeout_ms_int = match request.headers.get("timeout") {
-          Some(t) => parse_decimal_int(t, 60000)
+          Some(t) => @strconv.parse_int(t) catch { _ => 60000 }
           None => 60000
         }
         let timeout_ms = if timeout_ms_int < 0 { 60000 } else { timeout_ms_int }
@@ -396,7 +396,7 @@ async fn handle_http_request(
       }
 
       let timeout_ms_int = match request.headers.get("timeout") {
-        Some(t) => parse_decimal_int(t, 10000)
+        Some(t) => @strconv.parse_int(t) catch { _ => 10000 }
         None => 10000
       }
       let timeout_ms = if timeout_ms_int < 0 { 10000 } else { timeout_ms_int }

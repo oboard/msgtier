@@ -1,0 +1,16 @@
+{
+  "id": "node-b",
+  "secret": "port-forward-secret",
+  "listeners": [
+    "tcp://0.0.0.0:16102"
+  ],
+  "peers": [],
+  "web_api": "127.0.0.1:19101",
+  "log": "Debug",
+  "exposes": {
+    "db": "tcp://127.0.0.1:19432",
+    "dns": "udp://127.0.0.1:19053",
+    "bench": "tcp://127.0.0.1:19480"
+  },
+  "disable_encryption": true
+}

@@ -23,6 +23,8 @@ features:
     details: Messages are automatically relayed through intermediate peers to reach distant nodes.
   - title: Foreign Network Relay
     details: Cross-network relay via public nodes when direct routes fail.
+  - title: Bastion Port Forwarding
+    details: Static TCP and UDP forwarding between peers for SSH, databases, and private services.
   - title: HTTP API
     details: REST endpoints for peer status, config, and message sending.
   - title: Health Checks

@@ -64,7 +64,7 @@ impl Transport for TcpTransport with send(self, target, data) {
       // Get or create connection
       // We use a mutable variable to avoid complex match/async interaction issues
       let mut conn_opt = match self.connections.get(target) {
-        Some(wrapper) => if wrapper.outbound { Some(wrapper) } else { None }
+        Some(wrapper) => Some(wrapper)
         None => None
       }
       let mut created = false

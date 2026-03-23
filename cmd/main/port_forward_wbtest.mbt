@@ -11,50 +11,17 @@ fn make_port_forward_test_config() -> Config {
     openclaw: None,
     openclaw_plugin_version: None,
     openclaw_token: None,
-    port_forward_exposes: Some([
-      {
-        id: "db",
-        protocol: "tcp",
-        allow_from_peers: ["node-b"],
-        allow_from_peer: None,
-        target_host: "127.0.0.1",
-        target_port: 5432,
-        target: None,
-        enabled: Some(true),
-      },
-      {
-        id: "bad",
-        protocol: "icmp",
-        allow_from_peers: ["node-b"],
-        allow_from_peer: None,
-        target_host: "127.0.0.1",
-        target_port: 0,
-        target: None,
-        enabled: Some(true),
-      },
-    ]),
-    port_forward_forwards: Some([
-      {
-        id: "db",
-        protocol: "tcp",
-        peer_id: "node-b",
-        listen_host: "127.0.0.1",
-        listen_port: 15432,
-        listen: None,
-        enabled: Some(true),
-      },
-      {
-        id: "dns",
-        protocol: "udp",
-        peer_id: "node-b",
-        listen_host: "127.0.0.1",
-        listen_port: 1053,
-        listen: None,
-        enabled: Some(false),
-      },
-    ]),
+    forwards: Some({
+      "db": "tcp://node-b@127.0.0.1:15432",
+      "dns": "udp://node-b@127.0.0.1:1053",
+      "broken": "icmp://node-b@127.0.0.1:1",
+    }),
+    exposes: Some({
+      "db": "tcp://localhost:5432",
+      "dns": "udp://127.0.0.1:53",
+      "bad": "tcp://localhost:0",
+    }),
     log: None,
-    port: None,
     relay_network_whitelist: None,
     relay_all_peer_rpc: None,
     foreign_relay_bps_limit: None,
@@ -64,67 +31,27 @@ fn make_port_forward_test_config() -> Config {
 }
 
 ///|
-test "sanitize port forward rules filters invalid entries" {
-  let config = make_port_forward_test_config()
-  app_state.config = Some(config)
+test "parse port forward map config" {
+  app_state.config = Some(make_port_forward_test_config())
   let exposes = get_port_forward_expose_rules()
   let forwards = get_port_forward_forward_rules()
-  inspect(exposes.length(), content="1")
+  inspect(exposes.length(), content="2")
   inspect(forwards.length(), content="2")
-  inspect(exposes[0].protocol, content="tcp")
-  inspect(forwards[0].id, content="db")
+  inspect(exposes[0].id, content="db")
+  inspect(exposes[0].target_port.to_string(), content="5432")
+  inspect(forwards[0].peer_id, content="node-b")
+  inspect(forwards[1].protocol, content="udp")
 }
 
 ///|
-test "find matching expose rule enforces allowlist" {
+test "find matching expose rule by key and protocol" {
   app_state.config = Some(make_port_forward_test_config())
+  inspect(find_port_forward_expose_rule("db", "tcp") is Some(_), content="true")
+  inspect(find_port_forward_expose_rule("db", "udp") is None, content="true")
   inspect(
-    find_port_forward_expose_rule("db", "tcp", "node-b") is Some(_),
+    find_port_forward_expose_rule("missing", "tcp") is None,
     content="true",
   )
-  inspect(
-    find_port_forward_expose_rule("db", "tcp", "node-c") is None,
-    content="true",
-  )
-}
-
-///|
-test "port forward shorthand config is expanded" {
-  app_state.config = Some({
-    ..make_port_forward_test_config(),
-    port_forward_exposes: Some([
-      {
-        id: "redis",
-        protocol: "",
-        allow_from_peers: [],
-        allow_from_peer: Some("node-b"),
-        target_host: "",
-        target_port: 0,
-        target: Some("6380"),
-        enabled: None,
-      },
-    ]),
-    port_forward_forwards: Some([
-      {
-        id: "redis",
-        protocol: "",
-        peer_id: "node-b",
-        listen_host: "",
-        listen_port: 0,
-        listen: Some("16380"),
-        enabled: None,
-      },
-    ]),
-  })
-  let expose = get_port_forward_expose_rules()[0]
-  let forward = get_port_forward_forward_rules()[0]
-  inspect(expose.protocol, content="tcp")
-  inspect(expose.allow_from_peers.join(","), content="node-b")
-  inspect(expose.target_host, content="127.0.0.1")
-  inspect(expose.target_port.to_string(), content="6380")
-  inspect(forward.protocol, content="tcp")
-  inspect(forward.listen_host, content="127.0.0.1")
-  inspect(forward.listen_port.to_string(), content="16380")
 }
 
 ///|
@@ -140,5 +67,6 @@ test "port forward metadata exports public fields only" {
   inspect(json.contains("\"listen_port\":15432"), content="true")
   inspect(json.contains("\"target_port\""), content="false")
   inspect(json.contains("\"target_host\""), content="false")
+  inspect(json.contains("\"peer_ids\""), content="false")
   port_forward_registry_state.tcp_forward_started.remove(rule_key)
 }

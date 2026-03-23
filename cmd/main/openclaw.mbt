@@ -677,7 +677,7 @@ fn json_string_opt(m : Map[String, Json], key : String) -> String? {
 fn json_int_opt(m : Map[String, Json], key : String) -> Int? {
   match m.get(key) {
     Some(Number(v, ..)) => Some(v.to_int())
-    Some(String(v)) => parse_decimal_opt(v)
+    Some(String(v)) => (try? @strconv.parse_int(v)).to_option()
     _ => None
   }
 }
@@ -767,7 +767,7 @@ fn parse_base_url_port(base_url : String) -> Int? {
           Some(80)
         }
       } else {
-        parse_decimal_opt(port)
+        (try? @strconv.parse_int(port)).to_option()
       }
     }
     None => None
@@ -775,49 +775,33 @@ fn parse_base_url_port(base_url : String) -> Int? {
 }
 
 ///|
-fn unwrap_int_or(v : Int?, fallback : Int) -> Int {
-  match v {
-    Some(value) => value
-    None => fallback
-  }
-}
-
-///|
 fn resolve_openclaw_base_url(
   state_config : Map[String, Json]?,
 ) -> (String, Int) {
-  match @sys.get_env_var("OPENCLAW_BASE_URL") {
-    Some(v) => return (v, unwrap_int_or(parse_base_url_port(v), 18789))
-    None => ()
+  if @sys.get_env_var("OPENCLAW_BASE_URL") is Some(v) {
+    return (v, parse_base_url_port(v).unwrap_or(18789))
   }
   match @sys.get_env_var("OPENCLAW_GATEWAY_PORT") {
     Some(v) =>
-      match parse_decimal_opt(v) {
-        Some(port) => return ("http://127.0.0.1:" + port.to_string(), port)
-        None => ()
+      if (try? @strconv.parse_int(v)) is Ok(port) {
+        return ("http://127.0.0.1:" + port.to_string(), port)
       }
     None => ()
   }
-  match state_config {
-    Some(config) => {
-      match
-        first_non_empty(
-          json_string_opt(config, "base_url"),
-          json_string_opt(config, "gateway_url"),
-        ) {
-        Some(v) => return (v, unwrap_int_or(parse_base_url_port(v), 18789))
-        None => ()
-      }
-      match json_int_opt(config, "gateway_port") {
-        Some(port) => return ("http://127.0.0.1:" + port.to_string(), port)
-        None => ()
-      }
-      match json_int_opt(config, "port") {
-        Some(port) => return ("http://127.0.0.1:" + port.to_string(), port)
-        None => ()
-      }
+  if state_config is Some(config) {
+    if first_non_empty(
+        json_string_opt(config, "base_url"),
+        json_string_opt(config, "gateway_url"),
+      )
+      is Some(v) {
+      return (v, parse_base_url_port(v).unwrap_or(18789))
     }
-    None => ()
+    if json_int_opt(config, "gateway_port") is Some(port) {
+      return ("http://127.0.0.1:" + port.to_string(), port)
+    }
+    if json_int_opt(config, "port") is Some(port) {
+      return ("http://127.0.0.1:" + port.to_string(), port)
+    }
   }
   ("http://127.0.0.1:18789", 18789)
 }
@@ -1034,10 +1018,10 @@ fn parse_http_response(raw : String) -> (Int, Map[String, String], String)? {
       if status_parts.length() < 2 {
         return None
       }
-      let status = unwrap_int_or(
-        parse_decimal_opt(status_parts[1].to_string()),
-        500,
-      )
+      let status = @strconv.parse_int(status_parts[1].to_string()) catch {
+        _ => 500
+      }
+
       let headers : Map[String, String] = {}
       for i = 1; i < lines.length(); i = i + 1 {
         let line = lines[i].trim().to_string()
@@ -1084,9 +1068,11 @@ fn get_header_ignore_case(
 
 ///|
 fn parse_hex_opt(s : String) -> Int? {
-  if s == "" {
-    return None
+  let is_hex = lexmatch s[:] with longest {
+    "[0-9A-Fa-f]+" => true
+    _ => false
   }
+  guard is_hex else { None }
   let mut result = 0
   for c in s.to_lower() {
     let digit = if c >= '0' && c <= '9' {
@@ -1115,10 +1101,7 @@ fn decode_chunked_body(body : String) -> String {
       Some(pos) => size_line[:pos].to_string()
       None => size_line
     }
-    let size = unwrap_int_or(parse_hex_opt(size_hex), -1)
-    if size < 0 {
-      return body
-    }
+    guard parse_hex_opt(size_hex) is Some(size) else { return body }
     offset = line_end + 2
     if size == 0 {
       break

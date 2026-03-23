@@ -1,27 +1,4 @@
 ///|
-fn parse_decimal_opt(s : String) -> Int? {
-  if s == "" {
-    return None
-  }
-  let mut result = 0
-  for c in s {
-    if c < '0' || c > '9' {
-      return None
-    }
-    result = result * 10 + (c.to_int() - '0'.to_int())
-  }
-  Some(result)
-}
-
-///|
-fn parse_decimal_int(s : String, default : Int) -> Int {
-  match parse_decimal_opt(s) {
-    Some(v) => v
-    None => default
-  }
-}
-
-///|
 fn status_text(code : Int) -> String {
   match code {
     200 => "OK"
@@ -36,65 +13,100 @@ fn status_text(code : Int) -> String {
 }
 
 ///|
-async fn send_message_now(peer_id : String, msg : Message) -> Bool {
+fn message_route_candidates(
+  peer_id : String,
+  protocol : String,
+) -> Array[String] {
+  let candidates : Array[String] = []
+  let seen : Map[String, Bool] = {}
+  let connections = get_global_connection_manager().get_peer_connections(
+    peer_id,
+  )
+  for conn in connections {
+    if conn.relay != 1 {
+      continue
+    }
+    for addr, _ in conn.address_stats {
+      if addr.has_prefix(protocol + "://") && !seen.contains(addr) {
+        candidates.push(addr)
+        seen[addr] = true
+      }
+    }
+  }
+  match pick_peer_address(peer_id, protocol) {
+    Some(addr) =>
+      if !seen.contains(addr) {
+        candidates.push(addr)
+        seen[addr] = true
+      }
+    None => ()
+  }
+  match pick_peer_lan_address(peer_id, protocol) {
+    Some(addr) => {
+      let full_addr = if addr.contains("://") {
+        addr
+      } else {
+        protocol + "://" + addr
+      }
+      if !seen.contains(full_addr) {
+        candidates.push(full_addr)
+        seen[full_addr] = true
+      }
+    }
+    None => ()
+  }
+  candidates
+}
+
+///|
+fn preferred_message_transports() -> Array[&Transport] {
   let registered = get_registered_transports()
   let tcp_transports = registered.filter(fn(transport) {
     transport.protocol() == "tcp"
   })
-  let transports = if tcp_transports.is_empty() {
+  if tcp_transports.is_empty() {
     registered
   } else {
     tcp_transports
   }
+}
 
-  for transport in transports {
-    let protocol = transport.protocol()
-    let candidates : Array[String] = []
-    let seen : Map[String, Bool] = {}
-    let connections = get_global_connection_manager().get_peer_connections(
-      peer_id,
-    )
-    for conn in connections {
-      if conn.relay != 1 {
-        continue
-      }
-      for addr, _ in conn.address_stats {
-        if addr.has_prefix(protocol + "://") && !seen.contains(addr) {
-          candidates.push(addr)
-          seen[addr] = true
-        }
-      }
-    }
-    match pick_peer_address(peer_id, protocol) {
-      Some(addr) =>
-        if !seen.contains(addr) {
-          candidates.push(addr)
-          seen[addr] = true
-        }
-      None => ()
-    }
-    match pick_peer_lan_address(peer_id, protocol) {
-      Some(addr) => {
-        let full_addr = if addr.contains("://") {
-          addr
-        } else {
-          protocol + "://" + addr
-        }
-        if !seen.contains(full_addr) {
-          candidates.push(full_addr)
-          seen[full_addr] = true
-        }
-      }
-      None => ()
-    }
-
-    for target_addr in candidates {
-      if send_message(transport, target_addr, msg) {
-        return true
-      }
+///|
+async fn send_message_via_route(
+  protocol : String,
+  target_addr : String,
+  msg : Message,
+) -> Bool {
+  for transport in preferred_message_transports() {
+    if transport.protocol() == protocol {
+      return send_message(transport, target_addr, msg)
     }
   }
   false
+}
+
+///|
+async fn send_message_now_with_route(
+  peer_id : String,
+  msg : Message,
+) -> (Bool, String?, String?) {
+  let transports = preferred_message_transports()
+
+  for transport in transports {
+    let protocol = transport.protocol()
+    for target_addr in message_route_candidates(peer_id, protocol) {
+      if send_message(transport, target_addr, msg) {
+        return (true, Some(protocol), Some(target_addr))
+      }
+    }
+  }
+  (false, None, None)
+}
+
+///|
+async fn send_message_now(peer_id : String, msg : Message) -> Bool {
+  let (ok, _, _) = send_message_now_with_route(peer_id, msg)
+  ok
 }
 
 ///|
@@ -133,7 +145,7 @@ async fn proxy_http_request(
   match wait_for_response(req_id, timeout_ms_uint) {
     Some((data, headers)) => {
       let status_code = match headers.get("status") {
-        Some(s) => parse_decimal_int(s, 200)
+        Some(s) => @strconv.parse_int(s) catch { _ => 200 }
         None => 200
       }
       headers.remove("status")
@@ -227,7 +239,7 @@ async fn proxy_http_request_stream(
             None => resp_headers = {}
           }
           status_code = match resp_headers.get("status") {
-            Some(s) => parse_decimal_int(s, 200)
+            Some(s) => @strconv.parse_int(s) catch { _ => 200 }
             None => 200
           }
           resp_headers.remove("status")

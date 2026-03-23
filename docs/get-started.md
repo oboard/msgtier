@@ -50,24 +50,23 @@ Create a `node.json` configuration file for each node:
 | `foreign_relay_bps_limit` | Number | Bandwidth limit (bytes/sec) for foreign network relay (default: 0 = unlimited) |
 | `web_api` | String | HTTP server address (optional) |
 | `scripts` | Object | Named scripts that can be triggered via messages |
-| `port_forward_forwards` | Array | Local listener rules for bastion forwarding |
-| `port_forward_exposes` | Array | Remote expose rules for bastion forwarding |
+| `forwards` | Object | Bastion forward rules. Key is rule id, value is `protocol://peer_id@listen_host:listen_port` |
+| `exposes` | Object | Bastion expose rules. Key is rule id, value is `protocol://target_host:target_port` |
 
 ### Bastion Port Forwarding
 
 MsgTier can expose a static bastion tunnel between two peers. The simplest form uses shorthand strings so you only need to fill the peer and port:
 
+Full guide:
+[Port Forwarding](./port-forwarding.md)
+
 Forward side:
 
 ```json
 {
-  "port_forward_forwards": [
-    {
-      "id": "db",
-      "peer_id": "node-b",
-      "listen": "15432"
-    }
-  ]
+  "forwards": {
+    "db": "tcp://node-b@127.0.0.1:15432"
+  }
 }
 ```
 
@@ -75,44 +74,24 @@ Expose side:
 
 ```json
 {
-  "port_forward_exposes": [
-    {
-      "id": "db",
-      "allow_from_peer": "node-a",
-      "target": "5432"
-    }
-  ]
+  "exposes": {
+    "db": "tcp://127.0.0.1:5432"
+  }
 }
 ```
 
-Defaults for shorthand rules:
+The forward side chooses the remote peer and the local listening port. The expose side only declares the local target. MsgTier matches the tunnel by `peer_id + key`.
 
-- `protocol` defaults to `tcp`
-- `listen: "15432"` means `127.0.0.1:15432`
-- `target: "5432"` means `127.0.0.1:5432`
-
-If you need explicit addresses or UDP, you can still use the full form:
+If you need UDP, the format is the same:
 
 ```json
 {
-  "port_forward_forwards": [
-    {
-      "id": "dns",
-      "protocol": "udp",
-      "peer_id": "node-b",
-      "listen_host": "127.0.0.1",
-      "listen_port": 1053
-    }
-  ],
-  "port_forward_exposes": [
-    {
-      "id": "dns",
-      "protocol": "udp",
-      "allow_from_peers": ["node-a"],
-      "target_host": "127.0.0.1",
-      "target_port": 53
-    }
-  ]
+  "forwards": {
+    "dns": "udp://node-b@127.0.0.1:1053"
+  },
+  "exposes": {
+    "dns": "udp://127.0.0.1:53"
+  }
 }
 ```
 
