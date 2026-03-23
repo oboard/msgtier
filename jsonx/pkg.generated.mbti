@@ -1,0 +1,34 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/jsonx"
+
+import {
+  "moonbitlang/core/json",
+}
+
+// Values
+pub fn[T : @json.FromJson] get(Map[String, Json], String) -> T?
+
+pub fn int(Json) -> Int?
+
+pub fn intf(Map[String, Json], String) -> Int?
+
+pub fn[T : @json.FromJson] nul(Json) -> T??
+
+pub fn[T : @json.FromJson] opt(Json) -> T?
+
+pub fn str(Json) -> String?
+
+pub fn strf(Map[String, Json], String) -> String?
+
+pub fn strs(Map[String, Json], Array[String]) -> String?
+
+pub fn sub(Map[String, Json], String) -> Map[String, Json]?
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits
+

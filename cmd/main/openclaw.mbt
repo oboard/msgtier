@@ -665,93 +665,42 @@ async fn read_state_dir_config(state_dir : String) -> Map[String, Json]? {
 }
 
 ///|
-fn json_string_opt(m : Map[String, Json], key : String) -> String? {
-  match m.get(key) {
-    Some(String(v)) => Some(v)
-    Some(Number(v, ..)) => Some(v.to_int().to_string())
-    _ => None
-  }
-}
-
-///|
-fn json_int_opt(m : Map[String, Json], key : String) -> Int? {
-  match m.get(key) {
-    Some(Number(v, ..)) => Some(v.to_int())
-    Some(String(v)) => (try? @strconv.parse_int(v)).to_option()
-    _ => None
-  }
-}
-
-///|
-fn json_object_opt(m : Map[String, Json], key : String) -> Map[String, Json]? {
-  match m.get(key) {
-    Some(Object(v)) => Some(v)
-    _ => None
-  }
-}
-
-///|
-fn json_string_path2_opt(
-  m : Map[String, Json],
-  key1 : String,
-  key2 : String,
-) -> String? {
-  match json_object_opt(m, key1) {
-    Some(child) => json_string_opt(child, key2)
-    None => None
-  }
-}
-
-///|
-fn json_string_path3_opt(
-  m : Map[String, Json],
-  key1 : String,
-  key2 : String,
-  key3 : String,
-) -> String? {
-  match json_object_opt(m, key1) {
-    Some(child1) =>
-      match json_object_opt(child1, key2) {
-        Some(child2) => json_string_opt(child2, key3)
-        None => None
-      }
-    None => None
-  }
-}
-
-///|
 fn resolve_config_auth_mode(state_config : Map[String, Json]?) -> String? {
-  match state_config {
-    Some(config) =>
+  if state_config is Some(config) {
+    first_non_empty(
+      @jsonx.strs(config, ["gateway", "auth", "mode"]),
       first_non_empty(
-        json_string_path3_opt(config, "gateway", "auth", "mode"),
-        first_non_empty(
-          json_string_path2_opt(config, "gateway", "mode"),
-          json_string_opt(config, "auth_mode"),
-        ),
-      )
-    None => None
+        @jsonx.strs(config, ["gateway", "mode"]),
+        @jsonx.strf(config, "auth_mode"),
+      ),
+    )
+  } else {
+    None
   }
 }
 
 ///|
 fn first_non_empty(a : String?, b : String?) -> String? {
-  match a {
-    Some(v) => if v != "" { Some(v) } else { b }
-    None => b
+  if a is Some(v) && v != "" {
+    Some(v)
+  } else {
+    b
   }
 }
 
 ///|
 fn resolve_profile(state_config : Map[String, Json]?) -> String? {
   let env_profile = @sys.get_env_var("OPENCLAW_PROFILE")
-  match env_profile {
-    Some(v) => if v == "" { None } else { Some(v) }
-    None =>
-      match state_config {
-        Some(config) => json_string_opt(config, "profile")
-        None => None
-      }
+  if env_profile is Some(v) {
+    if v == "" {
+      None
+    } else {
+      Some(v)
+    }
+  } else if state_config is Some(config) {
+    @jsonx.strf(config, "profile")
+  } else {
+    None
   }
 }
 
@@ -790,16 +739,16 @@ fn resolve_openclaw_base_url(
   }
   if state_config is Some(config) {
     if first_non_empty(
-        json_string_opt(config, "base_url"),
-        json_string_opt(config, "gateway_url"),
+        @jsonx.strf(config, "base_url"),
+        @jsonx.strf(config, "gateway_url"),
       )
       is Some(v) {
       return (v, parse_base_url_port(v).unwrap_or(18789))
     }
-    if json_int_opt(config, "gateway_port") is Some(port) {
+    if @jsonx.intf(config, "gateway_port") is Some(port) {
       return ("http://127.0.0.1:" + port.to_string(), port)
     }
-    if json_int_opt(config, "port") is Some(port) {
+    if @jsonx.intf(config, "port") is Some(port) {
       return ("http://127.0.0.1:" + port.to_string(), port)
     }
   }
@@ -808,21 +757,18 @@ fn resolve_openclaw_base_url(
 
 ///|
 fn resolve_agent_id(state_config : Map[String, Json]?) -> String {
-  match @sys.get_env_var("OPENCLAW_AGENT_ID") {
-    Some(v) => if v == "" { "main" } else { v }
-    None =>
-      match resolve_profile(state_config) {
-        Some(v) => v
-        None =>
-          match state_config {
-            Some(config) =>
-              match json_string_opt(config, "agent_id") {
-                Some(v) => v
-                None => "main"
-              }
-            None => "main"
-          }
-      }
+  if @sys.get_env_var("OPENCLAW_AGENT_ID") is Some(v) {
+    if v == "" {
+      "main"
+    } else {
+      v
+    }
+  } else if resolve_profile(state_config) is Some(v) {
+    v
+  } else if state_config is Some(config) {
+    @jsonx.strf(config, "agent_id").unwrap_or("main")
+  } else {
+    "main"
   }
 }
 
@@ -831,9 +777,10 @@ fn resolve_auth(
   state_config : Map[String, Json]?,
 ) -> (String, String?, String?) {
   let configured_mode = resolve_config_auth_mode(state_config)
-  let config_token = match app_state.config {
-    Some(config) => config.openclaw_token
-    None => None
+  let config_token = if app_state.config is Some(config) {
+    config.openclaw_token
+  } else {
+    None
   }
   let token = first_non_empty(
     config_token,
@@ -846,33 +793,33 @@ fn resolve_auth(
     @sys.get_env_var("OPENCLAW_GATEWAY_PASSWORD"),
     @sys.get_env_var("OPENCLAW_PASSWORD"),
   )
-  let state_token = match state_config {
-    Some(config) =>
+  let state_token = if state_config is Some(config) {
+    first_non_empty(
+      @jsonx.strs(config, ["gateway", "auth", "token"]),
       first_non_empty(
-        json_string_path3_opt(config, "gateway", "auth", "token"),
+        @jsonx.strs(config, ["gateway", "token"]),
         first_non_empty(
-          json_string_path2_opt(config, "gateway", "token"),
-          first_non_empty(
-            json_string_opt(config, "gateway_token"),
-            json_string_opt(config, "token"),
-          ),
+          @jsonx.strf(config, "gateway_token"),
+          @jsonx.strf(config, "token"),
         ),
-      )
-    None => None
+      ),
+    )
+  } else {
+    None
   }
-  let state_password = match state_config {
-    Some(config) =>
+  let state_password = if state_config is Some(config) {
+    first_non_empty(
+      @jsonx.strs(config, ["gateway", "auth", "password"]),
       first_non_empty(
-        json_string_path3_opt(config, "gateway", "auth", "password"),
+        @jsonx.strs(config, ["gateway", "password"]),
         first_non_empty(
-          json_string_path2_opt(config, "gateway", "password"),
-          first_non_empty(
-            json_string_opt(config, "gateway_password"),
-            json_string_opt(config, "password"),
-          ),
+          @jsonx.strf(config, "gateway_password"),
+          @jsonx.strf(config, "password"),
         ),
-      )
-    None => None
+      ),
+    )
+  } else {
+    None
   }
   let resolved_token = first_non_empty(token, state_token)
   let resolved_password = first_non_empty(password, state_password)

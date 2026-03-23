@@ -1,57 +1,32 @@
 ///|
-fn json_string_field(obj : Map[String, Json], key : String) -> String? {
-  match obj.get(key) {
-    Some(String(v)) => Some(v)
-    _ => None
-  }
-}
-
-///|
-fn json_bool_field(obj : Map[String, Json], key : String) -> Bool? {
-  match obj.get(key) {
-    Some(True) => Some(true)
-    Some(False) => Some(false)
-    _ => None
-  }
-}
-
-///|
-fn json_array_field(obj : Map[String, Json], key : String) -> Array[Json]? {
-  match obj.get(key) {
-    Some(Array(items)) => Some(items)
-    _ => None
-  }
-}
-
-///|
 fn parse_channel_chat_request(
   body_str : String,
 ) -> (String, String, String, Array[Json], String, Bool)? {
   let parsed = @json.parse(body_str) catch { _ => return None }
-  match parsed {
-    Object(obj) => {
-      let peer_id = json_string_field(obj, "peer_id").unwrap_or(get_config().id)
-      let channel_id = json_string_field(obj, "channel_id")
-      let instance_id = json_string_field(obj, "instance_id")
-      let channel_id = match channel_id {
-        Some(id) => id
-        None => instance_id.unwrap_or("")
-      }
-      if channel_id == "" {
-        return None
-      }
-      let channel_type = json_string_field(obj, "channel_type").unwrap_or(
-        "openclaw",
-      )
-      let messages = json_array_field(obj, "messages").unwrap_or([])
-      let session_key = json_string_field(obj, "session_key").unwrap_or(
-        "chat:" + get_config().id + ":" + peer_id + ":" + channel_id,
-      )
-      let stream = json_bool_field(obj, "stream").unwrap_or(false)
-      Some((peer_id, channel_id, channel_type, messages, session_key, stream))
-    }
-    _ => None
-  }
+  guard parsed is Object(obj) else { None }
+  let peer_id0 = @jsonx.get(obj, "peer_id")
+  let channel_id0 = @jsonx.get(obj, "channel_id")
+  let instance_id = @jsonx.get(obj, "instance_id")
+  let channel_id = first_non_empty(channel_id0, instance_id).unwrap_or("")
+  guard channel_id != "" else { None }
+  let channel_type0 = @jsonx.get(obj, "channel_type")
+  let messages0 = @jsonx.get(obj, "messages")
+  let session_key0 = @jsonx.get(obj, "session_key")
+  let stream0 = @jsonx.get(obj, "stream")
+  let peer_id = peer_id0.unwrap_or(get_config().id)
+  let session_key = session_key0.unwrap_or(
+    "chat:" + get_config().id + ":" + peer_id + ":" + channel_id,
+  )
+  Some(
+    (
+      peer_id,
+      channel_id,
+      channel_type0.unwrap_or("openclaw"),
+      messages0.unwrap_or([]),
+      session_key,
+      stream0.unwrap_or(false),
+    ),
+  )
 }
 
 ///|

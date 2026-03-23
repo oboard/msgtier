@@ -148,52 +148,6 @@ fn get_config_response_json() -> Json {
 }
 
 ///|
-fn json_to_string_map(value : Json) -> Map[String, String]? {
-  let parsed : Map[String, String] = @json.from_json(value) catch {
-    _ => return None
-  }
-  Some(parsed)
-}
-
-///|
-fn json_to_string_array(value : Json) -> Array[String]? {
-  let parsed : Array[String] = @json.from_json(value) catch { _ => return None }
-  Some(parsed)
-}
-
-///|
-fn json_to_string(value : Json) -> String? {
-  let parsed : String = @json.from_json(value) catch { _ => return None }
-  Some(parsed)
-}
-
-///|
-fn json_to_int(value : Json) -> Int? {
-  let parsed : Int = @json.from_json(value) catch { _ => return None }
-  Some(parsed)
-}
-
-///|
-fn json_to_bool(value : Json) -> Bool? {
-  let parsed : Bool = @json.from_json(value) catch { _ => return None }
-  Some(parsed)
-}
-
-///|
-fn json_to_log_level(value : Json) -> LogLevel? {
-  let parsed : LogLevel = @json.from_json(value) catch { _ => return None }
-  Some(parsed)
-}
-
-///|
-fn json_to_hot_reload_settings(value : Json) -> HotReloadSettings? {
-  let parsed : HotReloadSettings = @json.from_json(value) catch {
-    _ => return None
-  }
-  Some(parsed)
-}
-
-///|
 fn validate_hot_reload_patch_fields(obj : Map[String, Json]) -> String? {
   let static_fields = ["id", "secret", "peers", "listeners", "web_api", "port"]
   for key in static_fields {
@@ -209,139 +163,96 @@ fn apply_hot_reload_patch(
   config : Config,
   obj : Map[String, Json],
 ) -> Result[Config, String] {
-  match validate_hot_reload_patch_fields(obj) {
-    Some(err) => return Err(err)
-    None => ()
+  if validate_hot_reload_patch_fields(obj) is Some(err) {
+    return Err(err)
   }
 
   let mut next = config
   for key, value in obj {
     match key {
       "scripts" =>
-        if value is Null {
-          next = { ..next, scripts: None }
+        if @jsonx.nul(value) is Some(v) {
+          next = { ..next, scripts: v }
         } else {
-          match json_to_string_map(value) {
-            Some(v) => next = { ..next, scripts: Some(v) }
-            None => return Err("invalid `scripts` value")
-          }
+          return Err("invalid `scripts` value")
         }
       "metadata" =>
-        if value is Null {
-          next = { ..next, metadata: None }
+        if @jsonx.nul(value) is Some(v) {
+          next = { ..next, metadata: v }
         } else {
-          match json_to_string_map(value) {
-            Some(v) => next = { ..next, metadata: Some(v) }
-            None => return Err("invalid `metadata` value")
-          }
+          return Err("invalid `metadata` value")
         }
       "openclaw" =>
-        if value is Null {
-          next = { ..next, openclaw: None }
+        if @jsonx.nul(value) is Some(v) {
+          next = { ..next, openclaw: v }
         } else {
-          match json_to_bool(value) {
-            Some(v) => next = { ..next, openclaw: Some(v) }
-            None => return Err("invalid `openclaw` value")
-          }
+          return Err("invalid `openclaw` value")
         }
       "openclaw_plugin_version" =>
-        if value is Null {
-          next = { ..next, openclaw_plugin_version: None }
+        if @jsonx.nul(value) is Some(v) {
+          next = { ..next, openclaw_plugin_version: v }
         } else {
-          match json_to_string(value) {
-            Some(v) => next = { ..next, openclaw_plugin_version: Some(v) }
-            None => return Err("invalid `openclaw_plugin_version` value")
-          }
+          return Err("invalid `openclaw_plugin_version` value")
         }
       "openclaw_token" =>
-        if value is Null {
-          next = { ..next, openclaw_token: None }
+        if @jsonx.nul(value) is Some(v) {
+          next = { ..next, openclaw_token: v }
         } else {
-          match json_to_string(value) {
-            Some(v) => next = { ..next, openclaw_token: Some(v) }
-            None => return Err("invalid `openclaw_token` value")
-          }
+          return Err("invalid `openclaw_token` value")
         }
       "forwards" =>
-        if value is Null {
-          next = { ..next, forwards: None }
+        if @jsonx.nul(value) is Some(v) {
+          next = { ..next, forwards: v }
         } else {
-          match json_to_string_map(value) {
-            Some(v) => next = { ..next, forwards: Some(v) }
-            None => return Err("invalid `forwards` value")
-          }
+          return Err("invalid `forwards` value")
         }
       "exposes" =>
-        if value is Null {
-          next = { ..next, exposes: None }
+        if @jsonx.nul(value) is Some(v) {
+          next = { ..next, exposes: v }
         } else {
-          match json_to_string_map(value) {
-            Some(v) => next = { ..next, exposes: Some(v) }
-            None => return Err("invalid `exposes` value")
-          }
+          return Err("invalid `exposes` value")
         }
       "log" =>
-        if value is Null {
-          next = { ..next, log: None }
+        if @jsonx.nul(value) is Some(v) {
+          next = { ..next, log: v }
         } else {
-          match json_to_log_level(value) {
-            Some(v) => next = { ..next, log: Some(v) }
-            None => return Err("invalid `log` value")
-          }
+          return Err("invalid `log` value")
         }
       "relay_network_whitelist" =>
-        if value is Null {
-          next = { ..next, relay_network_whitelist: None }
+        if @jsonx.nul(value) is Some(v) {
+          next = { ..next, relay_network_whitelist: v }
         } else {
-          match json_to_string_array(value) {
-            Some(v) => next = { ..next, relay_network_whitelist: Some(v) }
-            None => return Err("invalid `relay_network_whitelist` value")
-          }
+          return Err("invalid `relay_network_whitelist` value")
         }
       "relay_all_peer_rpc" =>
-        if value is Null {
-          next = { ..next, relay_all_peer_rpc: None }
+        if @jsonx.nul(value) is Some(v) {
+          next = { ..next, relay_all_peer_rpc: v }
         } else {
-          match json_to_bool(value) {
-            Some(v) => next = { ..next, relay_all_peer_rpc: Some(v) }
-            None => return Err("invalid `relay_all_peer_rpc` value")
-          }
+          return Err("invalid `relay_all_peer_rpc` value")
         }
       "foreign_relay_bps_limit" =>
-        if value is Null {
-          next = { ..next, foreign_relay_bps_limit: None }
+        if @jsonx.nul(value) is Some(v) {
+          next = { ..next, foreign_relay_bps_limit: v }
         } else {
-          match json_to_int(value) {
-            Some(v) => next = { ..next, foreign_relay_bps_limit: Some(v) }
-            None => return Err("invalid `foreign_relay_bps_limit` value")
-          }
+          return Err("invalid `foreign_relay_bps_limit` value")
         }
       "upload_dir" =>
-        if value is Null {
-          next = { ..next, upload_dir: None }
+        if @jsonx.nul(value) is Some(v) {
+          next = { ..next, upload_dir: v }
         } else {
-          match json_to_string(value) {
-            Some(v) => next = { ..next, upload_dir: Some(v) }
-            None => return Err("invalid `upload_dir` value")
-          }
+          return Err("invalid `upload_dir` value")
         }
       "disable_encryption" =>
-        if value is Null {
-          next = { ..next, disable_encryption: None }
+        if @jsonx.nul(value) is Some(v) {
+          next = { ..next, disable_encryption: v }
         } else {
-          match json_to_bool(value) {
-            Some(v) => next = { ..next, disable_encryption: Some(v) }
-            None => return Err("invalid `disable_encryption` value")
-          }
+          return Err("invalid `disable_encryption` value")
         }
       "hot_reload" =>
-        if value is Null {
-          next = { ..next, hot_reload: None }
+        if @jsonx.nul(value) is Some(v) {
+          next = { ..next, hot_reload: v }
         } else {
-          match json_to_hot_reload_settings(value) {
-            Some(v) => next = { ..next, hot_reload: Some(v) }
-            None => return Err("invalid `hot_reload` value")
-          }
+          return Err("invalid `hot_reload` value")
         }
       _ => return Err("unsupported hot reload field `\{key}`")
     }
@@ -362,14 +273,14 @@ fn ensure_hot_reload_allowed(
   if !config.hot_reload_enabled() {
     return Some("hot reload is disabled")
   }
-  match config.hot_reload_secret() {
-    Some(expected) =>
-      if provided_secret == Some(expected) {
-        None
-      } else {
-        Some("invalid hot reload secret")
-      }
-    None => None
+  if config.hot_reload_secret() is Some(expected) {
+    if provided_secret == Some(expected) {
+      None
+    } else {
+      Some("invalid hot reload secret")
+    }
+  } else {
+    None
   }
 }
 
