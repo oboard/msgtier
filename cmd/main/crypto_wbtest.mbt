@@ -28,6 +28,7 @@ test "encryption and decryption roundtrip" {
     foreign_relay_bps_limit: None,
     upload_dir: None,
     disable_encryption: None,
+    hot_reload: None,
   })
 
   let message_id = "msg-12345"
@@ -67,6 +68,7 @@ test "decryption fails with wrong message id" {
     foreign_relay_bps_limit: None,
     upload_dir: None,
     disable_encryption: None,
+    hot_reload: None,
   })
 
   let message_id = "msg-original"
@@ -108,6 +110,7 @@ test "decryption fails with wrong secret" {
     foreign_relay_bps_limit: None,
     upload_dir: None,
     disable_encryption: None,
+    hot_reload: None,
   })
 
   let message_id = "msg-1"
@@ -135,6 +138,7 @@ test "decryption fails with wrong secret" {
     foreign_relay_bps_limit: None,
     upload_dir: None,
     disable_encryption: None,
+    hot_reload: None,
   })
 
   let result = decrypt_with_message_key(message_id, encrypted)

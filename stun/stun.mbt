@@ -305,9 +305,8 @@ pub async fn probe_binding(
   let request = build_binding_request()
   let start = @env.now()
   let encoded = encode_message(request) catch { _ => return None }
-  match (try? socket.sendto(encoded, server_addr)) {
-    Ok(_) => ()
-    Err(_) => return None
+  if (try? socket.sendto(encoded, server_addr)) is Err(_) {
+    return None
   }
   let response = read_transaction_response(
     socket,
@@ -412,9 +411,8 @@ pub async fn probe_binding_with_socket(
   let request = build_binding_request(change_ip~, change_port~)
   let start = @env.now()
   let encoded = encode_message(request) catch { _ => return None }
-  match (try? socket.sendto(encoded, server_addr)) {
-    Ok(_) => ()
-    Err(_) => return None
+  if (try? socket.sendto(encoded, server_addr)) is Err(_) {
+    return None
   }
   let response = read_transaction_response(
     socket,
@@ -748,10 +746,7 @@ pub async fn resolve_server(server : String) -> @socket.Addr? {
   } else {
     server
   }
-  let direct = match (try? @socket.Addr::parse(normalized)) {
-    Ok(addr) => Some(addr)
-    Err(_) => None
-  }
+  let direct = (try? @socket.Addr::parse(normalized)).to_option()
   match direct {
     Some(addr) => Some(addr)
     None => {
@@ -761,10 +756,7 @@ pub async fn resolve_server(server : String) -> @socket.Addr? {
         split_ipv4_host_port(normalized)
       }
       guard parts is Some((host, port)) else { return None }
-      match (try? @socket.Addr::resolve(host, port~)) {
-        Ok(addr) => Some(addr)
-        Err(_) => None
-      }
+      (try? @socket.Addr::resolve(host, port~)).to_option()
     }
   }
 }
@@ -776,10 +768,9 @@ fn split_ipv4_host_port(value : String) -> (String, Int)? {
       if host.contains(":") || port == "" {
         None
       } else {
-        match (try? @strconv.parse_int(port)) {
-          Ok(parsed) => Some((host.to_string(), parsed))
-          Err(_) => None
-        }
+        (try? @strconv.parse_int(port))
+        .to_option()
+        .map(parsed => (host.to_string(), parsed))
       }
     None => None
   }
@@ -792,10 +783,9 @@ fn split_ipv6_host_port(value : String) -> (String, Int)? {
       if !host.has_prefix("[") || port == "" {
         None
       } else {
-        match (try? @strconv.parse_int(port)) {
-          Ok(parsed) => Some((host[1:host.length()].to_string(), parsed))
-          Err(_) => None
-        }
+        (try? @strconv.parse_int(port))
+        .to_option()
+        .map(parsed => (host[1:host.length()].to_string(), parsed))
       }
     None => None
   }
@@ -803,11 +793,7 @@ fn split_ipv6_host_port(value : String) -> (String, Int)? {
 
 ///|
 fn replace_port(addr : @socket.Addr, port : Int) -> @socket.Addr? {
-  match
-    (try? @socket.Addr::parse(rewrite_socket_port(addr.to_string(), port))) {
-    Ok(parsed) => Some(parsed)
-    Err(_) => None
-  }
+  (try? @socket.Addr::parse(rewrite_socket_port(addr.to_string(), port))).to_option()
 }
 
 ///|

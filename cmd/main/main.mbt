@@ -28,7 +28,8 @@ async fn run_with_config(
   config_path : String,
 ) -> Unit {
   let config = Config::from_file(config_path)
-  app_state.config = Some(config)
+  app_state.root = Some(root)
+  set_config(config)
   reset_bench_trace()
   start_bench_trace_flusher(root)
   log_debug(config.to_json().stringify(indent=2))

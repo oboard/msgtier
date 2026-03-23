@@ -19,6 +19,7 @@ test "resolve_auth prefers config token" {
     foreign_relay_bps_limit: None,
     upload_dir: None,
     disable_encryption: None,
+    hot_reload: None,
   })
   let (auth_mode, token, password) = resolve_auth(None)
   inspect(auth_mode, content="token")
@@ -47,6 +48,7 @@ test "resolve_auth reads nested gateway auth token from state config" {
     foreign_relay_bps_limit: None,
     upload_dir: None,
     disable_encryption: None,
+    hot_reload: None,
   })
   let state_config : Map[String, Json] = {
     "gateway": { "auth": { "token": "state-token" } },
@@ -78,6 +80,7 @@ test "resolve_auth respects configured password mode" {
     foreign_relay_bps_limit: None,
     upload_dir: None,
     disable_encryption: None,
+    hot_reload: None,
   })
   let state_config : Map[String, Json] = {
     "gateway": {
@@ -115,6 +118,7 @@ test "openclaw auto manage flag and plugin assets are generated" {
     foreign_relay_bps_limit: None,
     upload_dir: None,
     disable_encryption: None,
+    hot_reload: None,
   })
   inspect(openclaw_auto_manage_enabled(), content="true")
   inspect(

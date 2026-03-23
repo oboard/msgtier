@@ -413,15 +413,42 @@ async fn handle_internal_http_request(
       (200, resp_headers, ResponseBody::Bytes(@utf8.encode(resp_json)))
     }
   } else if http_method == "GET" && path == "/api/config" {
-    let config = get_config()
     let resp_headers : Map[String, String] = {
       "Content-Type": "application/json",
     }
     (
       200,
       resp_headers,
-      ResponseBody::Bytes(@utf8.encode(config.to_json().stringify())),
+      ResponseBody::Bytes(@utf8.encode(get_config_response_json().stringify())),
     )
+  } else if http_method == "POST" && path == "/api/config/hot-reload" {
+    let body_str = @utf8.decode(body)
+    match apply_hot_reload_request(body_str) {
+      Ok(_) => {
+        let resp_headers : Map[String, String] = {
+          "Content-Type": "application/json",
+        }
+        (
+          200,
+          resp_headers,
+          ResponseBody::Bytes(
+            @utf8.encode(get_config_response_json().stringify()),
+          ),
+        )
+      }
+      Err(err) => {
+        let resp_headers : Map[String, String] = {
+          "Content-Type": "application/json",
+        }
+        (
+          400,
+          resp_headers,
+          ResponseBody::Bytes(
+            @utf8.encode({ "error": err }.to_json().stringify()),
+          ),
+        )
+      }
+    }
   } else if http_method == "GET" &&
     @url.Url::parse("http://localhost" + path)
     is Some({ path: Segments(["api", "chat", "messages"]), query, .. }) {

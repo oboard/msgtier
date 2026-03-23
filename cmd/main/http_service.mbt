@@ -379,6 +379,10 @@ async fn handle_http_request(
     (Get, "/api/ws") => handle_ws_connection(request, conn)
     (Get, "/api/chat/messages") => chat_messages_handler(conn, None)
     (Get, "/api/config") => get_config_handler(conn)
+    (Post, "/api/config/hot-reload") => {
+      let body_str = body.read_all().text()
+      hot_reload_config_handler(conn, body_str)
+    }
     (Get, "/api/status") => status_handler(conn)
     (Get, "/api/download") => download_handler(conn)
     (Post, "/api/send") => {
@@ -555,13 +559,35 @@ async fn serve_file(
 
 ///|
 async fn get_config_handler(conn : @http.ServerConnection) -> Unit {
-  let config = get_config()
   conn
   ..send_response(200, "OK", extra_headers={
     "Content-Type": "application/json",
   })
-  ..write(config.to_json().stringify())
+  ..write(get_config_response_json().stringify())
   .end_response()
+}
+
+///|
+async fn hot_reload_config_handler(
+  conn : @http.ServerConnection,
+  body_str : String,
+) -> Unit {
+  match apply_hot_reload_request(body_str) {
+    Ok(_) =>
+      conn
+      ..send_response(200, "OK", extra_headers={
+        "Content-Type": "application/json",
+      })
+      ..write(get_config_response_json().stringify())
+      .end_response()
+    Err(err) =>
+      conn
+      ..send_response(400, "Bad Request", extra_headers={
+        "Content-Type": "application/json",
+      })
+      ..write({ "error": err }.to_json().stringify())
+      .end_response()
+  }
 }
 
 ///|

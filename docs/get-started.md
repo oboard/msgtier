@@ -49,9 +49,23 @@ Create a `node.json` configuration file for each node:
 | `relay_all_peer_rpc` | Boolean | Whether to relay RPC messages even if not in whitelist (default: true) |
 | `foreign_relay_bps_limit` | Number | Bandwidth limit (bytes/sec) for foreign network relay (default: 0 = unlimited) |
 | `web_api` | String | HTTP server address (optional) |
+| `hot_reload` | Object | Runtime hot reload policy. `enable` defaults to `true`. If `secret` is set, every hot update request must include it |
 | `scripts` | Object | Named scripts that can be triggered via messages |
 | `forwards` | Object | Bastion forward rules. Key is `peer_id:rule_id`, value is `protocol://listen_host:listen_port` |
 | `exposes` | Object | Bastion expose rules. Key is rule id, value is `protocol://target_host:target_port` |
+
+Static fields:
+- `id`
+- `secret`
+- `peers`
+- `listeners`
+- `web_api`
+
+Hot-reloadable fields:
+- `scripts`
+- `forwards`
+- `exposes`
+- other runtime options such as `metadata`, relay settings, `openclaw`, `upload_dir`, and `hot_reload`
 
 ### Bastion Port Forwarding
 

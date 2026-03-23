@@ -103,6 +103,11 @@ type ForeignNetworkState
 
 type GlobalState
 
+type HotReloadSettings
+pub impl Show for HotReloadSettings
+pub impl ToJson for HotReloadSettings
+pub impl @json.FromJson for HotReloadSettings
+
 type HttpServiceState
 
 type LogLevel

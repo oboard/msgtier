@@ -37,6 +37,10 @@ Create a `node.json` config file:
   "relay_all_peer_rpc": true,
   "foreign_relay_bps_limit": 1048576,
   "web_api": "127.0.0.1:9000",
+  "hot_reload": {
+    "enable": true,
+    "secret": "optional-hot-reload-secret"
+  },
   "scripts": {
     "chrome": "open /Applications/Google\\ Chrome.app",
     "notepad": "notepad.exe"
@@ -208,6 +212,28 @@ Returns the current node configuration
 
 ```bash
 curl http://127.0.0.1:9000/api/config
+
+### POST /api/config/hot-reload
+Applies only the runtime-editable config layer. Static fields such as `id`, `secret`, `listeners`, `peers`, `web_api`, and `port` are rejected.
+
+```bash
+curl -X POST 'http://127.0.0.1:9000/api/config/hot-reload' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "secret": "optional-hot-reload-secret",
+    "config": {
+      "scripts": {
+        "chrome": "open /Applications/Google\\ Chrome.app"
+      },
+      "forwards": {},
+      "exposes": {},
+      "hot_reload": {
+        "enable": true,
+        "secret": "next-secret"
+      }
+    }
+  }'
+```
 ```
 
 ### GET /api/status

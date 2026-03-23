@@ -17,7 +17,6 @@ let tcp_transport_state : TcpTransportState = {
 struct TcpConnection {
   socket : @socket.Tcp
   sending : Ref[Bool]
-  outbound : Bool
 }
 
 ///|
@@ -72,11 +71,7 @@ impl Transport for TcpTransport with send(self, target, data) {
         try {
           let target_addr = @socket.Addr::parse(target)
           let c = @socket.Tcp::connect(target_addr)
-          let wrapper = TcpConnection::{
-            socket: c,
-            sending: Ref::new(false),
-            outbound: true,
-          }
+          let wrapper = TcpConnection::{ socket: c, sending: Ref::new(false) }
           self.connections[target] = wrapper
           conn_opt = Some(wrapper)
           created = true
@@ -84,7 +79,7 @@ impl Transport for TcpTransport with send(self, target, data) {
           _ => () // Will be handled by outer try/catch or loop
         }
       }
-      guard conn_opt is Some({ socket: conn, sending, .. }) else {
+      guard conn_opt is Some({ socket: conn, sending }) else {
         // Connection creation failed
         if i == 1 {
           return false
@@ -165,7 +160,6 @@ impl Transport for TcpTransport with listen(self, root, handler, on_disconnect) 
     self.connections[remote_addr_str] = TcpConnection::{
       socket: conn,
       sending: Ref::new(false),
-      outbound: false,
     }
     self.reader_started[remote_addr_str] = true
     let reader = BufferedReader::new(conn)

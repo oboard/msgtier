@@ -19,6 +19,7 @@ test "sync message includes local script metadata" {
     foreign_relay_bps_limit: None,
     upload_dir: None,
     disable_encryption: None,
+    hot_reload: None,
   })
   global_state.connection_manager = ConnectionManager::new()
 

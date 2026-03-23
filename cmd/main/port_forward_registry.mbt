@@ -50,7 +50,7 @@ struct PortForwardUdpExposeSession {
 struct PortForwardRegistryState {
   mut initialized : Bool
   tcp_forward_started : Map[String, Bool]
-  udp_forward_started : Map[String, Bool]
+  tcp_forward_servers : Map[String, @socket.TcpServer]
   tcp_forward_connections : Map[String, PortForwardTcpEndpoint]
   tcp_expose_connections : Map[String, PortForwardTcpEndpoint]
   udp_forward_runtimes : Map[String, PortForwardUdpForwardRuntime]
@@ -63,7 +63,7 @@ struct PortForwardRegistryState {
 let port_forward_registry_state : PortForwardRegistryState = {
   initialized: false,
   tcp_forward_started: {},
-  udp_forward_started: {},
+  tcp_forward_servers: {},
   tcp_forward_connections: {},
   tcp_expose_connections: {},
   udp_forward_runtimes: {},
@@ -95,7 +95,7 @@ fn get_port_forward_metadata_json() -> String {
       port_forward_registry_state.tcp_forward_started.contains(rule_key) {
       "listening"
     } else if rule.protocol == "udp" &&
-      port_forward_registry_state.udp_forward_started.contains(rule_key) {
+      port_forward_registry_state.udp_forward_runtimes.contains(rule_key) {
       "listening"
     } else if get_global_peer_manager().get_peer(rule.peer_id) is Some(_) {
       "configured"

@@ -45,9 +45,66 @@ curl http://localhost:9000/api/config
   "scripts": {
     "chrome": "open /Applications/Google\\ Chrome.app",
     "notify": "echo 'Hello'"
+  },
+  "hot_reload": {
+    "enable": true,
+    "secret": "optional-hot-reload-secret"
+  },
+  "static_config": {
+    "id": "1",
+    "secret": "my-secret",
+    "peers": [
+      "udp://127.0.0.1:6668",
+      "ws://127.0.0.1:6669"
+    ],
+    "listeners": [
+      "udp://0.0.0.0:6666",
+      "tcp://0.0.0.0:6667"
+    ],
+    "web_api": "127.0.0.1:9000"
+  },
+  "hot_config": {
+    "scripts": {
+      "chrome": "open /Applications/Google\\ Chrome.app",
+      "notify": "echo 'Hello'"
+    },
+    "forwards": null,
+    "exposes": null,
+    "hot_reload": {
+      "enable": true,
+      "secret": "optional-hot-reload-secret"
+    }
   }
 }
 ```
+
+---
+
+### POST /api/config/hot-reload
+
+Update only the hot-reloadable config layer.
+
+**Request:**
+```bash
+curl -X POST 'http://localhost:9000/api/config/hot-reload' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "secret": "optional-hot-reload-secret",
+    "config": {
+      "scripts": {
+        "notify": "echo hot reload"
+      },
+      "forwards": {},
+      "exposes": {},
+      "hot_reload": {
+        "enable": true,
+        "secret": "next-secret"
+      }
+    }
+  }'
+```
+
+Static fields such as `id`, `secret`, `listeners`, `peers`, `web_api`, and `port` are rejected by this endpoint.
 
 ---
 

@@ -408,6 +408,7 @@ fn start_port_forward_tcp_listener(
   }
   let rule_key = make_port_forward_forward_rule_key(rule)
   port_forward_registry_state.tcp_forward_started[rule_key] = true
+  port_forward_registry_state.tcp_forward_servers[rule_key] = server
   root.spawn_bg(async fn() {
     server.run_forever(async fn(conn, _remote_addr) {
       accept_port_forward_tcp_connection(rule, conn)
@@ -496,12 +497,103 @@ fn start_port_forward_udp_listener(
     }
   }
   let rule_key = make_port_forward_forward_rule_key(rule)
-  port_forward_registry_state.udp_forward_started[rule_key] = true
   let runtime = { rule, server }
   port_forward_registry_state.udp_forward_runtimes[rule_key] = runtime
   root.spawn_bg(async fn() {
     run_port_forward_udp_forward_listener(rule_key, runtime)
   })
+}
+
+///|
+fn stop_port_forward_tcp_listener(rule_key : String) -> Unit {
+  match port_forward_registry_state.tcp_forward_servers.get(rule_key) {
+    Some(server) => {
+      server.close()
+      port_forward_registry_state.tcp_forward_started.remove(rule_key)
+      port_forward_registry_state.tcp_forward_servers.remove(rule_key)
+    }
+    None => ()
+  }
+}
+
+///|
+fn stop_port_forward_udp_listener(rule_key : String) -> Unit {
+  match port_forward_registry_state.udp_forward_runtimes.get(rule_key) {
+    Some(runtime) => {
+      runtime.server.close()
+      port_forward_registry_state.udp_forward_runtimes.remove(rule_key)
+    }
+    None => ()
+  }
+
+  let forward_sessions : Array[String] = []
+  for
+    session_id, session in port_forward_registry_state.udp_forward_session_by_id {
+    if session.rule_key == rule_key {
+      forward_sessions.push(session_id)
+    }
+  }
+  for session_id in forward_sessions {
+    remove_port_forward_udp_forward_session(session_id)
+  }
+}
+
+///|
+fn refresh_port_forward_registry(root : @async.TaskGroup[Unit]) -> Unit {
+  if !port_forward_registry_state.initialized {
+    port_forward_registry_state.initialized = true
+    root.spawn_bg(async fn() {
+      for ;; {
+        sweep_port_forward_udp_sessions()
+        @async.sleep(30000)
+      }
+    })
+  }
+
+  let desired_tcp : Map[String, PortForwardForwardRule] = {}
+  let desired_udp : Map[String, PortForwardForwardRule] = {}
+  for rule in get_port_forward_forward_rules() {
+    if !is_port_forward_rule_enabled(rule.enabled) {
+      continue
+    }
+    let rule_key = make_port_forward_forward_rule_key(rule)
+    if rule.protocol == "tcp" {
+      desired_tcp[rule_key] = rule
+    } else if rule.protocol == "udp" {
+      desired_udp[rule_key] = rule
+    }
+  }
+
+  let current_tcp_keys : Array[String] = []
+  for rule_key, _ in port_forward_registry_state.tcp_forward_servers {
+    current_tcp_keys.push(rule_key)
+  }
+  for rule_key in current_tcp_keys {
+    if !desired_tcp.contains(rule_key) {
+      stop_port_forward_tcp_listener(rule_key)
+    }
+  }
+
+  let current_udp_keys : Array[String] = []
+  for rule_key, _ in port_forward_registry_state.udp_forward_runtimes {
+    current_udp_keys.push(rule_key)
+  }
+  for rule_key in current_udp_keys {
+    if !desired_udp.contains(rule_key) {
+      stop_port_forward_udp_listener(rule_key)
+    }
+  }
+
+  for rule_key, rule in desired_tcp {
+    if !port_forward_registry_state.tcp_forward_servers.contains(rule_key) {
+      start_port_forward_tcp_listener(root, rule)
+    }
+  }
+  for rule_key, rule in desired_udp {
+    if !port_forward_registry_state.udp_forward_runtimes.contains(rule_key) {
+      start_port_forward_udp_listener(root, rule)
+    }
+  }
 }
 
 ///|
@@ -530,27 +622,5 @@ fn sweep_port_forward_udp_sessions() -> Unit {
 
 ///|
 fn init_port_forward_registry(root : @async.TaskGroup[Unit]) -> Unit {
-  if port_forward_registry_state.initialized {
-    return
-  }
-  port_forward_registry_state.initialized = true
-  for rule in get_port_forward_forward_rules() {
-    if !is_port_forward_rule_enabled(rule.enabled) {
-      continue
-    }
-    let rule_key = make_port_forward_forward_rule_key(rule)
-    if rule.protocol == "tcp" &&
-      !port_forward_registry_state.tcp_forward_started.contains(rule_key) {
-      start_port_forward_tcp_listener(root, rule)
-    } else if rule.protocol == "udp" &&
-      !port_forward_registry_state.udp_forward_started.contains(rule_key) {
-      start_port_forward_udp_listener(root, rule)
-    }
-  }
-  root.spawn_bg(async fn() {
-    for ;; {
-      sweep_port_forward_udp_sessions()
-      @async.sleep(30000)
-    }
-  })
+  refresh_port_forward_registry(root)
 }

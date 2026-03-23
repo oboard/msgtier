@@ -27,6 +27,7 @@ fn make_port_forward_test_config() -> Config {
     foreign_relay_bps_limit: None,
     upload_dir: None,
     disable_encryption: None,
+    hot_reload: None,
   }
 }
 
