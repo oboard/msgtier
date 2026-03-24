@@ -91,7 +91,7 @@ fn get_port_forward_metadata_json() -> String {
     let rule_key = make_port_forward_forward_rule_key(rule)
     let state = if !is_port_forward_rule_enabled(rule.enabled) {
       "disabled"
-    } else if rule.protocol == "tcp" &&
+    } else if is_port_forward_tcp_protocol(rule.protocol) &&
       port_forward_registry_state.tcp_forward_started.contains(rule_key) {
       "listening"
     } else if rule.protocol == "udp" &&

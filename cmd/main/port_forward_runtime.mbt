@@ -294,7 +294,7 @@ async fn accept_port_forward_tcp_connection(
   let connection_id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
   let audit = record_port_forward_audit_open(
     rule.id,
-    "tcp",
+    rule.protocol,
     get_config().id,
     rule.peer_id,
     rule.listen_host + ":" + rule.listen_port.to_string(),
@@ -311,7 +311,7 @@ async fn accept_port_forward_tcp_connection(
     cond: @cond_var.Cond::new(),
     rule_id: rule.id,
     peer_id: rule.peer_id,
-    protocol: "tcp",
+    protocol: rule.protocol,
     connection_id,
     route_protocol: "",
     route_addr: "",
@@ -324,12 +324,12 @@ async fn accept_port_forward_tcp_connection(
   let (sent, route_protocol, route_addr) = send_port_forward_message_select_route(
     rule.peer_id,
     "port_forward_open",
-    make_port_forward_open_body(rule.id, "tcp", connection_id),
+    make_port_forward_open_body(rule.id, rule.protocol, connection_id),
     None,
   )
   if !sent {
     log_debug(
-      "port_forward open send failed rule=\{rule.id} protocol=tcp peer=\{rule.peer_id} connection=\{connection_id}",
+      "port_forward open send failed rule=\{rule.id} protocol=\{rule.protocol} peer=\{rule.peer_id} connection=\{connection_id}",
     )
     let closed = remove_port_forward_tcp_forward_connection(connection_id)
     match closed {
@@ -344,7 +344,7 @@ async fn accept_port_forward_tcp_connection(
   endpoint.route_protocol = route_protocol.unwrap_or("")
   endpoint.route_addr = route_addr.unwrap_or("")
   log_debug(
-    "port_forward open sent rule=\{rule.id} protocol=tcp peer=\{rule.peer_id} connection=\{connection_id} route=\{endpoint.route_protocol}:\{endpoint.route_addr}",
+    "port_forward open sent rule=\{rule.id} protocol=\{rule.protocol} peer=\{rule.peer_id} connection=\{connection_id} route=\{endpoint.route_protocol}:\{endpoint.route_addr}",
   )
   port_forward_registry_state.tcp_forward_connections[connection_id] = endpoint
   let opened = @async.with_timeout_opt(5000, async fn() {
@@ -557,7 +557,7 @@ fn refresh_port_forward_registry(root : @async.TaskGroup[Unit]) -> Unit {
       continue
     }
     let rule_key = make_port_forward_forward_rule_key(rule)
-    if rule.protocol == "tcp" {
+    if is_port_forward_tcp_protocol(rule.protocol) {
       desired_tcp[rule_key] = rule
     } else if rule.protocol == "udp" {
       desired_udp[rule_key] = rule

@@ -19,12 +19,22 @@ struct PortForwardForwardRule {
 
 ///|
 fn normalize_port_forward_protocol(raw : String) -> String? {
-  let value = raw.trim().to_string().to_lower()
-  if value == "tcp" || value == "udp" {
+  let value0 = raw.trim().to_string().to_lower()
+  let value = if value0.has_suffix(":") {
+    value0[:value0.length() - 1].to_string()
+  } else {
+    value0
+  }
+  if value == "tcp" || value == "udp" || value == "http" {
     Some(value)
   } else {
     None
   }
+}
+
+///|
+fn is_port_forward_tcp_protocol(protocol : String) -> Bool {
+  protocol == "tcp" || protocol == "http"
 }
 
 ///|
@@ -46,19 +56,17 @@ fn parse_port_forward_expose_spec(
   if raw == "" {
     return None
   }
-  let addr = Address::parse(raw) catch { _ => return None }
-  let protocol = addr.protocol.to_string()
-  if protocol != "tcp" && protocol != "udp" {
+  guard @url.Url::parse(raw) is Some(url) else { return None }
+  guard normalize_port_forward_protocol(url.protocol()) is Some(protocol) else {
     return None
   }
-  if !is_valid_port_forward_port(addr.port.to_int()) {
-    return None
-  }
+  guard parse_pf_port(url.get_port()) is Some(port) else { return None }
+  guard url.hostname() != "" else { return None }
   Some({
     id,
     protocol,
-    target_host: addr.host,
-    target_port: addr.port.to_int(),
+    target_host: url.hostname(),
+    target_port: port,
     enabled: None,
   })
 }
@@ -86,26 +94,15 @@ fn parse_port_forward_forward_spec(
   guard url is Some(url) else { return None }
   let port = parse_pf_port(url.get_port())
   guard url.hostname() != "" && port is Some(_) else { return None }
-  let addr = Address::parse(
-    url.protocol() +
-    "//" +
-    make_port_forward_socket_addr(url.hostname(), port.unwrap_or(0)),
-  ) catch {
-    _ => return None
-  }
-  guard normalize_port_forward_protocol(addr.protocol.to_string())
-    is Some(normalized_protocol) else {
-    return None
-  }
-  if !is_valid_port_forward_port(addr.port.to_int()) {
+  guard normalize_port_forward_protocol(url.protocol()) is Some(protocol) else {
     return None
   }
   Some({
     id: rule_id,
-    protocol: normalized_protocol,
+    protocol,
     peer_id,
-    listen_host: addr.host,
-    listen_port: addr.port.to_int(),
+    listen_host: url.hostname(),
+    listen_port: port.unwrap_or(0),
     enabled: None,
   })
 }

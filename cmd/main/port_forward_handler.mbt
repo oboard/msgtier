@@ -190,7 +190,7 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
   )
   match find_port_forward_expose_rule(rule_id, protocol) {
     Some(rule) =>
-      if protocol == "tcp" {
+      if is_port_forward_tcp_protocol(protocol) {
         ctx.root.spawn_bg(async fn() {
           log_debug(
             "port_forward open begin connect requester=\{msg.source_id} rule=\{rule_id} target=\{rule.target_host}:\{rule.target_port}",
@@ -243,7 +243,7 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
             error: None,
             audit: record_port_forward_audit_open(
               rule_id,
-              "tcp",
+              protocol,
               msg.source_id,
               get_config().id,
               rule.target_host + ":" + rule.target_port.to_string(),
@@ -259,7 +259,7 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
               "port_forward_open_ack",
               make_port_forward_open_ack_body(
                 rule_id,
-                "tcp",
+                protocol,
                 connection_id,
                 true,
                 None,
@@ -472,7 +472,7 @@ fn handle_port_forward_data_message(ctx : MessageContext) -> Unit {
   if connection_id == "" || data.length() == 0 {
     return
   }
-  if protocol == "tcp" {
+  if is_port_forward_tcp_protocol(protocol) {
     match get_port_forward_tcp_forward_connection(connection_id) {
       Some(endpoint) =>
         if !queue_port_forward_tcp_recv_chunk(endpoint, seq, data) {
