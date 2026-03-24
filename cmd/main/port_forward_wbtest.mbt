@@ -101,6 +101,13 @@ test "find matching expose rule by key and protocol" {
 }
 
 ///|
+test "normalize port forward connect host" {
+  inspect(normalize_port_forward_connect_host("0.0.0.0"), content="127.0.0.1")
+  inspect(normalize_port_forward_connect_host(" :: "), content="::1")
+  inspect(normalize_port_forward_connect_host("127.0.0.1"), content="127.0.0.1")
+}
+
+///|
 test "port forward metadata exports public fields only" {
   app_state.config = Some(make_port_forward_test_config())
   let rule_key = make_port_forward_forward_rule_key({

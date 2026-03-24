@@ -38,6 +38,18 @@ fn is_port_forward_tcp_protocol(protocol : String) -> Bool {
 }
 
 ///|
+fn normalize_port_forward_connect_host(host : String) -> String {
+  let value = host.trim().to_string()
+  if value == "" || value == "0.0.0.0" {
+    "127.0.0.1"
+  } else if value == "::" || value == "[::]" {
+    "::1"
+  } else {
+    value
+  }
+}
+
+///|
 fn is_port_forward_rule_enabled(enabled : Bool?) -> Bool {
   enabled.unwrap_or(true)
 }

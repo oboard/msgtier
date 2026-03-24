@@ -374,7 +374,7 @@ async fn accept_port_forward_tcp_connection(
     _ => {
       let open_error = endpoint.error.unwrap_or("open_timeout")
       log_debug(
-        "port_forward open wait failed rule=\{rule.id} protocol=tcp peer=\{rule.peer_id} connection=\{connection_id} error=\{open_error}",
+        "port_forward open wait failed rule=\{rule.id} protocol=\{rule.protocol} peer=\{rule.peer_id} connection=\{connection_id} error=\{open_error}",
       )
       let closed = remove_port_forward_tcp_forward_connection(connection_id)
       match closed {

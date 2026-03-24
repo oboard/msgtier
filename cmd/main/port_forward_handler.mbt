@@ -192,16 +192,20 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
     Some(rule) =>
       if is_port_forward_tcp_protocol(protocol) {
         ctx.root.spawn_bg(async fn() {
+          let target_host = normalize_port_forward_connect_host(
+            rule.target_host,
+          )
+          let target = target_host + ":" + rule.target_port.to_string()
           log_debug(
-            "port_forward open begin connect requester=\{msg.source_id} rule=\{rule_id} target=\{rule.target_host}:\{rule.target_port}",
+            "port_forward open begin connect requester=\{msg.source_id} rule=\{rule_id} target=\{target}",
           )
           let conn = @socket.Tcp::connect_to_host(
-            rule.target_host,
+            target_host,
             port=rule.target_port,
           ) catch {
             _ => {
               log_debug(
-                "port_forward open tcp connect failed requester=\{msg.source_id} rule=\{rule_id} target=\{rule.target_host}:\{rule.target_port}",
+                "port_forward open tcp connect failed requester=\{msg.source_id} rule=\{rule_id} target=\{target}",
               )
               ignore(
                 send_port_forward_message_via(
@@ -234,7 +238,7 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
             cond: @cond_var.Cond::new(),
             rule_id,
             peer_id: msg.source_id,
-            protocol: "tcp",
+            protocol,
             connection_id,
             route_protocol: ctx.transport.protocol(),
             route_addr: ctx.sender_addr,
@@ -246,12 +250,12 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
               protocol,
               msg.source_id,
               get_config().id,
-              rule.target_host + ":" + rule.target_port.to_string(),
+              target,
             ),
           }
           port_forward_registry_state.tcp_expose_connections[connection_id] = endpoint
           log_debug(
-            "port_forward open tcp established requester=\{msg.source_id} rule=\{rule_id} target=\{rule.target_host}:\{rule.target_port}",
+            "port_forward open tcp established requester=\{msg.source_id} rule=\{rule_id} target=\{target}",
           )
           ignore(
             send_port_forward_message_via(
