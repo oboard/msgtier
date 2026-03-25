@@ -147,16 +147,27 @@ async fn process_script_execution(
       execute_script_with_output(program, final_args, "")
     }
     None => {
-      let mut debug_hex = ""
-      for i = 0; i < name.length(); i = i + 1 {
-        debug_hex = debug_hex + name[i].to_int().to_string() + " "
+      let script_names = scripts.keys().to_array()
+      script_names.sort_by(fn(a, b) {
+        if a < b {
+          -1
+        } else if a > b {
+          1
+        } else {
+          0
+        }
+      })
+      let available = if script_names.is_empty() {
+        "<none>"
+      } else {
+        script_names.join(", ")
       }
       log_warn(
-        "Script not found: '\{name}' (len=\{name.length()}, codes=[\{debug_hex}]) in content: '\{content_str}'",
+        "Script not found: '\{name}' in content: '\{content_str}', available scripts: [\{available}]",
       )
       {
         exit_code: 1,
-        output: "Script not found: \{name} (checked keys: \{debug_hex})",
+        output: "Script not found: \{name}. Available scripts: \{available}",
       }
     }
   }
