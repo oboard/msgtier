@@ -119,3 +119,67 @@ async test "send_message_now_with_route falls back to relay route" {
   inspect(transport.sent.val[0], content="tcp://direct-target:1000")
   inspect(transport.sent.val[1], content="tcp://relay-hop:2000")
 }
+
+///|
+async test "send_one_helper falls back to relay route for response" {
+  app_state.config = Some({
+    id: "node-a",
+    secret: "secret",
+    peers: [],
+    listeners: [],
+    scripts: None,
+    web_api: None,
+    metadata: None,
+    openclaw: None,
+    openclaw_plugin_version: None,
+    openclaw_token: None,
+    forwards: None,
+    exposes: None,
+    log: Some(Debug),
+    relay_network_whitelist: None,
+    relay_all_peer_rpc: None,
+    foreign_relay_bps_limit: None,
+    upload_dir: None,
+    disable_encryption: Some(true),
+    hot_reload: None,
+  })
+  reset_route_test_state()
+
+  let direct_addr = "tcp://direct-target:1000"
+  let relay_addr = "tcp://relay-hop:2000"
+  let now = @env.now()
+  let relay_conn = Connection::new("node-a", "node-c").update_address_pong(
+    relay_addr, now,
+  )
+  global_state.connection_manager = global_state.connection_manager.add_connection(
+    relay_conn,
+  )
+  global_state.peer_manager = global_state.peer_manager.add_peer(
+    PeerNode::new(id="node-b", version="", addresses=[direct_addr], metadata={}),
+  )
+  global_state.peer_manager = global_state.peer_manager.add_peer(
+    PeerNode::new(id="node-c", version="", addresses=[relay_addr], metadata={}),
+  )
+  global_state.peer_manager = global_state.peer_manager.update_route(
+    "node-b", "node-c", 2,
+  )
+
+  let transport = MockRouteTransport::{ sent: Ref::new([]) }
+  register_transport(transport)
+
+  let ok = send_one_helper(
+    transport,
+    direct_addr,
+    "node-a",
+    "tcp://127.0.0.1:19000",
+    "node-b",
+    "req-1",
+    false,
+    @msgpack.string("pong"),
+    None,
+  )
+  inspect(ok, content="true")
+  inspect(transport.sent.val.length().to_string(), content="2")
+  inspect(transport.sent.val[0], content="tcp://direct-target:1000")
+  inspect(transport.sent.val[1], content="tcp://relay-hop:2000")
+}

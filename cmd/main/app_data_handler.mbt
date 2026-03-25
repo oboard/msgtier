@@ -929,32 +929,6 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
   })
 }
 
-///|
-fn send_response_message(
-  transport : &Transport,
-  root : @async.TaskGroup[Unit],
-  source_id : String,
-  source_addr : String,
-  target_id : String,
-  correlation_id : String,
-  response_data : @msgpack.Value,
-) -> Unit {
-  root.spawn_bg(async fn() {
-    send_response_message_direct(
-      transport,
-      "", // target_addr (empty, let it resolve)
-      source_id,
-      source_addr,
-      target_id,
-      correlation_id,
-      ResponseSource::MsgPack(response_data),
-      None, // encrypted_override
-      false,
-    )
-  })
-}
-
-///|
 enum ResponseSource {
   MsgPack(@msgpack.Value)
   FileStream(String, String, Map[String, String]) // path, status, headers
@@ -997,7 +971,11 @@ async fn send_one_helper(
         payload=correlation_id,
       )
   }
-  let ok = send_message(transport, resolved_addr, response_msg)
+  let ok = send_message(transport, resolved_addr, response_msg) ||
+    relay_message_with_route(transport, source_id, response_msg, target_id) is (
+      true,
+      Some(_),
+    )
   if !ok {
     add_pending_message(response_msg)
   }

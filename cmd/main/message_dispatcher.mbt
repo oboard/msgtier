@@ -230,15 +230,19 @@ fn handle_text_message(ctx : MessageContext) -> Unit {
   match ctx.msg.body {
     String(text) => {
       log_info("Received text message: \{text}")
-      send_response_message(
-        ctx.transport,
-        ctx.root,
-        ctx.my_id,
-        ctx.sender_addr,
-        ctx.msg.source_id,
-        ctx.msg.payload.unwrap_or(ctx.msg.id),
-        @msgpack.string(text),
-      )
+      ctx.root.spawn_bg(async fn() {
+        send_response_message_direct(
+          ctx.transport,
+          ctx.sender_addr,
+          ctx.my_id,
+          ctx.local_addr,
+          ctx.msg.source_id,
+          ctx.msg.payload.unwrap_or(ctx.msg.id),
+          ResponseSource::MsgPack(@msgpack.string(text)),
+          None,
+          false,
+        )
+      })
     }
     _ => ()
   }
