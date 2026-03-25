@@ -643,6 +643,15 @@ async fn process_pending_message(
         break
       }
     }
+    if !sent && !pending_msg.is_broadcast() {
+      let relayed = relay_message(transport, my_id, pending_msg, target_peer_id)
+      if relayed {
+        sent = true
+        if transport.protocol() == "udp" {
+          record_message_sent(pending_msg.id, target_peer_id, "udp")
+        }
+      }
+    }
     if sent && transport.protocol() != "udp" {
       log_debug(
         "DEBUG: pending mark sent id=\{pending_msg.id} protocol=\{transport.protocol()}",
@@ -1038,6 +1047,7 @@ async fn handle_incoming_message(
     msg.kind != "ping" &&
     msg.kind != "pong" &&
     msg.kind != "hello" &&
+    msg.kind != "port_forward_data" &&
     msg.kind != "sync" &&
     (is_unicast_to_me || is_broadcast)
   if should_ack {

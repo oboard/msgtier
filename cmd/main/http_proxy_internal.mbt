@@ -90,6 +90,7 @@ async fn send_message_now_with_route(
   peer_id : String,
   msg : Message,
 ) -> (Bool, String?, String?) {
+  let my_id = get_config().id
   let transports = preferred_message_transports()
 
   for transport in transports {
@@ -98,6 +99,10 @@ async fn send_message_now_with_route(
       if send_message(transport, target_addr, msg) {
         return (true, Some(protocol), Some(target_addr))
       }
+    }
+    if relay_message_with_route(transport, my_id, msg, peer_id)
+      is (true, Some(route_addr)) {
+      return (true, Some(protocol), Some(route_addr))
     }
   }
   (false, None, None)

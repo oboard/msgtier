@@ -10,7 +10,7 @@
   "exposes": {
     "db": "tcp://127.0.0.1:19432",
     "dns": "udp://127.0.0.1:19053",
-    "bench": "tcp://127.0.0.1:19480"
+    "bench": "http://0.0.0.0:19480"
   },
   "disable_encryption": true
 }

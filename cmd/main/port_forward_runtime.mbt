@@ -1,5 +1,5 @@
 ///|
-let port_forward_tcp_chunk_size : Int = 256 * 1024
+let port_forward_tcp_chunk_size : Int = 512 * 1024
 
 ///|
 fn close_port_forward_tcp_socket(socket : @socket.Tcp) -> Unit {
@@ -254,7 +254,7 @@ fn remove_port_forward_udp_expose_session(session_id : String) -> Unit {
 
 ///|
 async fn run_port_forward_tcp_reader(endpoint : PortForwardTcpEndpoint) -> Unit {
-  let buf = FixedArray::make(65536, b'\x00')
+  let buf = FixedArray::make(port_forward_tcp_chunk_size, b'\x00')
   try {
     for ;; {
       let n = endpoint.socket.read(buf)

@@ -12,7 +12,7 @@
   "forwards": {
     "node-b:db": "tcp://127.0.0.1:15432",
     "node-b:dns": "udp://127.0.0.1:1053",
-    "node-b:bench": "tcp://127.0.0.1:18081"
+    "node-b:bench": "http://127.0.0.1:18081"
   },
   "disable_encryption": true
 }

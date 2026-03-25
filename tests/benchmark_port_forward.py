@@ -1,4 +1,5 @@
 import hashlib
+import http.server
 import os
 import socket
 import statistics
@@ -6,8 +7,8 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.request
 import json
+import urllib.request
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -17,6 +18,8 @@ BENCH_PORT = 19480
 FORWARD_PORT = 18081
 PAYLOAD_SIZE = 16 * 1024 * 1024
 ROUNDS = 3
+BENCH_PATH = "/bench"
+NODE_PORTS = [16101, 16102, 19100, 19101]
 
 
 def log(msg):
@@ -26,7 +29,16 @@ def log(msg):
 
 def cleanup():
     subprocess.run(["pkill", "-f", "moon run cmd/main"], stderr=subprocess.DEVNULL)
-    time.sleep(1)
+    for _ in range(40):
+        if all(not is_port_open(port) for port in NODE_PORTS):
+            return
+        time.sleep(0.25)
+
+
+def is_port_open(port, host="127.0.0.1"):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.2)
+        return sock.connect_ex((host, port)) == 0
 
 
 def run_node(config_file, log_file):
@@ -45,10 +57,18 @@ def get_json(url, timeout=2):
         return 0, None
 
 
-def wait_http_ready(url, attempts=120, delay=0.25):
+def get_status(url, timeout=2, method="GET"):
+    req = urllib.request.Request(url, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.getcode()
+    except Exception:
+        return 0
+
+
+def wait_http_ready(url, attempts=120, delay=0.25, method="GET"):
     for _ in range(attempts):
-        status, _ = get_json(url)
-        if status == 200:
+        if get_status(url, method=method) == 200:
             return True
         time.sleep(delay)
     return False
@@ -75,43 +95,58 @@ class StreamingServer:
         self.server = None
 
     def start(self):
+        payload = self.payload
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def handle_bench_request(self, write_body):
+                if self.path != BENCH_PATH:
+                    self.send_error(404)
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                if write_body:
+                    try:
+                        self.wfile.write(payload)
+                    except (BrokenPipeError, ConnectionResetError):
+                        return
+
+            def do_HEAD(self):
+                self.handle_bench_request(False)
+
+            def do_GET(self):
+                self.handle_bench_request(True)
+
+            def log_message(self, format, *args):
+                return
+
+        class ReusableThreadingHTTPServer(http.server.ThreadingHTTPServer):
+            allow_reuse_address = True
+
         def run():
-            self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.server.bind((self.host, self.port))
-            self.server.listen()
-            self.server.settimeout(0.5)
+            self.server = ReusableThreadingHTTPServer((self.host, self.port), Handler)
+            self.server.timeout = 0.5
             while not self.stop_event.is_set():
-                try:
-                    conn, _ = self.server.accept()
-                except socket.timeout:
-                    continue
-                threading.Thread(target=self.handle_conn, args=(conn,), daemon=True).start()
+                self.server.handle_request()
 
         self.thread = threading.Thread(target=run, daemon=True)
         self.thread.start()
 
-    def handle_conn(self, conn):
-        with conn:
-            conn.sendall(self.payload)
-
     def stop(self):
         self.stop_event.set()
         if self.server is not None:
-            self.server.close()
+            self.server.server_close()
         if self.thread is not None:
             self.thread.join(timeout=1)
 
 
-def download_once(port, expected_size):
+def download_once(url, expected_size):
     start = time.perf_counter()
-    received = b""
-    with socket.create_connection(("127.0.0.1", port), timeout=10) as conn:
-        while len(received) < expected_size:
-            chunk = conn.recv(65536)
-            if not chunk:
-                break
-            received += chunk
+    with urllib.request.urlopen(url, timeout=30) as resp:
+        if resp.getcode() != 200:
+            raise RuntimeError(f"expected 200, got {resp.getcode()}")
+        received = resp.read()
     elapsed = time.perf_counter() - start
     if len(received) != expected_size:
         raise RuntimeError(f"expected {expected_size} bytes, got {len(received)}")
@@ -126,7 +161,9 @@ def main():
     cleanup()
     payload = (b"msgtier-port-forward-bench-" * (PAYLOAD_SIZE // 27 + 1))[:PAYLOAD_SIZE]
     payload_hash = hashlib.sha256(payload).hexdigest()
-    server = StreamingServer("127.0.0.1", BENCH_PORT, payload)
+    direct_url = f"http://127.0.0.1:{BENCH_PORT}{BENCH_PATH}"
+    forward_url = f"http://127.0.0.1:{FORWARD_PORT}{BENCH_PATH}"
+    server = StreamingServer("0.0.0.0", BENCH_PORT, payload)
     server.start()
 
     p1 = p2 = None
@@ -147,11 +184,17 @@ def main():
             return 1
 
         time.sleep(1)
+        if not wait_http_ready(direct_url, method="HEAD"):
+            print("FAILURE: direct bench http not ready")
+            return 1
+        if not wait_http_ready(forward_url, attempts=240, delay=0.5, method="HEAD"):
+            print("FAILURE: forwarded bench http not ready")
+            return 1
 
         direct_speeds = []
         forward_speeds = []
         for round_idx in range(ROUNDS):
-            elapsed, received = download_once(BENCH_PORT, PAYLOAD_SIZE)
+            elapsed, received = download_once(direct_url, PAYLOAD_SIZE)
             if hashlib.sha256(received).hexdigest() != payload_hash:
                 print("FAILURE: direct payload hash mismatch")
                 return 1
@@ -159,7 +202,7 @@ def main():
             direct_speeds.append(direct)
             log(f"direct round={round_idx + 1} speed={direct:.2f} MiB/s")
 
-            elapsed, received = download_once(FORWARD_PORT, PAYLOAD_SIZE)
+            elapsed, received = download_once(forward_url, PAYLOAD_SIZE)
             if hashlib.sha256(received).hexdigest() != payload_hash:
                 print("FAILURE: forwarded payload hash mismatch")
                 return 1

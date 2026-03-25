@@ -122,7 +122,7 @@ fn mark_port_forward_open_ack(
 async fn run_port_forward_expose_tcp_reader(
   endpoint : PortForwardTcpEndpoint,
 ) -> Unit {
-  let buf = FixedArray::make(65536, b'\x00')
+  let buf = FixedArray::make(port_forward_tcp_chunk_size, b'\x00')
   try {
     for ;; {
       let n = endpoint.socket.read(buf)
