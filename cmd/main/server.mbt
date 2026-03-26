@@ -86,6 +86,40 @@ fn has_direct_connection_for_protocol(
 }
 
 ///|
+fn learn_route_from_relayed_message(
+  my_id : String,
+  source_id : String,
+  sender_addr : String,
+  relay_depth : Int,
+) -> Unit {
+  if relay_depth <= 1 || source_id == my_id {
+    return
+  }
+  let effective_addr = if sender_addr.contains("://") {
+    sender_addr
+  } else {
+    "tcp://" + sender_addr
+  }
+  guard
+    get_global_peer_manager().get_peer_id_by_address(effective_addr)
+    is Some(next_hop)
+  else {
+    return
+  }
+  if next_hop == my_id || next_hop == source_id {
+    return
+  }
+  log_debug(
+    "DEBUG: learn relay route target=\{source_id} via=\{next_hop} hops=\{relay_depth}",
+  )
+  global_state.peer_manager = global_state.peer_manager.update_route(
+    source_id,
+    next_hop,
+    relay_depth,
+  )
+}
+
+///|
 fn handle_new_connection(
   peer_id : String,
   local_addr : String,
@@ -1180,6 +1214,12 @@ async fn handle_incoming_message(
   } else {
     transport.protocol() + "://" + sender_addr
   }
+  learn_route_from_relayed_message(
+    id,
+    msg.source_id,
+    effective_addr,
+    relay_depth_to_use,
+  )
   let (conn, is_new_connection, is_new_peer) = handle_new_connection(
     msg.source_id,
     local_addr,
