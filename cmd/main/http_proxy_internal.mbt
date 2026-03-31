@@ -150,7 +150,7 @@ async fn proxy_http_request(
   match wait_for_response(req_id, timeout_ms_uint) {
     Some((data, headers)) => {
       let status_code = match headers.get("status") {
-        Some(s) => @strconv.parse_int(s) catch { _ => 200 }
+        Some(s) => @string.parse_int(s) catch { _ => 200 }
         None => 200
       }
       headers.remove("status")
@@ -244,7 +244,7 @@ async fn proxy_http_request_stream(
             None => resp_headers = {}
           }
           status_code = match resp_headers.get("status") {
-            Some(s) => @strconv.parse_int(s) catch { _ => 200 }
+            Some(s) => @string.parse_int(s) catch { _ => 200 }
             None => 200
           }
           resp_headers.remove("status")

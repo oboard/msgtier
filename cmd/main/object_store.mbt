@@ -75,7 +75,7 @@ pub async fn get_object(id : String) -> Bytes? {
 ///|
 pub async fn save_object(id : String, data : Bytes) -> Unit {
   let dir = get_upload_dir()
-  if not(@fs.exists(dir)) {
+  if !@fs.exists(dir) {
     @fs.mkdir(dir, permission=0o644)
   }
   let path = dir + "/" + id
@@ -85,7 +85,7 @@ pub async fn save_object(id : String, data : Bytes) -> Unit {
 ///|
 pub async fn save_object_from_reader(id : String, reader : &@io.Reader) -> Unit {
   let dir = get_upload_dir()
-  if not(@fs.exists(dir)) {
+  if !@fs.exists(dir) {
     @fs.mkdir(dir, permission=0o644)
   }
   let path = dir + "/" + id

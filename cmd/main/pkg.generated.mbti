@@ -39,34 +39,25 @@ pub async fn save_object(String, Bytes) -> Unit
 pub async fn save_object_from_reader(String, &@io.Reader) -> Unit
 
 // Errors
-type AddressParseError
-pub impl Show for AddressParseError
+type AddressParseError derive(Show)
 
-type TransportError
-pub impl Show for TransportError
+type TransportError derive(Show)
 
 // Types and methods
 pub struct Address {
   protocol : Protocol
   host : String
   port : UInt16
-}
+} derive(Eq, Hash, Show)
 pub fn Address::new(Protocol, String, UInt16) -> Self
 pub fn Address::parse(String) -> Self raise
 pub fn Address::socket_addr(Self) -> @socket.Addr raise
 pub fn Address::to_socket_string(Self) -> String
 pub fn Address::to_url_string(Self) -> String
-pub impl Eq for Address
-pub impl Hash for Address
-pub impl Show for Address
 pub impl ToJson for Address
 pub impl @json.FromJson for Address
 
-type AddressStats
-pub impl Eq for AddressStats
-pub impl Show for AddressStats
-pub impl ToJson for AddressStats
-pub impl @json.FromJson for AddressStats
+type AddressStats derive(Eq, Show, ToJson, @json.FromJson)
 
 type AppDataHandlerState
 
@@ -74,51 +65,29 @@ type AppState
 
 type BufferedReader
 
-type ChannelInstance
-pub impl Eq for ChannelInstance
-pub impl Show for ChannelInstance
+type ChannelInstance derive(Eq, Show)
 
-type Config
-pub impl Show for Config
-pub impl ToJson for Config
-pub impl @json.FromJson for Config
+type Config derive(Show, ToJson, @json.FromJson)
 
-type Connection
-pub impl Show for Connection
-pub impl ToJson for Connection
-pub impl @json.FromJson for Connection
+type Connection derive(Show, ToJson, @json.FromJson)
 
-type ConnectionManager
-pub impl Show for ConnectionManager
+type ConnectionManager derive(Show)
 
-type ForeignNetworkManager
-pub impl Show for ForeignNetworkManager
+type ForeignNetworkManager derive(Show)
 
-type ForeignNetworkPacket
-pub impl Show for ForeignNetworkPacket
-pub impl ToJson for ForeignNetworkPacket
-pub impl @json.FromJson for ForeignNetworkPacket
+type ForeignNetworkPacket derive(Show, ToJson, @json.FromJson)
 
 type ForeignNetworkState
 
 type GlobalState
 
-type HotReloadSettings
-pub impl Show for HotReloadSettings
-pub impl ToJson for HotReloadSettings
-pub impl @json.FromJson for HotReloadSettings
+type HotReloadSettings derive(Show, ToJson, @json.FromJson)
 
 type HttpServiceState
 
-type LogLevel
-pub impl Eq for LogLevel
-pub impl Show for LogLevel
-pub impl ToJson for LogLevel
-pub impl @json.FromJson for LogLevel
+type LogLevel derive(Eq, Show, ToJson, @json.FromJson)
 
-type Message
-pub impl Eq for Message
-pub impl Show for Message
+type Message derive(Eq, Show)
 
 type MessageContext
 
@@ -126,51 +95,29 @@ type MessageDispatcher
 
 type MessagePlugin
 
-type NatType
-pub impl Eq for NatType
-pub impl Show for NatType
-pub impl ToJson for NatType
-pub impl @json.FromJson for NatType
+type NatType derive(Eq, Show, ToJson, @json.FromJson)
 
-type NetworkAddress
-pub impl Eq for NetworkAddress
-pub impl Show for NetworkAddress
-pub impl ToJson for NetworkAddress
-pub impl @json.FromJson for NetworkAddress
+type NetworkAddress derive(Eq, Show, ToJson, @json.FromJson)
 
-type NetworkDiscoveryInfo
-pub impl Show for NetworkDiscoveryInfo
-pub impl ToJson for NetworkDiscoveryInfo
-pub impl @json.FromJson for NetworkDiscoveryInfo
+type NetworkDiscoveryInfo derive(Show, ToJson, @json.FromJson)
 
 type ObjectStore
 
 type ObjectStoreState
 
-type OpenClawPublicInstance
-pub impl Eq for OpenClawPublicInstance
-pub impl Show for OpenClawPublicInstance
+type OpenClawPublicInstance derive(Eq, Show)
 
-type OpenClawRuntimeInstance
-pub impl Eq for OpenClawRuntimeInstance
-pub impl Show for OpenClawRuntimeInstance
+type OpenClawRuntimeInstance derive(Eq, Show)
 
 type OpenClawState
 
-type PeerConnectionInfo
-pub impl Show for PeerConnectionInfo
+type PeerConnectionInfo derive(Show)
 
-type PeerManager
-pub impl Show for PeerManager
+type PeerManager derive(Show)
 
-type PeerNode
-pub impl Show for PeerNode
+type PeerNode derive(Show)
 
-type PeerNodeStatus
-pub impl Eq for PeerNodeStatus
-pub impl Show for PeerNodeStatus
-pub impl ToJson for PeerNodeStatus
-pub impl @json.FromJson for PeerNodeStatus
+type PeerNodeStatus derive(Eq, Show, ToJson, @json.FromJson)
 
 pub struct PendingEntry {
   msg : Message
@@ -186,15 +133,9 @@ type PendingState
 
 type PortForwardAuditEntry
 
-type PortForwardExposeRule
-pub impl Show for PortForwardExposeRule
-pub impl ToJson for PortForwardExposeRule
-pub impl @json.FromJson for PortForwardExposeRule
+type PortForwardExposeRule derive(Show, ToJson, @json.FromJson)
 
-type PortForwardForwardRule
-pub impl Show for PortForwardForwardRule
-pub impl ToJson for PortForwardForwardRule
-pub impl @json.FromJson for PortForwardForwardRule
+type PortForwardForwardRule derive(Show, ToJson, @json.FromJson)
 
 type PortForwardRegistryState
 
@@ -206,10 +147,7 @@ type PortForwardUdpForwardRuntime
 
 type PortForwardUdpForwardSession
 
-type PortMapping
-pub impl Show for PortMapping
-pub impl ToJson for PortMapping
-pub impl @json.FromJson for PortMapping
+type PortMapping derive(Show, ToJson, @json.FromJson)
 
 pub enum Protocol {
   Tcp
@@ -217,12 +155,9 @@ pub enum Protocol {
   Ws
   Wss
   Quic
-}
+} derive(Eq, Hash, Show)
 pub fn Protocol::parse(StringView) -> Self?
 pub fn Protocol::to_string(Self) -> String
-pub impl Eq for Protocol
-pub impl Hash for Protocol
-pub impl Show for Protocol
 pub impl ToJson for Protocol
 pub impl @json.FromJson for Protocol
 
@@ -245,30 +180,21 @@ type ResponseChunkState
 
 type ResponseSource
 
-type Route
-pub impl Show for Route
-pub impl ToJson for Route
-pub impl @json.FromJson for Route
+type Route derive(Show, ToJson, @json.FromJson)
 
-type RouteInfo
-pub impl ToJson for RouteInfo
+type RouteInfo derive(ToJson)
 
-type ScriptOutput
-pub impl ToJson for ScriptOutput
+type ScriptOutput derive(ToJson)
 
 type ServerState
 
-type StatusInfo
-pub impl ToJson for StatusInfo
+type StatusInfo derive(ToJson)
 
 type StreamRequest
 
 type StreamRoute
 
-type StunDiscoveryInfo
-pub impl Eq for StunDiscoveryInfo
-pub impl Show for StunDiscoveryInfo
-pub impl ToJson for StunDiscoveryInfo
+type StunDiscoveryInfo derive(Eq, Show, ToJson)
 
 type TcpConnection
 

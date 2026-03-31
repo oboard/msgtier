@@ -20,11 +20,9 @@ pub(all) struct Message {
   kind : String
   content : String
   timestamp : String
-}
+} derive(ToJson, @json.FromJson)
 pub fn Message::from_row(Json) -> Self
 pub fn Message::table() -> @table.Table
-pub impl ToJson for Message
-pub impl @json.FromJson for Message
 pub impl @morm.Entity for Message
 
 pub struct MessageMapperImpl {

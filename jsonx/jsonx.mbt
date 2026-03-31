@@ -63,7 +63,7 @@ pub fn int(value : Json) -> Int? {
   if value is Number(v, ..) {
     Some(v.to_int())
   } else if value is String(v) {
-    (try? @strconv.parse_int(v)).to_option()
+    (try? @string.parse_int(v)).to_option()
   } else {
     None
   }

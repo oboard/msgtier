@@ -768,7 +768,7 @@ fn split_ipv4_host_port(value : String) -> (String, Int)? {
       if host.contains(":") || port == "" {
         None
       } else {
-        (try? @strconv.parse_int(port))
+        (try? @string.parse_int(port))
         .to_option()
         .map(parsed => (host.to_string(), parsed))
       }
@@ -783,7 +783,7 @@ fn split_ipv6_host_port(value : String) -> (String, Int)? {
       if !host.has_prefix("[") || port == "" {
         None
       } else {
-        (try? @strconv.parse_int(port))
+        (try? @string.parse_int(port))
         .to_option()
         .map(parsed => (host[1:host.length()].to_string(), parsed))
       }

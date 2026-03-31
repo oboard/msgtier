@@ -311,7 +311,7 @@ test "huffman_performance_large_data" {
 
   // Test reading many bits efficiently
   let mut total_bits_read = 0
-  while not(reader.is_at_end()) && total_bits_read < 8000 {
+  while !reader.is_at_end() && total_bits_read < 8000 {
     let _bits = reader.read_bits(8) // Read byte by byte
     total_bits_read += 8
   }

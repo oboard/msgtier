@@ -15,7 +15,7 @@ fn parse_flag_int(
 ) -> Int {
   for i = 0; i + 1 < args.length(); i = i + 1 {
     if args[i] == flag {
-      let parsed = @strconv.parse_int(args[i + 1]) catch { _ => fallback }
+      let parsed = @string.parse_int(args[i + 1]) catch { _ => fallback }
       if parsed > 0 {
         return parsed
       }

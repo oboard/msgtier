@@ -23,9 +23,7 @@ pub struct AckFrame {
   largest_acknowledged : Int64
   delay : Int64
   first_ack_range : Int64
-}
-pub impl Eq for AckFrame
-pub impl Show for AckFrame
+} derive(Eq, Show)
 
 pub struct Connection {
   addr : String
@@ -43,16 +41,12 @@ pub struct ConnectionCloseFrame {
   error_code : Int64
   frame_type : Int64?
   reason_phrase : String
-}
-pub impl Eq for ConnectionCloseFrame
-pub impl Show for ConnectionCloseFrame
+} derive(Eq, Show)
 
 pub struct CryptoFrame {
   offset : Int64
   data : Bytes
-}
-pub impl Eq for CryptoFrame
-pub impl Show for CryptoFrame
+} derive(Eq, Show)
 
 pub struct Endpoint {
   socket : @socket.UdpServer
@@ -77,9 +71,7 @@ pub(all) enum Frame {
   MaxStreamData(Int64, Int64)
   ConnectionClose(ConnectionCloseFrame)
   HandshakeDone
-}
-pub impl Eq for Frame
-pub impl Show for Frame
+} derive(Eq, Show)
 
 pub struct Header {
   first_byte : Byte
@@ -88,14 +80,11 @@ pub struct Header {
   src_cid : BytesView?
   packet_number : Int64
   payload_length : Int?
-}
-pub impl Show for Header
+} derive(Show)
 
 pub struct NewTokenFrame {
   token : Bytes
-}
-pub impl Eq for NewTokenFrame
-pub impl Show for NewTokenFrame
+} derive(Eq, Show)
 
 pub(all) enum PacketType {
   Initial
@@ -104,41 +93,32 @@ pub(all) enum PacketType {
   OneRTT
   Retry
   VersionNegotiation
-}
-pub impl Eq for PacketType
-pub impl Show for PacketType
+} derive(Eq, Show)
 
 pub struct ResetStreamFrame {
   stream_id : Int64
   error_code : Int64
   final_size : Int64
-}
-pub impl Eq for ResetStreamFrame
-pub impl Show for ResetStreamFrame
+} derive(Eq, Show)
 
 pub struct StopSendingFrame {
   stream_id : Int64
   error_code : Int64
-}
-pub impl Eq for StopSendingFrame
-pub impl Show for StopSendingFrame
+} derive(Eq, Show)
 
 pub struct Stream {
   id : Int64
   mut offset : Int64
   mut fin : Bool
   mut incoming_data : Bytes
-}
-pub impl Show for Stream
+} derive(Show)
 
 pub struct StreamFrame {
   stream_id : Int64
   offset : Int64
   fin : Bool
   data : Bytes
-}
-pub impl Eq for StreamFrame
-pub impl Show for StreamFrame
+} derive(Eq, Show)
 
 // Type aliases
 

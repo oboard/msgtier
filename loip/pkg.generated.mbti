@@ -17,19 +17,13 @@ pub struct Interface {
   ipv6 : Array[String]
   is_up : Bool
   kind : InterfaceKind
-}
-pub impl Eq for Interface
-pub impl Show for Interface
-pub impl @debug.Debug for Interface
+} derive(Eq, Show, @debug.Debug)
 
 pub enum InterfaceKind {
   Physical
   Virtual
   Loopback
-}
-pub impl Eq for InterfaceKind
-pub impl Show for InterfaceKind
-pub impl @debug.Debug for InterfaceKind
+} derive(Eq, Show, @debug.Debug)
 
 // Type aliases
 

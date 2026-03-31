@@ -51,7 +51,7 @@ async test "quic_integration" {
       received = true
     }
   })
-  if not(received) {
+  if !received {
     abort("Failed to receive stream data")
   }
 

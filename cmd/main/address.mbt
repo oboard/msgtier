@@ -133,7 +133,7 @@ fn parse_port(s : String) -> UInt16 raise {
     _ => false
   }
   guard is_decimal else { fail("invalid digit") }
-  let port = @strconv.parse_int(s) catch { _ => fail("invalid digit") }
+  let port = @string.parse_int(s) catch { _ => fail("invalid digit") }
   guard port <= 65535 else { fail("port out of range") }
   port.to_uint16()
 }

@@ -40,28 +40,23 @@ pub fn uncompressed_block_type() -> BlockType
 pub struct BitReader {
   data : Bytes
   mut bit_offset : Int
-}
+} derive(Show)
 pub fn BitReader::align_to_byte(Self) -> Unit
 pub fn BitReader::is_at_end(Self) -> Bool
 pub fn BitReader::read_bits(Self, Int) -> Int
 pub fn BitReader::read_byte(Self) -> Int
 pub fn BitReader::read_u16_le(Self) -> Int
-pub impl Show for BitReader
 
 pub enum BlockType {
   Uncompressed
   FixedHuffman
   DynamicHuffman
-}
-pub impl Eq for BlockType
-pub impl Show for BlockType
+} derive(Eq, Show)
 
 pub enum HuffmanNode {
   Leaf(Int)
   Branch(HuffmanNode, HuffmanNode)
-}
-pub impl Eq for HuffmanNode
-pub impl Show for HuffmanNode
+} derive(Eq, Show)
 
 // Type aliases
 

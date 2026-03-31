@@ -155,8 +155,7 @@ pub enum Compression {
   Stored
   Deflate
   Other(Int)
-}
-pub impl Show for Compression
+} derive(Show)
 
 pub struct ExtraField {
   header_id : UInt16

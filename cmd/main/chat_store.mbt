@@ -47,7 +47,7 @@ async fn persist_chat_message(msg : Message) -> Unit {
 
 ///|
 fn parse_chat_timestamp(timestamp : String) -> UInt64 {
-  if (try? @strconv.parse_int(timestamp)) is Ok(v) {
+  if (try? @string.parse_int(timestamp)) is Ok(v) {
     if v < 0 {
       0UL
     } else {

@@ -716,7 +716,7 @@ fn parse_base_url_port(base_url : String) -> Int? {
           Some(80)
         }
       } else {
-        (try? @strconv.parse_int(port)).to_option()
+        (try? @string.parse_int(port)).to_option()
       }
     }
     None => None
@@ -732,7 +732,7 @@ fn resolve_openclaw_base_url(
   }
   match @sys.get_env_var("OPENCLAW_GATEWAY_PORT") {
     Some(v) =>
-      if (try? @strconv.parse_int(v)) is Ok(port) {
+      if (try? @string.parse_int(v)) is Ok(port) {
         return ("http://127.0.0.1:" + port.to_string(), port)
       }
     None => ()
@@ -965,7 +965,7 @@ fn parse_http_response(raw : String) -> (Int, Map[String, String], String)? {
       if status_parts.length() < 2 {
         return None
       }
-      let status = @strconv.parse_int(status_parts[1].to_string()) catch {
+      let status = @string.parse_int(status_parts[1].to_string()) catch {
         _ => 500
       }
 

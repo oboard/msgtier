@@ -3,7 +3,7 @@ fn parse_chat_limit(raw : String?) -> Int {
   let default_limit = 30
   match raw {
     Some(s) =>
-      if (try? @strconv.parse_int(s)) is Ok(v) {
+      if (try? @string.parse_int(s)) is Ok(v) {
         if v < 1 {
           default_limit
         } else if v > 100 {
@@ -22,7 +22,7 @@ fn parse_chat_limit(raw : String?) -> Int {
 fn parse_chat_before(raw : String?) -> UInt64? {
   match raw {
     Some(s) =>
-      if (try? @strconv.parse_int(s)) is Ok(v) {
+      if (try? @string.parse_int(s)) is Ok(v) {
         if v < 0 {
           None
         } else {

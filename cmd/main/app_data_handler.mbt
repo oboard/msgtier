@@ -929,6 +929,7 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
   })
 }
 
+///|
 enum ResponseSource {
   MsgPack(@msgpack.Value)
   FileStream(String, String, Map[String, String]) // path, status, headers
@@ -972,10 +973,8 @@ async fn send_one_helper(
       )
   }
   let ok = send_message(transport, resolved_addr, response_msg) ||
-    relay_message_with_route(transport, source_id, response_msg, target_id) is (
-      true,
-      Some(_),
-    )
+    relay_message_with_route(transport, source_id, response_msg, target_id)
+    is (true, Some(_))
   if !ok {
     add_pending_message(response_msg)
   }

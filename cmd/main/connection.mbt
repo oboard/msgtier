@@ -262,7 +262,7 @@ fn is_private(ip : String) -> Bool {
 
 ///|
 fn parse_int_simple(s : String) -> Int? {
-  Some(@strconv.parse_int(s)) catch {
+  Some(@string.parse_int(s)) catch {
     _ => None
   }
 }

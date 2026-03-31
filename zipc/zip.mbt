@@ -627,7 +627,7 @@ pub fn of_binary(data : Bytes) -> @deflate.Result[Archive, String] {
   }
 
   // Check for ZIP magic bytes
-  if not(bytes_has_magic(data)) {
+  if !bytes_has_magic(data) {
     return @deflate.err("Not a valid ZIP archive - missing magic bytes")
   }
 

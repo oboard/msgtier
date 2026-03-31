@@ -23,29 +23,23 @@ test "learn_route_from_relayed_message records next hop from sender addr" {
   })
   global_state.peer_manager = PeerManager::new()
   global_state.peer_manager = global_state.peer_manager.add_peer(
-    PeerNode::new(
-      id="node-c",
-      version="",
-      addresses=["tcp://relay-hop:2000"],
-      metadata={},
-    ),
+    PeerNode::new(id="node-c", version="", addresses=["tcp://relay-hop:2000"], metadata={}),
   )
   learn_route_from_relayed_message(
-    "node-b",
-    "node-a",
-    "tcp://relay-hop:2000",
-    2,
+    "node-b", "node-a", "tcp://relay-hop:2000", 2,
   )
   inspect(
-    get_global_peer_manager().get_route("node-a").map(r => r.next_hop).unwrap_or(
-      "",
-    ),
+    get_global_peer_manager()
+    .get_route("node-a")
+    .map(r => r.next_hop)
+    .unwrap_or(""),
     content="node-c",
   )
   inspect(
-    get_global_peer_manager().get_route("node-a").map(r => r.hops.to_string()).unwrap_or(
-      "",
-    ),
+    get_global_peer_manager()
+    .get_route("node-a")
+    .map(r => r.hops.to_string())
+    .unwrap_or(""),
     content="2",
   )
 }

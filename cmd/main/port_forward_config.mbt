@@ -123,7 +123,7 @@ fn parse_port_forward_forward_spec(
 fn parse_pf_port(port_str : String) -> Int? {
   let value = port_str.trim().to_string()
   guard value != "" else { return None }
-  let parsed = @strconv.parse_int(value) catch { _ => return None }
+  let parsed = @string.parse_int(value) catch { _ => return None }
   if is_valid_port_forward_port(parsed) {
     Some(parsed)
   } else {

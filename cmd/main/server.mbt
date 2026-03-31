@@ -100,10 +100,8 @@ fn learn_route_from_relayed_message(
   } else {
     "tcp://" + sender_addr
   }
-  guard
-    get_global_peer_manager().get_peer_id_by_address(effective_addr)
-    is Some(next_hop)
-  else {
+  guard get_global_peer_manager().get_peer_id_by_address(effective_addr)
+    is Some(next_hop) else {
     return
   }
   if next_hop == my_id || next_hop == source_id {
@@ -113,9 +111,7 @@ fn learn_route_from_relayed_message(
     "DEBUG: learn relay route target=\{source_id} via=\{next_hop} hops=\{relay_depth}",
   )
   global_state.peer_manager = global_state.peer_manager.update_route(
-    source_id,
-    next_hop,
-    relay_depth,
+    source_id, next_hop, relay_depth,
   )
 }
 

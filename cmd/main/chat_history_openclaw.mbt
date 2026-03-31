@@ -47,13 +47,13 @@ fn chat_page_has_items(page : Json) -> Bool {
 
 ///|
 fn normalize_iso_millis(millis_text : String) -> Int {
-  let value = @strconv.parse_int(millis_text) catch { _ => 0 }
+  let value = @string.parse_int(millis_text) catch { _ => 0 }
   if millis_text.length() == 1 {
     value * 100
   } else if millis_text.length() == 2 {
     value * 10
   } else {
-    @strconv.parse_int(millis_text[:3]) catch {
+    @string.parse_int(millis_text[:3]) catch {
       _ => value
     }
   }
@@ -80,22 +80,22 @@ fn parse_iso_utc_timestamp(timestamp : String) -> UInt64? {
       "Z"
     ) =>
       (
-        @strconv.parse_int(year) catch {
+        @string.parse_int(year) catch {
           _ => 0
         },
-        @strconv.parse_int(month) catch {
+        @string.parse_int(month) catch {
           _ => 0
         },
-        @strconv.parse_int(day) catch {
+        @string.parse_int(day) catch {
           _ => 0
         },
-        @strconv.parse_int(hour) catch {
+        @string.parse_int(hour) catch {
           _ => 0
         },
-        @strconv.parse_int(minute) catch {
+        @string.parse_int(minute) catch {
           _ => 0
         },
-        @strconv.parse_int(second) catch {
+        @string.parse_int(second) catch {
           _ => 0
         },
         normalize_iso_millis(millis_text.to_string()),
@@ -115,22 +115,22 @@ fn parse_iso_utc_timestamp(timestamp : String) -> UInt64? {
       "Z"
     ) =>
       (
-        @strconv.parse_int(year) catch {
+        @string.parse_int(year) catch {
           _ => 0
         },
-        @strconv.parse_int(month) catch {
+        @string.parse_int(month) catch {
           _ => 0
         },
-        @strconv.parse_int(day) catch {
+        @string.parse_int(day) catch {
           _ => 0
         },
-        @strconv.parse_int(hour) catch {
+        @string.parse_int(hour) catch {
           _ => 0
         },
-        @strconv.parse_int(minute) catch {
+        @string.parse_int(minute) catch {
           _ => 0
         },
-        @strconv.parse_int(second) catch {
+        @string.parse_int(second) catch {
           _ => 0
         },
         0,

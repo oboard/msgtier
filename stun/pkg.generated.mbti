@@ -38,8 +38,7 @@ pub fn rewrite_socket_port(String, Int) -> String
 pub suberror StunError {
   InvalidMessage(String)
   EncodeError(String)
-}
-pub impl Show for StunError
+} derive(Show)
 
 // Types and methods
 pub enum Attribute {
@@ -51,9 +50,7 @@ pub enum Attribute {
   ErrorCode(Int, String)
   Fingerprint(UInt)
   Unknown(Int, Bytes)
-}
-pub impl Eq for Attribute
-pub impl Show for Attribute
+} derive(Eq, Show)
 
 pub struct BindingProbeResult {
   server_address : String
@@ -61,9 +58,7 @@ pub struct BindingProbeResult {
   other_address : String?
   rtt_ms : Int
   supports_rfc5780 : Bool
-}
-pub impl Eq for BindingProbeResult
-pub impl Show for BindingProbeResult
+} derive(Eq, Show)
 
 pub enum FilteringBehavior {
   EndpointIndependentFiltering
@@ -71,9 +66,7 @@ pub enum FilteringBehavior {
   AddressAndPortDependentFiltering
   Unsupported
   Unknown
-}
-pub impl Eq for FilteringBehavior
-pub impl Show for FilteringBehavior
+} derive(Eq, Show)
 
 pub enum MappingBehavior {
   EndpointIndependentMapping
@@ -81,35 +74,27 @@ pub enum MappingBehavior {
   AddressAndPortDependentMapping
   Unsupported
   Unknown
-}
-pub impl Eq for MappingBehavior
-pub impl Show for MappingBehavior
+} derive(Eq, Show)
 
 pub struct Message {
   class_ : MessageClass
   msg_method : Int
   transaction_id : Bytes
   attributes : Array[Attribute]
-}
-pub impl Eq for Message
-pub impl Show for Message
+} derive(Eq, Show)
 
 pub enum MessageClass {
   Request
   Indication
   SuccessResponse
   ErrorResponse
-}
-pub impl Eq for MessageClass
-pub impl Show for MessageClass
+} derive(Eq, Show)
 
 pub struct NatProbeResult {
   binding : BindingProbeResult
   mapping_behavior : MappingBehavior
   filtering_behavior : FilteringBehavior
-}
-pub impl Eq for NatProbeResult
-pub impl Show for NatProbeResult
+} derive(Eq, Show)
 
 // Type aliases
 

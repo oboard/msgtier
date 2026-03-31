@@ -110,15 +110,12 @@ pub enum Value {
   Binary(Bytes)
   Array(Array[Value])
   Map(Map[String, Value])
-}
+} derive(Eq, Show, @debug.Debug)
 pub fn Value::to_bool(Self) -> Result[Bool, MsgPackError]
 pub fn Value::to_int(Self) -> Result[Int, MsgPackError]
 pub fn Value::to_string(Self) -> Result[String, MsgPackError]
 pub fn Value::to_uint32(Self) -> Result[UInt, MsgPackError]
-pub impl Eq for Value
-pub impl Show for Value
 pub impl ToJson for Value
-pub impl @debug.Debug for Value
 
 // Type aliases
 

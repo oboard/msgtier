@@ -27,28 +27,21 @@ pub fn validate_tokens(Array[LZ77Token]) -> Bool
 // Errors
 
 // Types and methods
-type DecoderState
-pub impl Show for DecoderState
+type DecoderState derive(Show)
 
-type EncoderState
-pub impl Show for EncoderState
+type EncoderState derive(Show)
 
 pub(all) struct LZ77Config {
   window_size : Int
   max_match_length : Int
   min_match_length : Int
   max_distance : Int
-}
-pub impl Eq for LZ77Config
-pub impl Show for LZ77Config
+} derive(Eq, Show)
 
 pub enum LZ77Token {
   Literal(Byte)
   Reference(Int, Int)
-}
-pub impl Eq for LZ77Token
-pub impl Show for LZ77Token
-pub impl ToJson for LZ77Token
+} derive(Eq, Show, ToJson)
 
 // Type aliases
 

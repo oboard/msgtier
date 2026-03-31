@@ -50,10 +50,8 @@ pub enum NanoidError {
   SizeTooSmall(Int)
   SizeTooLarge(Int)
   RandomGenerationError(String)
-}
+} derive(Eq, Show)
 pub fn NanoidError::to_string(Self) -> String
-pub impl Eq for NanoidError
-pub impl Show for NanoidError
 
 // Type aliases
 

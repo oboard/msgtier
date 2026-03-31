@@ -3,6 +3,7 @@ import {
   "moonbitlang/core/set",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/env",
+  "moonbitlang/core/string",
   "moonbitlang/core/strconv",
   "moonbitlang/core/bigint",
   "moonbitlang/core/bytes",
@@ -33,7 +34,8 @@ import {
   "oboard/morm/engine/sqlite3",
 }
 
+supported_targets = "native"
+
 options(
   "is-main": true,
-  "supported-targets": "+native",
 )

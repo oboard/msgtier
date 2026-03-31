@@ -80,8 +80,8 @@ fn parse_range_header(
         } else {
           let start_str = parts[0]
           let end_str = parts[1]
-          let start_opt = try? @strconv.parse_int(start_str)
-          let end_opt = try? @strconv.parse_int(end_str)
+          let start_opt = try? @string.parse_int(start_str)
+          let end_opt = try? @string.parse_int(end_str)
           match (start_opt, end_opt) {
             (Ok(start), Ok(end)) =>
               if start < 0 {
@@ -162,9 +162,9 @@ fn parse_range_str(header : String) -> (Int, Int?)? {
     if start_str == "" {
       return None
     }
-    let start = @strconv.parse_int(start_str)
+    let start = @string.parse_int(start_str)
     let end = if parts.length() > 1 && parts[1] != "" {
-      Some(@strconv.parse_int(parts[1]))
+      Some(@string.parse_int(parts[1]))
     } else {
       None
     }
