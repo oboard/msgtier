@@ -11,7 +11,7 @@ struct StunDiscoveryInfo {
 } derive(Show, ToJson, Eq)
 
 ///|
-let stun_default_servers : Array[String] = [
+let stun_default_servers : ReadOnlyArray[String] = [
   "stun.l.google.com:19302", "stun1.l.google.com:19302", "stun2.l.google.com:19302",
   "stun3.l.google.com:19302", "stun4.l.google.com:19302", "stun.cloudflare.com:3478",
 ]
