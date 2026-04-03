@@ -20,15 +20,6 @@ let stun_default_servers : ReadOnlyArray[String] = [
 let stun_discovery_state : Map[String, StunDiscoveryInfo] = {}
 
 ///|
-pub fn get_stun_discovery_snapshot() -> Array[StunDiscoveryInfo] {
-  let items : Array[StunDiscoveryInfo] = []
-  for _, info in stun_discovery_state {
-    items.push(info)
-  }
-  items
-}
-
-///|
 fn get_stun_public_addresses(listener : String) -> Array[String] {
   let addrs : Array[String] = []
   match stun_discovery_state.get(listener) {

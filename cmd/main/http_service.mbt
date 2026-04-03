@@ -539,14 +539,14 @@ async fn serve_file(
 ) -> Unit {
   try {
     let content_type = match path {
-      _ as p if p.has_suffix(".html") => "text/html"
-      _ as p if p.has_suffix(".css") => "text/css"
-      _ as p if p.has_suffix(".js") => "text/javascript"
-      _ as p if p.has_suffix(".json") => "application/json"
-      _ as p if p.has_suffix(".png") => "image/png"
-      _ as p if p.has_suffix(".jpg") || p.has_suffix(".jpeg") => "image/jpeg"
-      _ as p if p.has_suffix(".svg") => "image/svg+xml"
-      _ as p if p.has_suffix(".ico") => "image/x-icon"
+     [.., ..".html"] => "text/html"
+     [.., ..".css"] => "text/css"
+     [.., ..".js"] => "text/javascript"
+     [.., ..".json"] => "application/json"
+     [.., ..".png"] => "image/png"
+     [.., ..".jpg"] | [.., ..".jpeg"] => "image/jpeg"
+     [.., ..".svg"] => "image/svg+xml"
+     [.., ..".ico"] => "image/x-icon"
       _ => "application/octet-stream"
     }
     conn
@@ -663,7 +663,7 @@ async fn status_handler(conn : @http.ServerConnection) -> Unit {
     listeners: config.listeners,
     known_peers,
     routes: routes_info,
-    stun: get_stun_discovery_snapshot(),
+    stun: stun_discovery_state.values().to_array(),
   }
   conn
   ..send_response(200, "OK", extra_headers={
