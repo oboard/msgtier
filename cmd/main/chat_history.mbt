@@ -93,7 +93,7 @@ async fn load_chat_rows_or_empty(
   q : @morm.Query,
   log_prefix : String,
 ) -> FixedArray[@db.Message]? {
-  Some(engine.exec(q).rows.map(row => @db.Message::from_row(row))) catch {
+  Some(engine.exec(q).rows.map(row => @db.Message::_from(row))) catch {
     e => {
       log_warn("\{log_prefix}: \{e}")
       None

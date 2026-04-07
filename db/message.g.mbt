@@ -4,8 +4,8 @@ pub impl @oboard/morm.Entity for Message with table(_self) -> @oboard/morm.Table
 }
 
 ///|
-pub fn Message::table() -> @morm.Table {
-  @morm.Table::{
+pub fn Message::table() -> @oboard/morm.Table {
+  @oboard/morm.Table::{
     name: "message",
     schema: None,
     catalog: None,
@@ -110,56 +110,58 @@ pub fn Message::table() -> @morm.Table {
 }
 
 ///|
-pub fn Message::from_row(row : Json) -> Message {
-  if row is Object(obj) {
-    let id_json = match obj.get("id") {
-      Some(value) => value
-      None => panic()
-    }
-    let id : String = (
-      try! @engine.from_param(@engine.param_from_json_value(id_json)) : String)
-    let source_id_json = match obj.get("source_id") {
-      Some(value) => value
-      None => panic()
-    }
-    let source_id : String = (
-      try! @engine.from_param(@engine.param_from_json_value(source_id_json)) :
-      String)
-    let target_id_json = match obj.get("target_id") {
-      Some(value) => value
-      None => panic()
-    }
-    let target_id : String? = match target_id_json {
-      Null => None
-      _ =>
-        Some(
-          (
-            try! @engine.from_param(
-              @engine.param_from_json_value(target_id_json),
-            ) : String),
-        )
-    }
-    let kind_json = match obj.get("kind") {
-      Some(value) => value
-      None => panic()
-    }
-    let kind : String = (
-      try! @engine.from_param(@engine.param_from_json_value(kind_json)) : String)
-    let content_json = match obj.get("content") {
-      Some(value) => value
-      None => panic()
-    }
-    let content : String = (
-      try! @engine.from_param(@engine.param_from_json_value(content_json)) :
-      String)
-    let timestamp_json = match obj.get("timestamp") {
-      Some(value) => value
-      None => panic()
-    }
-    let timestamp : String = (
-      try! @engine.from_param(@engine.param_from_json_value(timestamp_json)) :
-      String)
-    return Message::{ id, source_id, target_id, kind, content, timestamp }
+pub fn Message::_from(row : Map[String, @engine.Param]) -> Message {
+  let id_param = match row.get("id") {
+    Some(value) => value
+    None => panic()
   }
-  panic()
+  let id : String = (try! @engine.from_param(id_param) : String)
+  let source_id_param = match row.get("source_id") {
+    Some(value) => value
+    None => panic()
+  }
+  let source_id : String = (try! @engine.from_param(source_id_param) : String)
+  let target_id_param = match row.get("target_id") {
+    Some(value) => value
+    None => panic()
+  }
+  let target_id : String? = match target_id_param {
+    Null => None
+    _ => Some((try! @engine.from_param(target_id_param) : String))
+  }
+  let kind_param = match row.get("kind") {
+    Some(value) => value
+    None => panic()
+  }
+  let kind : String = (try! @engine.from_param(kind_param) : String)
+  let content_param = match row.get("content") {
+    Some(value) => value
+    None => panic()
+  }
+  let content : String = (try! @engine.from_param(content_param) : String)
+  let timestamp_param = match row.get("timestamp") {
+    Some(value) => value
+    None => panic()
+  }
+  let timestamp : String = (try! @engine.from_param(timestamp_param) : String)
+  return Message::{ id, source_id, target_id, kind, content, timestamp }
+}
+
+///|
+pub impl @engine.FromParam for Message with from_param(value) {
+  match value {
+    @engine.Json(Object(obj)) => {
+      let row : Map[String, @engine.Param] = Map::new()
+      for key in obj.keys() {
+        if obj.get(key) is Some(value) {
+          row.set(key, @engine.to_param(value))
+        }
+      }
+      Message::_from(row)
+    }
+    _ =>
+      raise @engine.ParamDecodeError(
+        "Message::from_param: expected Json object row",
+      )
+  }
 }

@@ -6,7 +6,8 @@
     "tonyfettes/unicode": "0.3.0",
     "moonbitlang/x": "0.4.40",
     "gmlewis/flate": "0.36.2",
-    "gmlewis/io": "0.23.2"
+    "gmlewis/io": "0.23.2",
+    "oboard/morm": "0.3.6"
   },
   "bin-deps": {
     "oboard/morm": "0.3.3"

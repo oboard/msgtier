@@ -539,14 +539,14 @@ async fn serve_file(
 ) -> Unit {
   try {
     let content_type = match path {
-     [.., ..".html"] => "text/html"
-     [.., ..".css"] => "text/css"
-     [.., ..".js"] => "text/javascript"
-     [.., ..".json"] => "application/json"
-     [.., ..".png"] => "image/png"
-     [.., ..".jpg"] | [.., ..".jpeg"] => "image/jpeg"
-     [.., ..".svg"] => "image/svg+xml"
-     [.., ..".ico"] => "image/x-icon"
+      [.., .. ".html"] => "text/html"
+      [.., .. ".css"] => "text/css"
+      [.., .. ".js"] => "text/javascript"
+      [.., .. ".json"] => "application/json"
+      [.., .. ".png"] => "image/png"
+      [.., .. ".jpg"] | [.., .. ".jpeg"] => "image/jpeg"
+      [.., .. ".svg"] => "image/svg+xml"
+      [.., .. ".ico"] => "image/x-icon"
       _ => "application/octet-stream"
     }
     conn
