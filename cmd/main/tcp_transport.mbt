@@ -45,7 +45,7 @@ fn TcpTransport::new(addr_str : String) -> TcpTransport raise {
 }
 
 ///|
-impl Transport for TcpTransport with send(self, target, data) {
+impl Transport for TcpTransport with fn send(self, target, data) {
   let target = target.strip_prefix("tcp://").unwrap_or(target).to_string()
 
   // Framing: 4 bytes length + data
@@ -151,7 +151,12 @@ impl Transport for TcpTransport with send(self, target, data) {
 }
 
 ///|
-impl Transport for TcpTransport with listen(self, root, handler, on_disconnect) {
+impl Transport for TcpTransport with fn listen(
+  self,
+  root,
+  handler,
+  on_disconnect,
+) {
   self.handler = Some(handler)
   self.on_disconnect = Some(on_disconnect)
   self.root = Some(root)
@@ -197,22 +202,22 @@ impl Transport for TcpTransport with listen(self, root, handler, on_disconnect) 
 }
 
 ///|
-impl Transport for TcpTransport with local_addr(self) {
+impl Transport for TcpTransport with fn local_addr(self) {
   self.server.addr().to_string()
 }
 
 ///|
-impl Transport for TcpTransport with protocol(_self) {
+impl Transport for TcpTransport with fn protocol(_self) {
   "tcp"
 }
 
 ///|
-impl Transport for TcpTransport with protocol_type(_self) {
+impl Transport for TcpTransport with fn protocol_type(_self) {
   Tcp
 }
 
 ///|
-impl Transport for TcpTransport with local_address(self) {
+impl Transport for TcpTransport with fn local_address(self) {
   let addr_str = "tcp://" + self.server.addr().to_string()
   Address::parse(addr_str) catch {
     _ => abort("Invalid local address: " + addr_str)

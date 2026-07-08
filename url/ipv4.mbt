@@ -15,13 +15,13 @@ pub fn IPv4::to_string(self : IPv4) -> String {
 
 ///|
 /// Implement Show trait for IPv4, outputting dotted-decimal notation
-pub impl Show for IPv4 with output(self : IPv4, logger : &Logger) -> Unit {
+pub impl Show for IPv4 with fn output(self : IPv4, logger : &Logger) -> Unit {
   logger.write_string(self.to_string())
 }
 
 ///|
 /// Implement ToJson trait for IPv4, outputting as array of 4 bytes
-pub impl ToJson for IPv4 with to_json(self : IPv4) -> Json {
+pub impl ToJson for IPv4 with fn to_json(self : IPv4) -> Json {
   let b0 = ((self.0 >> 24) & 0xFF).to_byte()
   let b1 = ((self.0 >> 16) & 0xFF).to_byte()
   let b2 = ((self.0 >> 8) & 0xFF).to_byte()

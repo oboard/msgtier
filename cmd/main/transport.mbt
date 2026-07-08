@@ -3,27 +3,27 @@ pub trait Transport {
   ///|
   /// Send a message to the specified address.
   ///|
-  async send(Self, String, Bytes) -> Bool
+  async fn send(Self, String, Bytes) -> Bool
 
   ///|
   /// Listen for incoming messages.
   ///|
-  async listen(
+  async fn listen(
     Self,
     @async.TaskGroup[Unit],
     (Bytes, String) -> Unit,
     (String) -> Unit,
   ) -> Unit
-  local_addr(Self) -> String
-  protocol(Self) -> String
+  fn local_addr(Self) -> String
+  fn protocol(Self) -> String
 
   ///|
   /// Get the protocol type as a typed enum.
   ///|
-  protocol_type(Self) -> Protocol
+  fn protocol_type(Self) -> Protocol
 
   ///|
   /// Get the local address as a typed Address.
   ///|
-  local_address(Self) -> Address
+  fn local_address(Self) -> Address
 }

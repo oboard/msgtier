@@ -30,7 +30,7 @@ pub enum Value {
 } derive(Show, Debug, Eq)
 
 ///|
-pub impl ToJson for Value with to_json(self) {
+pub impl ToJson for Value with fn to_json(self) {
   match self {
     Map(m) => Json::object(m.map((_, value) => value.to_json()))
     Bool(b) => Json::boolean(b)
@@ -58,7 +58,7 @@ pub(all) suberror MsgPackError {
 }
 
 ///|
-pub impl Show for MsgPackError with output(self, logger) {
+pub impl Show for MsgPackError with fn output(self, logger) {
   logger.write_string(self.to_string())
 }
 

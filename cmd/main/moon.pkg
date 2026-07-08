@@ -28,7 +28,7 @@ import {
   "moonbitlang/x/crypto",
   "moonbitlang/x/sys",
   "oboard/msgtier/stun",
-  "oboard/msgtier/jsonx",
+  "oboard/jsonx",
   "oboard/morm",
   "oboard/msgtier/db",
   "oboard/morm/engine/sqlite3",

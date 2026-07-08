@@ -11,7 +11,7 @@ fn QuicTransport::new(addr_str : String) -> QuicTransport raise {
 }
 
 ///|
-impl Transport for QuicTransport with send(self, target, data) {
+impl Transport for QuicTransport with fn send(self, target, data) {
   let target = target.strip_prefix("quic://").unwrap_or(target).to_string()
   try {
     let conn = match self.connections.get(target) {
@@ -35,7 +35,7 @@ impl Transport for QuicTransport with send(self, target, data) {
 }
 
 ///|
-impl Transport for QuicTransport with listen(
+impl Transport for QuicTransport with fn listen(
   self,
   _root,
   handler,
@@ -49,22 +49,22 @@ impl Transport for QuicTransport with listen(
 }
 
 ///|
-impl Transport for QuicTransport with local_addr(self) {
+impl Transport for QuicTransport with fn local_addr(self) {
   self.endpoint.addr().to_string()
 }
 
 ///|
-impl Transport for QuicTransport with protocol(_self) {
+impl Transport for QuicTransport with fn protocol(_self) {
   "quic"
 }
 
 ///|
-impl Transport for QuicTransport with protocol_type(_self) {
+impl Transport for QuicTransport with fn protocol_type(_self) {
   Quic
 }
 
 ///|
-impl Transport for QuicTransport with local_address(self) {
+impl Transport for QuicTransport with fn local_address(self) {
   let addr_str = "quic://" + self.endpoint.addr().to_string()
   Address::parse(addr_str) catch {
     _ => abort("Invalid local address: " + addr_str)

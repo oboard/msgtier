@@ -35,7 +35,7 @@ fn peer_conn_metadata_to_json_map(
 }
 
 ///|
-impl ToJson for PeerConnectionInfo with to_json(self) {
+impl ToJson for PeerConnectionInfo with fn to_json(self) {
   {
     "id": self.id,
     "peer_id": self.peer_id,

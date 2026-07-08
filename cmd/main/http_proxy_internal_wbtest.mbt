@@ -4,13 +4,13 @@ struct MockRouteTransport {
 }
 
 ///|
-impl Transport for MockRouteTransport with send(self, target, _data) {
+impl Transport for MockRouteTransport with fn send(self, target, _data) {
   self.sent.val.push(target)
   target == "tcp://relay-hop:2000"
 }
 
 ///|
-impl Transport for MockRouteTransport with listen(
+impl Transport for MockRouteTransport with fn listen(
   _self,
   _root,
   _handler,
@@ -20,22 +20,22 @@ impl Transport for MockRouteTransport with listen(
 }
 
 ///|
-impl Transport for MockRouteTransport with local_addr(_self) {
+impl Transport for MockRouteTransport with fn local_addr(_self) {
   "127.0.0.1:19000"
 }
 
 ///|
-impl Transport for MockRouteTransport with protocol(_self) {
+impl Transport for MockRouteTransport with fn protocol(_self) {
   "tcp"
 }
 
 ///|
-impl Transport for MockRouteTransport with protocol_type(_self) {
+impl Transport for MockRouteTransport with fn protocol_type(_self) {
   Tcp
 }
 
 ///|
-impl Transport for MockRouteTransport with local_address(_self) {
+impl Transport for MockRouteTransport with fn local_address(_self) {
   Address::parse("tcp://127.0.0.1:19000") catch {
     _ => abort("invalid mock local address")
   }

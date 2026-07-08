@@ -13,12 +13,12 @@ pub struct Url {
 } derive(Debug)
 
 ///|
-pub impl ToJson for Url with to_json(self) -> Json {
+pub impl ToJson for Url with fn to_json(self) -> Json {
   Json::string(self.to_string())
 }
 
 ///|
-pub impl FromJson for Url with from_json(json, path) raise @json.JsonDecodeError {
+pub impl FromJson for Url with fn from_json(json, path) raise @json.JsonDecodeError {
   match json {
     String(s) =>
       Url::parse(s).unwrap_or_error(
@@ -409,7 +409,7 @@ pub fn Url::set_hash(self : Url, hash : String) -> Unit {
 
 ///|
 /// Implement Show trait for Url, outputting the serialized URL string
-pub impl Show for Url with output(self : Url, logger : &Logger) -> Unit {
+pub impl Show for Url with fn output(self : Url, logger : &Logger) -> Unit {
   logger.write_string(self.to_string())
 }
 

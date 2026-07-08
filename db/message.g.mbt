@@ -1,11 +1,11 @@
 ///|
-pub impl @oboard/morm.Entity for Message with table(_self) -> @oboard/morm.Table {
+pub impl @morm.Entity for Message with fn table(_self) -> @morm.Table {
   Message::table()
 }
 
 ///|
-pub fn Message::table() -> @oboard/morm.Table {
-  @oboard/morm.Table::{
+pub fn Message::table() -> @morm.Table {
+  {
     name: "message",
     schema: None,
     catalog: None,
@@ -22,7 +22,7 @@ pub fn Message::table() -> @oboard/morm.Table {
         charset: None,
         collation: None,
         default_value: None,
-        engine_options: [],
+        engine_options: {},
       },
       {
         name: "source_id",
@@ -36,7 +36,7 @@ pub fn Message::table() -> @oboard/morm.Table {
         charset: None,
         collation: None,
         default_value: None,
-        engine_options: [],
+        engine_options: {},
       },
       {
         name: "target_id",
@@ -50,7 +50,7 @@ pub fn Message::table() -> @oboard/morm.Table {
         charset: None,
         collation: None,
         default_value: None,
-        engine_options: [],
+        engine_options: {},
       },
       {
         name: "kind",
@@ -64,7 +64,7 @@ pub fn Message::table() -> @oboard/morm.Table {
         charset: None,
         collation: None,
         default_value: None,
-        engine_options: [],
+        engine_options: {},
       },
       {
         name: "content",
@@ -78,7 +78,7 @@ pub fn Message::table() -> @oboard/morm.Table {
         charset: None,
         collation: None,
         default_value: None,
-        engine_options: [],
+        engine_options: {},
       },
       {
         name: "timestamp",
@@ -92,7 +92,7 @@ pub fn Message::table() -> @oboard/morm.Table {
         charset: None,
         collation: None,
         default_value: None,
-        engine_options: [],
+        engine_options: {},
       },
     ],
     indexes: [],
@@ -105,63 +105,62 @@ pub fn Message::table() -> @oboard/morm.Table {
     tablespace: None,
     comment: "",
     auto_increment: None,
-    engine_options: [],
+    engine_options: {},
   }
 }
 
 ///|
-pub fn Message::_from(row : Map[String, @engine.Param]) -> Message {
+pub fn Message::_from(row : Map[String, @morm/engine.Param]) -> Message {
   let id_param = match row.get("id") {
     Some(value) => value
     None => panic()
   }
-  let id : String = (try! @engine.from_param(id_param) : String)
+  let id : String = (try! @morm/engine.from_param(id_param) : String)
   let source_id_param = match row.get("source_id") {
     Some(value) => value
     None => panic()
   }
-  let source_id : String = (try! @engine.from_param(source_id_param) : String)
+  let source_id : String = (
+    try! @morm/engine.from_param(source_id_param) : String)
   let target_id_param = match row.get("target_id") {
     Some(value) => value
     None => panic()
   }
   let target_id : String? = match target_id_param {
     Null => None
-    _ => Some((try! @engine.from_param(target_id_param) : String))
+    _ => Some((try! @morm/engine.from_param(target_id_param) : String))
   }
   let kind_param = match row.get("kind") {
     Some(value) => value
     None => panic()
   }
-  let kind : String = (try! @engine.from_param(kind_param) : String)
+  let kind : String = (try! @morm/engine.from_param(kind_param) : String)
   let content_param = match row.get("content") {
     Some(value) => value
     None => panic()
   }
-  let content : String = (try! @engine.from_param(content_param) : String)
+  let content : String = (try! @morm/engine.from_param(content_param) : String)
   let timestamp_param = match row.get("timestamp") {
     Some(value) => value
     None => panic()
   }
-  let timestamp : String = (try! @engine.from_param(timestamp_param) : String)
-  return Message::{ id, source_id, target_id, kind, content, timestamp }
+  let timestamp : String = (
+    try! @morm/engine.from_param(timestamp_param) : String)
+  return { id, source_id, target_id, kind, content, timestamp }
 }
 
 ///|
-pub impl @engine.FromParam for Message with from_param(value) {
+pub impl @morm/engine.FromParam for Message with fn from_param(value) {
   match value {
-    @engine.Json(Object(obj)) => {
-      let row : Map[String, @engine.Param] = Map::new()
+    Object(obj) => {
+      let row : Map[String, @morm/engine.Param] = Map([])
       for key in obj.keys() {
         if obj.get(key) is Some(value) {
-          row.set(key, @engine.to_param(value))
+          row.set(key, value)
         }
       }
       Message::_from(row)
     }
-    _ =>
-      raise @engine.ParamDecodeError(
-        "Message::from_param: expected Json object row",
-      )
+    _ => raise ParamDecodeError("Message::from_param: expected Json object row")
   }
 }

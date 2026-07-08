@@ -85,7 +85,7 @@ pub fn bytes(data : Bytes) -> Crc32 {
 }
 
 ///|
-pub impl Show for Crc32 with output(crc, logger) {
+pub impl Show for Crc32 with fn output(crc, logger) {
   let hex_chars = "0123456789abcdef"
   let result = @buffer.new()
   let mut value = crc.0

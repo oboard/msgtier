@@ -12,7 +12,7 @@ fn UdpTransport::new(addr_str : String) -> UdpTransport raise {
 }
 
 ///|
-impl Transport for UdpTransport with send(self, target, data) {
+impl Transport for UdpTransport with fn send(self, target, data) {
   let target = target.strip_prefix("udp://").unwrap_or(target).to_string()
   let target_addr = @socket.Addr::parse(target) catch { _ => return false }
   for i = 0; i < 3; i = i + 1 {
@@ -27,7 +27,7 @@ impl Transport for UdpTransport with send(self, target, data) {
 }
 
 ///|
-impl Transport for UdpTransport with listen(
+impl Transport for UdpTransport with fn listen(
   self,
   _root,
   handler,
@@ -46,22 +46,22 @@ impl Transport for UdpTransport with listen(
 }
 
 ///|
-impl Transport for UdpTransport with local_addr(self) {
+impl Transport for UdpTransport with fn local_addr(self) {
   self.server.addr().to_string()
 }
 
 ///|
-impl Transport for UdpTransport with protocol(_self) {
+impl Transport for UdpTransport with fn protocol(_self) {
   "udp"
 }
 
 ///|
-impl Transport for UdpTransport with protocol_type(_self) {
+impl Transport for UdpTransport with fn protocol_type(_self) {
   Udp
 }
 
 ///|
-impl Transport for UdpTransport with local_address(self) {
+impl Transport for UdpTransport with fn local_address(self) {
   let addr_str = "udp://" + self.server.addr().to_string()
   Address::parse(addr_str) catch {
     _ => abort("Invalid local address: " + addr_str)

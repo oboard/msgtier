@@ -139,12 +139,12 @@ fn parse_port(s : String) -> UInt16 raise {
 }
 
 ///|
-pub impl ToJson for Address with to_json(self) {
+pub impl ToJson for Address with fn to_json(self) {
   self.to_url_string().to_json()
 }
 
 ///|
-pub impl @json.FromJson for Address with from_json(json, path) {
+pub impl @json.FromJson for Address with fn from_json(json, path) {
   match json {
     String(s) => {
       let addr = Address::parse(s) catch {
@@ -157,12 +157,12 @@ pub impl @json.FromJson for Address with from_json(json, path) {
 }
 
 ///|
-pub impl ToJson for Protocol with to_json(self) {
+pub impl ToJson for Protocol with fn to_json(self) {
   self.to_string().to_json()
 }
 
 ///|
-pub impl @json.FromJson for Protocol with from_json(json, path) {
+pub impl @json.FromJson for Protocol with fn from_json(json, path) {
   match json {
     String(s) =>
       match Protocol::parse(s[:]) {

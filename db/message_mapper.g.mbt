@@ -1,16 +1,21 @@
 ///|
 pub struct MessageMapperImpl {
-  engine : &@engine.Engine
+  engine : &@morm/engine.Engine
 }
 
 ///|
-pub fn MessageMapperImpl::new(engine : &@engine.Engine) -> MessageMapperImpl {
-  MessageMapperImpl::{ engine, }
+pub fn MessageMapperImpl::MessageMapperImpl(
+  engine : &@morm/engine.Engine,
+) -> MessageMapperImpl {
+  { engine, }
 }
 
 ///|
-pub impl MessageMapper for MessageMapperImpl with save(self, entity : Message) -> Message {
-  let q = @oboard/morm.upsert_into("message").from(entity)
+pub impl MessageMapper for MessageMapperImpl with fn save(
+  self,
+  entity : Message,
+) -> Message {
+  let q = @morm.upsert_into("message").from(entity)
   let res = self.engine.exec(q)
   if res.rows is [result, ..] {
     return Message::_from(result)

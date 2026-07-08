@@ -75,13 +75,13 @@ pub fn IPv6::to_string(self : IPv6) -> String {
 
 ///|
 /// Implement Show trait for IPv6, outputting compressed colon notation
-pub impl Show for IPv6 with output(self : IPv6, logger : &Logger) -> Unit {
+pub impl Show for IPv6 with fn output(self : IPv6, logger : &Logger) -> Unit {
   logger.write_string(self.to_string())
 }
 
 ///|
 /// Implement ToJson trait for IPv6, outputting as array of 8 16-bit values
-pub impl ToJson for IPv6 with to_json(self : IPv6) -> Json {
+pub impl ToJson for IPv6 with fn to_json(self : IPv6) -> Json {
   self.0.to_json()
 }
 

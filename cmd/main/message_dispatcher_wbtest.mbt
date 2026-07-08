@@ -4,13 +4,13 @@ struct MockReplyTransport {
 }
 
 ///|
-impl Transport for MockReplyTransport with send(self, target, _data) {
+impl Transport for MockReplyTransport with fn send(self, target, _data) {
   self.sent.val.push(target)
   true
 }
 
 ///|
-impl Transport for MockReplyTransport with listen(
+impl Transport for MockReplyTransport with fn listen(
   _self,
   _root,
   _handler,
@@ -20,22 +20,22 @@ impl Transport for MockReplyTransport with listen(
 }
 
 ///|
-impl Transport for MockReplyTransport with local_addr(_self) {
+impl Transport for MockReplyTransport with fn local_addr(_self) {
   "127.0.0.1:19001"
 }
 
 ///|
-impl Transport for MockReplyTransport with protocol(_self) {
+impl Transport for MockReplyTransport with fn protocol(_self) {
   "tcp"
 }
 
 ///|
-impl Transport for MockReplyTransport with protocol_type(_self) {
+impl Transport for MockReplyTransport with fn protocol_type(_self) {
   Tcp
 }
 
 ///|
-impl Transport for MockReplyTransport with local_address(_self) {
+impl Transport for MockReplyTransport with fn local_address(_self) {
   Address::parse("tcp://127.0.0.1:19001") catch {
     _ => abort("invalid mock reply local address")
   }

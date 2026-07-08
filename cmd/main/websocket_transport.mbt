@@ -31,7 +31,7 @@ fn WebSocketTransport::new(addr_str : String) -> WebSocketTransport raise {
 }
 
 ///|
-impl Transport for WebSocketTransport with send(self, target, data) {
+impl Transport for WebSocketTransport with fn send(self, target, data) {
   let mut target_clean = target.strip_prefix("ws://").unwrap_or(target)
   if target_clean.has_suffix("/") {
     target_clean = target_clean[0:target_clean.length() - 1]
@@ -140,7 +140,7 @@ impl Transport for WebSocketTransport with send(self, target, data) {
 }
 
 ///|
-impl Transport for WebSocketTransport with listen(
+impl Transport for WebSocketTransport with fn listen(
   self,
   root,
   handler,
@@ -187,22 +187,22 @@ impl Transport for WebSocketTransport with listen(
 }
 
 ///|
-impl Transport for WebSocketTransport with local_addr(self) {
+impl Transport for WebSocketTransport with fn local_addr(self) {
   self.server.addr().to_string()
 }
 
 ///|
-impl Transport for WebSocketTransport with protocol(_self) {
+impl Transport for WebSocketTransport with fn protocol(_self) {
   "ws"
 }
 
 ///|
-impl Transport for WebSocketTransport with protocol_type(_self) {
+impl Transport for WebSocketTransport with fn protocol_type(_self) {
   Ws
 }
 
 ///|
-impl Transport for WebSocketTransport with local_address(self) {
+impl Transport for WebSocketTransport with fn local_address(self) {
   let addr_str = "ws://" + self.server.addr().to_string()
   Address::parse(addr_str) catch {
     _ => abort("Invalid local address: " + addr_str)

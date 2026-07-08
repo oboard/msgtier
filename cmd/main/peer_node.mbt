@@ -25,7 +25,7 @@ struct PeerNode {
 } derive(Show)
 
 ///|
-impl ToJson for PeerNode with to_json(self) {
+impl ToJson for PeerNode with fn to_json(self) {
   {
     "id": self.id,
     "version": self.version,

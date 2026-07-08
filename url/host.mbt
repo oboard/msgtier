@@ -9,7 +9,7 @@ pub enum Host {
 } derive(Debug, ToJson)
 
 ///|
-pub impl FromJson for Host with from_json(json, path) raise @json.JsonDecodeError {
+pub impl FromJson for Host with fn from_json(json, path) raise @json.JsonDecodeError {
   match json {
     String(s) =>
       Host::parse(s) catch {
@@ -32,7 +32,7 @@ pub fn Host::to_string(self : Host) -> String {
 
 ///|
 /// Implement Show trait for Host, outputting the serialized host string
-pub impl Show for Host with output(self : Host, logger : &Logger) -> Unit {
+pub impl Show for Host with fn output(self : Host, logger : &Logger) -> Unit {
   logger.write_string(self.to_string())
 }
 
