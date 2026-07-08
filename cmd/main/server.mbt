@@ -716,8 +716,8 @@ async fn handle_pending_messages(
     "DEBUG: handle_pending_messages start protocol=\{transport.protocol()} prefix=\{protocol_prefix}",
   )
 
-  let queue = @aqueue.Queue::new(kind=Unbounded)
-  let in_queue : @set.Set[String] = @set.Set::new()
+  let queue = @aqueue.Queue(kind=Unbounded)
+  let in_queue : @set.Set[String] = @set.Set([], capacity=0)
   let mut pending_generation = get_pending_generation()
 
   root.spawn_bg(async fn() {
@@ -1148,7 +1148,7 @@ async fn handle_incoming_message(
                 }
               }
               if idx != -1 {
-                sender_addr[:idx].to_string()
+                sender_addr[:idx].to_owned()
               } else {
                 sender_addr
               }
@@ -1361,7 +1361,7 @@ async fn start_listener_service(
   transport : &Transport,
   my_id : String,
 ) -> Unit {
-  let dispatcher = Ref::new(build_message_dispatcher())
+  let dispatcher = Ref(build_message_dispatcher())
   let local_addr = transport.protocol() + "://" + transport.local_addr()
   register_transport(transport)
   log_debug(

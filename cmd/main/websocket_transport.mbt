@@ -16,12 +16,12 @@ struct WebSocketTransport {
 }
 
 ///|
-fn WebSocketTransport::new(addr_str : String) -> WebSocketTransport raise {
+async fn WebSocketTransport::new(addr_str : String) -> WebSocketTransport {
   let addr = @socket.Addr::parse(addr_str) catch {
     e => abort("Invalid address: " + e.to_string())
   }
   {
-    server: @http.Server::new(addr, reuse_addr=true),
+    server: @http.Server(addr, reuse_addr=true),
     connections: {},
     handler: None,
     on_disconnect: None,
@@ -36,7 +36,7 @@ impl Transport for WebSocketTransport with fn send(self, target, data) {
   if target_clean.has_suffix("/") {
     target_clean = target_clean[0:target_clean.length() - 1]
   }
-  let target_key = target_clean.to_string()
+  let target_key = target_clean.to_owned()
 
   // Retry loop (max 2 attempts)
   for i = 0; i < 2; i = i + 1 {
@@ -188,7 +188,7 @@ impl Transport for WebSocketTransport with fn listen(
 
 ///|
 impl Transport for WebSocketTransport with fn local_addr(self) {
-  self.server.addr().to_string()
+  self.server.addr.to_string()
 }
 
 ///|
@@ -203,7 +203,7 @@ impl Transport for WebSocketTransport with fn protocol_type(_self) {
 
 ///|
 impl Transport for WebSocketTransport with fn local_address(self) {
-  let addr_str = "ws://" + self.server.addr().to_string()
+  let addr_str = "ws://" + self.server.addr.to_string()
   Address::parse(addr_str) catch {
     _ => abort("Invalid local address: " + addr_str)
   }

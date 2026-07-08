@@ -27,7 +27,7 @@ pub enum Value {
   Array(Array[Value])
   // Map/Dictionary
   Map(Map[String, Value])
-} derive(Show, Debug, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub impl ToJson for Value with fn to_json(self) {

@@ -5,7 +5,7 @@ struct PortForwardExposeRule {
   target_host : String
   target_port : Int
   enabled : Bool?
-} derive(Show, ToJson, FromJson)
+} derive(Debug, ToJson, FromJson)
 
 ///|
 struct PortForwardForwardRule {
@@ -15,13 +15,13 @@ struct PortForwardForwardRule {
   listen_host : String
   listen_port : Int
   enabled : Bool?
-} derive(Show, ToJson, FromJson)
+} derive(Debug, ToJson, FromJson)
 
 ///|
 fn normalize_port_forward_protocol(raw : String) -> String? {
-  let value0 = raw.trim().to_string().to_lower()
+  let value0 = raw.trim().to_owned().to_lower()
   let value = if value0.has_suffix(":") {
-    value0[:value0.length() - 1].to_string()
+    value0[:value0.length() - 1].to_owned()
   } else {
     value0
   }
@@ -39,7 +39,7 @@ fn is_port_forward_tcp_protocol(protocol : String) -> Bool {
 
 ///|
 fn normalize_port_forward_connect_host(host : String) -> String {
-  let value = host.trim().to_string()
+  let value = host.trim().to_owned()
   if value == "" || value == "0.0.0.0" {
     "127.0.0.1"
   } else if value == "::" || value == "[::]" {
@@ -64,7 +64,7 @@ fn parse_port_forward_expose_spec(
   id : String,
   spec : String,
 ) -> PortForwardExposeRule? {
-  let raw = spec.trim().to_string()
+  let raw = spec.trim().to_owned()
   if raw == "" {
     return None
   }
@@ -88,17 +88,17 @@ fn parse_port_forward_forward_spec(
   id : String,
   spec : String,
 ) -> PortForwardForwardRule? {
-  let raw = spec.trim().to_string()
+  let raw = spec.trim().to_owned()
   if raw == "" {
     return None
   }
-  let key = id.trim().to_string()
+  let key = id.trim().to_owned()
   let key_parts = key.split(":").to_array()
   if key_parts.length() != 2 {
     return None
   }
-  let peer_id = key_parts[0].trim().to_string()
-  let rule_id = key_parts[1].trim().to_string()
+  let peer_id = key_parts[0].trim().to_owned()
+  let rule_id = key_parts[1].trim().to_owned()
   if peer_id == "" || rule_id == "" {
     return None
   }
@@ -121,7 +121,7 @@ fn parse_port_forward_forward_spec(
 
 ///|
 fn parse_pf_port(port_str : String) -> Int? {
-  let value = port_str.trim().to_string()
+  let value = port_str.trim().to_owned()
   guard value != "" else { return None }
   let parsed = @string.parse_int(value) catch { _ => return None }
   if is_valid_port_forward_port(parsed) {
@@ -140,7 +140,7 @@ fn get_port_forward_expose_rules() -> Array[PortForwardExposeRule] {
   ids.sort_by(fn(a, b) { if a < b { -1 } else if a > b { 1 } else { 0 } })
   for id in ids {
     let spec = config.exposes.unwrap_or({}).get(id).unwrap_or("")
-    let key_id = id.trim().to_string()
+    let key_id = id.trim().to_owned()
     if key_id == "" {
       continue
     }
@@ -167,11 +167,11 @@ fn get_port_forward_forward_rules() -> Array[PortForwardForwardRule] {
   ids.sort_by(fn(a, b) { if a < b { -1 } else if a > b { 1 } else { 0 } })
   for id in ids {
     let spec = config.forwards.unwrap_or({}).get(id).unwrap_or("")
-    let key_id = id.trim().to_string()
+    let key_id = id.trim().to_owned()
     if key_id == "" {
       continue
     }
-    let raw = spec.trim().to_string()
+    let raw = spec.trim().to_owned()
     if raw == "" {
       continue
     }

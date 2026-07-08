@@ -30,7 +30,7 @@ enum LogLevel {
   Info
   Warn
   Error
-} derive(Show, Eq, ToJson, FromJson)
+} derive(Debug, Eq, ToJson, FromJson)
 
 ///|
 fn log_level_value(level : LogLevel) -> Int {
@@ -78,7 +78,12 @@ fn bench_trace_path() -> String {
 async fn reset_bench_trace() -> Unit {
   global_state.bench_trace_lines = []
   global_state.bench_trace_generation += 1
-  @fs.write_file(bench_trace_path(), b"", create=0o644) catch {
+  @fs.write_file(
+    bench_trace_path(),
+    b"",
+    create_mode=@fs.CreateOrTruncate,
+    permission=0o644,
+  ) catch {
     _ => ()
   }
 }
@@ -91,7 +96,12 @@ fn start_bench_trace_flusher(root : @async.TaskGroup[Unit]) -> Unit {
       let current_generation = global_state.bench_trace_generation
       if current_generation != flushed_generation {
         let contents = global_state.bench_trace_lines.join("")
-        @fs.write_file(bench_trace_path(), @utf8.encode(contents), create=0o644) catch {
+        @fs.write_file(
+          bench_trace_path(),
+          @utf8.encode(contents),
+          create_mode=@fs.CreateOrTruncate,
+          permission=0o644,
+        ) catch {
           _ => ()
         }
         flushed_generation = current_generation
@@ -404,7 +414,7 @@ fn check_and_mark_hello(key : String, ttl_ms : UInt64) -> Bool {
 /// - discovered_address: the address we learned about (e.g., "192.168.1.5:6668")
 /// - peer_id: the peer at that address
 /// - relay_via_peer_id: which peer told us about this address (relay through this peer)
-// let global_relay_paths : Ref[Map[String, (String, String)]] = Ref::new({})
+// let global_relay_paths : Ref[Map[String, (String, String)]] = Ref({})
 
 // ///|
 // /// Record a relay path: when peer B advertises peer C's address, relay through B to reach C

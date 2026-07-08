@@ -4,9 +4,9 @@ fn query_param(query : String?, key : String) -> String? {
     Some(q) => {
       let prefix = key + "="
       for part in q.split("&") {
-        let p = part.to_string()
+        let p = part.to_owned()
         if p.has_prefix(prefix) {
-          return Some(p[prefix.length():].to_string())
+          return Some(p[prefix.length():].to_owned())
         }
       }
       None
@@ -19,7 +19,7 @@ fn query_param(query : String?, key : String) -> String? {
 fn parse_channel_target_id(target_id : String) -> (String, String)? {
   lexmatch target_id[:] with longest {
     ("channel::" ("[^:]+" as peer_id) "::" (".+" as channel_id)) =>
-      Some((peer_id.to_string(), channel_id.to_string()))
+      Some((peer_id.to_owned(), channel_id.to_owned()))
     _ => None
   }
 }
@@ -98,7 +98,7 @@ fn parse_iso_utc_timestamp(timestamp : String) -> UInt64? {
         @string.parse_int(second) catch {
           _ => 0
         },
-        normalize_iso_millis(millis_text.to_string()),
+        normalize_iso_millis(millis_text.to_owned()),
       )
     (
       ("[0-9]{4}" as year)
@@ -255,7 +255,7 @@ async fn load_openclaw_session_messages_json(
   }
   let rows : Array[Json] = []
   for line in text.split("\n") {
-    let line_text = line.trim().to_string()
+    let line_text = line.trim().to_owned()
     if line_text == "" {
       continue
     }

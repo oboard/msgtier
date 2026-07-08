@@ -13,9 +13,12 @@ pub impl FromJson for Host with fn from_json(json, path) raise @json.JsonDecodeE
   match json {
     String(s) =>
       Host::parse(s) catch {
-        _ => raise @json.JsonDecodeError((path, "Invalid host \{json}"))
+        _ =>
+          raise @json.JsonDecodeError(
+            (path, "Invalid host \{json.stringify()}"),
+          )
       }
-    _ => raise @json.JsonDecodeError((path, "Invalid host \{json}"))
+    _ => raise @json.JsonDecodeError((path, "Invalid host \{json.stringify()}"))
   }
 }
 
@@ -85,36 +88,38 @@ fn percent_decode_string(input : StringView) -> Bytes {
 
 ///|
 fn percent_decode_bytes(input : Bytes) -> Bytes {
-  let output = @buffer.new()
-  loop input[:] {
-    ['%', c0, c1, .. rest] as view => {
-      let b0 = match c0 {
-        '0'..='9' => c0.to_int() - '0'.to_int()
-        'a'..='f' => c0.to_int() - 'a'.to_int() + 10
-        'A'..='F' => c0.to_int() - 'A'.to_int() + 10
-        _ => {
-          output.write_byte('%')
-          continue view[1:]
+  let output = Buffer()
+  for state = input[:] {
+    match state {
+      [b'%', c0, c1, .. rest] as view => {
+        let b0 = match c0 {
+          b'0'..=b'9' => c0.to_int() - b'0'.to_int()
+          b'a'..=b'f' => c0.to_int() - b'a'.to_int() + 10
+          b'A'..=b'F' => c0.to_int() - b'A'.to_int() + 10
+          _ => {
+            output.write_byte(b'%')
+            continue view[1:]
+          }
         }
-      }
-      let b1 = match c1 {
-        '0'..='9' => c1.to_int() - '0'.to_int()
-        'a'..='f' => c1.to_int() - 'a'.to_int() + 10
-        'A'..='F' => c1.to_int() - 'A'.to_int() + 10
-        _ => {
-          output.write_byte('%')
-          output.write_byte(c0)
-          continue view[2:]
+        let b1 = match c1 {
+          b'0'..=b'9' => c1.to_int() - b'0'.to_int()
+          b'a'..=b'f' => c1.to_int() - b'a'.to_int() + 10
+          b'A'..=b'F' => c1.to_int() - b'A'.to_int() + 10
+          _ => {
+            output.write_byte(b'%')
+            output.write_byte(c0)
+            continue view[2:]
+          }
         }
+        output.write_byte(((b0 << 4) | b1).to_byte())
+        continue rest
       }
-      output.write_byte(((b0 << 4) | b1).to_byte())
-      continue rest
+      [byte, .. rest] => {
+        output.write_byte(byte)
+        continue rest
+      }
+      [] => break
     }
-    [byte, .. rest] => {
-      output.write_byte(byte)
-      continue rest
-    }
-    [] => break
   }
   output.contents()
 }
@@ -389,7 +394,7 @@ fn utf8_percent_encode(
   let output = StringBuilder::new()
   let encode_output = @utf8.encode(input)
   for byte in encode_output {
-    if space_as_plus && byte is ' ' {
+    if space_as_plus && byte is b' ' {
       output.write_char('+')
       continue
     }

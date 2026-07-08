@@ -1,6 +1,6 @@
 ///|
 pub fn encode_packet(header : Header, payload : Bytes) -> Bytes {
-  let buf = @buffer.new()
+  let buf = Buffer()
   buf.write_byte(header.first_byte)
   match header.version {
     Some(v) => {
@@ -45,7 +45,7 @@ pub fn encode_packet(header : Header, payload : Bytes) -> Bytes {
 
 ///|
 pub fn encode_frame(frame : Frame) -> Bytes {
-  let buf = @buffer.new()
+  let buf = Buffer()
   match frame {
     Stream(s) => {
       // Type (1 byte) + Stream ID (8 bytes) + Offset (8 bytes) + Length (8 bytes) + Data
@@ -70,9 +70,7 @@ pub fn encode_frame(frame : Frame) -> Bytes {
     }
     ConnectionClose(c) => {
       // Type(0x1c) + Error(8) + FrameType(8 or 0) + PhraseLen(8) + Phrase
-      let phrase_buf = @buffer.new()
-      phrase_buf.write_string(c.reason_phrase)
-      let phrase_bytes = phrase_buf.to_bytes()
+      let phrase_bytes = @utf8.encode(c.reason_phrase)
       buf.write_byte(b'\x1c')
       buf.write_int64_be(c.error_code)
       let ft = match c.frame_type {

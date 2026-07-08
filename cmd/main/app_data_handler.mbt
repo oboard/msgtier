@@ -473,7 +473,7 @@ fn parse_response_chunk_array(
   let headers = if arr.length() > 4 {
     match arr[4] {
       Map(m) => {
-        let wrapper = Map::new()
+        let wrapper : Map[String, @msgpack.Value] = {}
         wrapper["headers"] = @msgpack.map(m)
         parse_headers_map(wrapper)
       }
@@ -604,7 +604,7 @@ fn parse_headers_map(m : Map[String, @msgpack.Value]) -> Map[String, String]? {
 
 ///|
 fn headers_to_msgpack(headers : Map[String, String]) -> @msgpack.Value {
-  let m : Map[String, @msgpack.Value] = Map::new()
+  let m : Map[String, @msgpack.Value] = Map([], capacity=0)
   for k, v in headers {
     m[k] = @msgpack.string(v)
   }
@@ -658,7 +658,7 @@ fn handle_script_message(
         cleaned.write_char(c)
       }
     }
-    let content_str = cleaned.to_string().trim().to_string()
+    let content_str = cleaned.to_string().trim().to_owned()
     if content_str.is_empty() {
       log_warn("Received empty script content from \{msg.source_id}")
       send_response_message_direct(
@@ -767,7 +767,7 @@ fn handle_object_get_message(ctx : MessageContext) -> Unit {
   }
   ctx.root.spawn_bg(async fn() {
     let data_opt = get_object(object_id) catch { _ => None }
-    let resp_map : Map[String, @msgpack.Value] = Map::new()
+    let resp_map : Map[String, @msgpack.Value] = Map([], capacity=0)
     match data_opt {
       Some(data) => {
         resp_map["status"] = @msgpack.string("200")
@@ -887,7 +887,7 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
     )
     match resp_body {
       Bytes(b) => {
-        let resp_map : Map[String, @msgpack.Value] = Map::new()
+        let resp_map : Map[String, @msgpack.Value] = Map([], capacity=0)
         resp_map["status"] = @msgpack.string(status_code.to_string())
         resp_map["headers"] = headers_to_msgpack(resp_headers)
         resp_map["data"] = @msgpack.binary(b)
@@ -1183,7 +1183,7 @@ async fn send_file_stream_helper(
   } catch {
     e => {
       log_error("File stream error: " + e.to_string())
-      let resp_map : Map[String, @msgpack.Value] = Map::new()
+      let resp_map : Map[String, @msgpack.Value] = Map([], capacity=0)
       resp_map["status"] = @msgpack.string("500")
       resp_map["headers"] = headers_to_msgpack(headers.unwrap_or({}))
       resp_map["data"] = @msgpack.binary(
@@ -1606,7 +1606,7 @@ async fn stream_internal_channel_chat_request(
         channel_id, channel_type, messages, session_key, false,
       )
       if status_code < 200 || status_code >= 300 {
-        let resp_map : Map[String, @msgpack.Value] = Map::new()
+        let resp_map : Map[String, @msgpack.Value] = Map([], capacity=0)
         resp_map["status"] = @msgpack.string(status_code.to_string())
         resp_map["headers"] = headers_to_msgpack({
           "Content-Type": "application/json",
@@ -1645,7 +1645,7 @@ async fn stream_internal_channel_chat_request(
         } else {
           { "x-msgtier-stream-done": "0" }
         }
-        let resp_map : Map[String, @msgpack.Value] = Map::new()
+        let resp_map : Map[String, @msgpack.Value] = Map([], capacity=0)
         resp_map["status"] = @msgpack.string("200")
         resp_map["headers"] = headers_to_msgpack(headers)
         resp_map["data"] = @msgpack.binary(@utf8.encode(event_chunk))
@@ -1665,7 +1665,7 @@ async fn stream_internal_channel_chat_request(
       }
     }
     None => {
-      let resp_map : Map[String, @msgpack.Value] = Map::new()
+      let resp_map : Map[String, @msgpack.Value] = Map([], capacity=0)
       resp_map["status"] = @msgpack.string("400")
       resp_map["headers"] = headers_to_msgpack({
         "Content-Type": "application/json",

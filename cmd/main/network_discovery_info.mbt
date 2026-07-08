@@ -5,4 +5,4 @@ struct NetworkDiscoveryInfo {
   version : String
   addresses : Array[NetworkAddress] // Multiple network addresses for this peer
   peers : Array[NetworkAddress]? // Known peer addresses
-} derive(Show, ToJson, FromJson)
+} derive(Debug, ToJson, FromJson)

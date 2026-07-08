@@ -340,7 +340,7 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
   match msg.body {
     Array(conn_entries) => {
       let sender_connections : Array[PeerConnectionInfo] = []
-      let sender_metadata : Ref[Map[String, String]?] = Ref::new(None)
+      let sender_metadata : Ref[Map[String, String]?] = Ref(None)
       if msg.peers is Some(peer_addrs) {
         let known_list : Array[String] = []
         for peer_addr_obj in peer_addrs {

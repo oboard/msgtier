@@ -21,9 +21,9 @@ test "message roundtrip encoding/decoding" {
   assert_eq(decoded.id, original.id)
   assert_eq(decoded.kind, original.kind)
   assert_eq(decoded.source_id, original.source_id)
-  assert_eq(decoded.source_addr, original.source_addr)
+  assert_true(decoded.source_addr == original.source_addr)
   assert_eq(decoded.relay, original.relay)
-  assert_eq(decoded.version, original.version)
+  assert_true(decoded.version == original.version)
   assert_eq(decoded.encrypted, original.encrypted)
 }
 
@@ -50,9 +50,9 @@ test "message with optional fields subset 1" {
   assert_eq(decoded.id, original.id)
   assert_eq(decoded.kind, original.kind)
   assert_eq(decoded.source_id, original.source_id)
-  assert_eq(decoded.source_addr, original.source_addr)
+  assert_true(decoded.source_addr == original.source_addr)
   assert_eq(decoded.relay, original.relay)
-  assert_eq(decoded.version, original.version)
+  assert_true(decoded.version == original.version)
   assert_eq(decoded.encrypted, original.encrypted)
 }
 
@@ -114,10 +114,10 @@ test "message with short array (pre-optional fields)" {
   assert_eq(decoded.encrypted, false)
 
   // Verify optional fields are None
-  assert_eq(decoded.version, None)
-  assert_eq(decoded.secret_hash, None)
-  assert_eq(decoded.payload, None)
-  assert_eq(decoded.target_id, None)
-  assert_eq(decoded.body, @msgpack.nil())
-  assert_eq(decoded.peers, None)
+  assert_true(decoded.version == None)
+  assert_true(decoded.secret_hash == None)
+  assert_true(decoded.payload == None)
+  assert_true(decoded.target_id == None)
+  assert_true(decoded.body == @msgpack.nil())
+  assert_true(decoded.peers == None)
 }

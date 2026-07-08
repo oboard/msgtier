@@ -6,7 +6,7 @@ pub(all) enum PacketType {
   OneRTT
   Retry
   VersionNegotiation
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub struct Header {
@@ -16,7 +16,7 @@ pub struct Header {
   src_cid : BytesView? // None for Short Header
   packet_number : Int64
   payload_length : Int? // None if not present in header
-} derive(Show)
+} derive(Debug)
 
 ///|
 pub struct Connection {
@@ -33,4 +33,4 @@ pub struct Stream {
   mut offset : Int64
   mut fin : Bool
   mut incoming_data : Bytes
-} derive(Show)
+} derive(Debug)

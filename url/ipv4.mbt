@@ -109,10 +109,10 @@ fn IPv4::parse_number(input : StringView) -> UInt64 raise ValidationError {
 ///|
 test "IPv4::parse" {
   let inputs = ["127.0.0.1", "0xffffffff"]
-  json_inspect(inputs.map(input => try? IPv4::parse(input)), content=[
-    { "Ok": [127, 0, 0, 1] },
-    { "Ok": [255, 255, 255, 255] },
-  ])
+  json_inspect(
+    inputs.map(input => Ok(IPv4::parse(input)) catch { e => Err(e) }),
+    content=[{ "Ok": [127, 0, 0, 1] }, { "Ok": [255, 255, 255, 255] }],
+  )
 }
 
 ///|
@@ -120,7 +120,10 @@ test "IPv4::parse_number" {
   json_inspect(IPv4::parse_number("255"), content="255")
   json_inspect(IPv4::parse_number("0xff"), content="255")
   json_inspect(IPv4::parse_number("0377"), content="255")
-  json_inspect(try? IPv4::parse_number("09"), content={
-    "Err": "IPv4NonNumericPart",
-  })
+  json_inspect(
+    Ok(IPv4::parse_number("09")) catch {
+      e => Err(e)
+    },
+    content={ "Err": "IPv4NonNumericPart" },
+  )
 }

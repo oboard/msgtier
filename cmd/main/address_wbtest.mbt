@@ -115,17 +115,17 @@ test "Address::parse invalid port" {
 test "Address ToJson/FromJson roundtrip" {
   let addr = Address::new(Tcp, "10.0.0.1", 8888)
   let json = addr.to_json()
-  inspect(json, content="String(\"tcp://10.0.0.1:8888\")")
+  debug_inspect(json, content="String(\"tcp://10.0.0.1:8888\")")
   let parsed : Address = @json.from_json(json)
   inspect(parsed == addr, content="true")
 }
 
 ///|
 test "Protocol::parse" {
-  inspect(Protocol::parse("tcp"), content="Some(Tcp)")
-  inspect(Protocol::parse("udp"), content="Some(Udp)")
-  inspect(Protocol::parse("ws"), content="Some(Ws)")
-  inspect(Protocol::parse("wss"), content="Some(Wss)")
-  inspect(Protocol::parse("quic"), content="Some(Quic)")
-  inspect(Protocol::parse("http"), content="None")
+  debug_inspect(Protocol::parse("tcp"), content="Some(Tcp)")
+  debug_inspect(Protocol::parse("udp"), content="Some(Udp)")
+  debug_inspect(Protocol::parse("ws"), content="Some(Ws)")
+  debug_inspect(Protocol::parse("wss"), content="Some(Wss)")
+  debug_inspect(Protocol::parse("quic"), content="Some(Quic)")
+  debug_inspect(Protocol::parse("http"), content="None")
 }

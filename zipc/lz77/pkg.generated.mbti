@@ -1,6 +1,10 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "oboard/msgtier/zipc/lz77"
 
+import {
+  "moonbitlang/core/debug",
+}
+
 // Values
 pub fn decode(Array[LZ77Token]) -> Bytes raise
 
@@ -27,21 +31,21 @@ pub fn validate_tokens(Array[LZ77Token]) -> Bool
 // Errors
 
 // Types and methods
-type DecoderState derive(Show)
+type DecoderState derive(@debug.Debug)
 
-type EncoderState derive(Show)
+type EncoderState derive(@debug.Debug)
 
 pub(all) struct LZ77Config {
   window_size : Int
   max_match_length : Int
   min_match_length : Int
   max_distance : Int
-} derive(Eq, Show)
+} derive(Eq, @debug.Debug)
 
 pub enum LZ77Token {
   Literal(Byte)
   Reference(Int, Int)
-} derive(Eq, Show, ToJson)
+} derive(Eq, ToJson, @debug.Debug)
 
 // Type aliases
 

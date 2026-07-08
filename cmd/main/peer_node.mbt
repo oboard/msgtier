@@ -22,7 +22,7 @@ struct PeerNode {
   metadata : Map[String, String]
   addresses : Array[String] // All known addresses for this peer (from gossip discovery)
   connections : Array[PeerConnectionInfo] // List of peer IDs this peer is connected to
-} derive(Show)
+} derive(Debug)
 
 ///|
 impl ToJson for PeerNode with fn to_json(self) {
@@ -41,7 +41,7 @@ enum PeerNodeStatus {
   Unknown // No connection information
   Disconnected // No active connections
   Connected // Has at least one active connection
-} derive(Show, ToJson, FromJson, Eq)
+} derive(Debug, ToJson, FromJson, Eq)
 
 ///|
 fn PeerNode::new(

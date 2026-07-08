@@ -16,7 +16,7 @@ struct Message {
   timestamp : UInt64 // Creation timestamp for TTL and deduplication
   timeout_ms : UInt? // Optional custom timeout in milliseconds
   attachment : Bytes? // Zero-copy attachment
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 fn Message::is_broadcast(self : Message) -> Bool {

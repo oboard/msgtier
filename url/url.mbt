@@ -251,7 +251,7 @@ fn default_port(scheme : StringView) -> UInt16? {
 pub fn Url::set_protocol(self : Url, protocol : String) -> Unit {
   // Parse the scheme from protocol string (strip trailing ":" if present)
   let scheme = match protocol[:] {
-    [.. scheme, ':'] => scheme.to_string()
+    [.. scheme, ':'] => scheme.to_owned()
     _ => protocol
   }
   // Validate scheme: must start with ASCII letter, followed by ASCII alphanumeric, +, -, or .
@@ -386,7 +386,7 @@ pub fn Url::set_search(self : Url, search : String) -> Unit {
     _ => search[:]
   }
   self.query = Some(
-    utf8_percent_encode(query.to_string(), query_percent_encode_set),
+    utf8_percent_encode(query.to_owned(), query_percent_encode_set),
   )
 }
 
@@ -403,7 +403,7 @@ pub fn Url::set_hash(self : Url, hash : String) -> Unit {
     _ => hash[:]
   }
   self.fragment = Some(
-    utf8_percent_encode(fragment.to_string(), fragment_percent_encode_set),
+    utf8_percent_encode(fragment.to_owned(), fragment_percent_encode_set),
   )
 }
 
@@ -454,14 +454,18 @@ fn encode_last_trailing_space(s : String) -> String {
 /// Trim leading and trailing C0 control (U+0000-U+001F) or space (U+0020) from input
 fn trim_c0_control_or_space(input : StringView) -> StringView {
   // Trim from start
-  let input = loop input {
-    ['\u{0000}'..='\u{0020}', .. rest] => continue rest
-    input => break input
+  let input = for state = input {
+    match state {
+      ['\u{0000}'..='\u{0020}', .. rest] => continue rest
+      input => break input
+    }
   }
   // Trim from end
-  let input = loop input {
-    [.. rest, '\u{0000}'..='\u{0020}'] => continue rest
-    input => break input
+  let input = for state = input {
+    match state {
+      [.. rest, '\u{0000}'..='\u{0020}'] => continue rest
+      input => break input
+    }
   }
   input
 }

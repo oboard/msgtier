@@ -79,7 +79,7 @@ pub async fn save_object(id : String, data : Bytes) -> Unit {
     @fs.mkdir(dir, permission=0o644)
   }
   let path = dir + "/" + id
-  @fs.write_file(path, data, create=0o644)
+  @fs.write_file(path, data, create_mode=@fs.CreateOrTruncate, permission=0o644)
 }
 
 ///|
@@ -89,7 +89,7 @@ pub async fn save_object_from_reader(id : String, reader : &@io.Reader) -> Unit 
     @fs.mkdir(dir, permission=0o644)
   }
   let path = dir + "/" + id
-  let file = @fs.open(path, mode=WriteOnly, create=0o644, truncate=true)
+  let file = @fs.open(path, mode=WriteOnly, create_mode=@fs.CreateOrTruncate, permission=0o644)
   defer file.close()
 
   let buf = FixedArray::make(4194304, b'\x00') // 4MB buffer

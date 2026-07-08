@@ -3,12 +3,12 @@ struct ForeignNetworkPacket {
   target_network : String
   target_peer_id : String
   payload : Bytes
-} derive(Show, ToJson, FromJson)
+} derive(Debug, ToJson, FromJson)
 
 ///|
 struct ForeignNetworkManager {
   relay_bps_limit : Int
-} derive(Show)
+} derive(Debug)
 
 ///|
 fn ForeignNetworkManager::new(relay_bps_limit? : Int) -> ForeignNetworkManager {

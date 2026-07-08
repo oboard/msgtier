@@ -2,7 +2,7 @@
 struct HotReloadSettings {
   enable : Bool?
   secret : String?
-} derive(Show, ToJson, FromJson)
+} derive(Debug, ToJson, FromJson)
 
 ///|
 struct Config {
@@ -25,7 +25,7 @@ struct Config {
   upload_dir : String?
   disable_encryption : Bool?
   hot_reload : HotReloadSettings?
-} derive(Show, ToJson, FromJson)
+} derive(Debug, ToJson, FromJson)
 
 ///|
 struct AppState {

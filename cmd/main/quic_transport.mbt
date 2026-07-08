@@ -5,14 +5,14 @@ pub struct QuicTransport {
 }
 
 ///|
-fn QuicTransport::new(addr_str : String) -> QuicTransport raise {
+async fn QuicTransport::new(addr_str : String) -> QuicTransport {
   let endpoint = @quic.Endpoint::new(addr_str)
   { endpoint, connections: {} }
 }
 
 ///|
 impl Transport for QuicTransport with fn send(self, target, data) {
-  let target = target.strip_prefix("quic://").unwrap_or(target).to_string()
+  let target = target.strip_prefix("quic://").unwrap_or(target).to_owned()
   try {
     let conn = match self.connections.get(target) {
       Some(c) => c

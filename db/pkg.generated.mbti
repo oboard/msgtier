@@ -29,13 +29,13 @@ pub impl @engine.FromParam for Message
 pub struct MessageMapperImpl {
   engine : &@engine.Engine
 }
-pub fn MessageMapperImpl::new(&@engine.Engine) -> Self
+pub fn MessageMapperImpl::MessageMapperImpl(&@engine.Engine) -> Self
 pub impl MessageMapper for MessageMapperImpl
 
 // Type aliases
 
 // Traits
 pub trait MessageMapper {
-  async save(Self, Message) -> Message
+  async fn save(Self, Message) -> Message
 }
 

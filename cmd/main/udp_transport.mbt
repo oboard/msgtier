@@ -4,16 +4,16 @@ struct UdpTransport {
 }
 
 ///|
-fn UdpTransport::new(addr_str : String) -> UdpTransport raise {
+async fn UdpTransport::new(addr_str : String) -> UdpTransport {
   let addr = @socket.Addr::parse(addr_str) catch {
     e => abort("Invalid address: " + e.to_string())
   }
-  { server: @socket.UdpServer::new(addr) }
+  { server: @socket.UdpServer(addr) }
 }
 
 ///|
 impl Transport for UdpTransport with fn send(self, target, data) {
-  let target = target.strip_prefix("udp://").unwrap_or(target).to_string()
+  let target = target.strip_prefix("udp://").unwrap_or(target).to_owned()
   let target_addr = @socket.Addr::parse(target) catch { _ => return false }
   for i = 0; i < 3; i = i + 1 {
     try {
@@ -37,7 +37,7 @@ impl Transport for UdpTransport with fn listen(
   for ;; {
     try {
       let (n, sender) = self.server.recvfrom(buf)
-      let bytes = buf.unsafe_reinterpret_as_bytes()[0:n].to_bytes()
+      let bytes = buf.unsafe_reinterpret_as_bytes()[0:n].to_owned()
       handler(bytes, sender.to_string())
     } catch {
       _ => ()
@@ -47,7 +47,7 @@ impl Transport for UdpTransport with fn listen(
 
 ///|
 impl Transport for UdpTransport with fn local_addr(self) {
-  self.server.addr().to_string()
+  self.server.addr.to_string()
 }
 
 ///|
@@ -62,7 +62,7 @@ impl Transport for UdpTransport with fn protocol_type(_self) {
 
 ///|
 impl Transport for UdpTransport with fn local_address(self) {
-  let addr_str = "udp://" + self.server.addr().to_string()
+  let addr_str = "udp://" + self.server.addr.to_string()
   Address::parse(addr_str) catch {
     _ => abort("Invalid local address: " + addr_str)
   }

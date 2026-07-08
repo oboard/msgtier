@@ -15,14 +15,14 @@ pub struct Interface {
   ipv6 : Array[String]
   is_up : Bool
   kind : InterfaceKind
-} derive(Show, Debug, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub enum InterfaceKind {
   Physical
   Virtual
   Loopback
-} derive(Show, Debug, Eq)
+} derive(Debug, Eq)
 
 ///|
 fn parse_line(line : String) -> (String, String, Bool, InterfaceKind) {
@@ -30,7 +30,7 @@ fn parse_line(line : String) -> (String, String, Bool, InterfaceKind) {
   let filtered : Array[String] = []
   for part in parts {
     if !part.is_empty() {
-      filtered.push(part.to_string())
+      filtered.push(part.to_owned())
     }
   }
   match filtered {

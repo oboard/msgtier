@@ -101,7 +101,7 @@ async test "send_message_now_with_route falls back to relay route" {
     "node-b", "node-c", 2,
   )
 
-  let transport = MockRouteTransport::{ sent: Ref::new([]) }
+  let transport = MockRouteTransport::{ sent: Ref([]) }
   register_transport(transport)
 
   let msg = Message::new(
@@ -164,7 +164,7 @@ async test "send_one_helper falls back to relay route for response" {
     "node-b", "node-c", 2,
   )
 
-  let transport = MockRouteTransport::{ sent: Ref::new([]) }
+  let transport = MockRouteTransport::{ sent: Ref([]) }
   register_transport(transport)
 
   let ok = send_one_helper(

@@ -6,7 +6,18 @@ pub enum Protocol {
   Ws
   Wss
   Quic
-} derive(Show, Eq, Hash)
+} derive(Debug, Eq, Hash)
+
+///|
+pub impl Show for Protocol with output(self, logger) {
+  logger.write_string(match self {
+    Tcp => "Tcp"
+    Udp => "Udp"
+    Ws => "Ws"
+    Wss => "Wss"
+    Quic => "Quic"
+  })
+}
 
 ///|
 /// Convert protocol to its string representation
@@ -41,7 +52,7 @@ pub struct Address {
   protocol : Protocol
   host : String // IPv4, IPv6 (without brackets), or hostname
   port : UInt16
-} derive(Show, Eq, Hash)
+} derive(Debug, Eq, Hash)
 
 ///|
 suberror AddressParseError {
@@ -51,7 +62,7 @@ suberror AddressParseError {
   MissingPort
   InvalidPort(String)
   InvalidFormat(String)
-} derive(Show)
+} derive(Debug)
 
 ///|
 /// Create a new Address with the given components
@@ -67,7 +78,7 @@ pub fn Address::new(
 /// Parse an address from a URL string like "tcp://127.0.0.1:9000"
 pub fn Address::parse(input : String) -> Address raise {
   let protocol_str = lexmatch input[:] with longest {
-    (("[^:]+" as protocol) "://", _) => protocol.to_string()
+    (("[^:]+" as protocol) "://", _) => protocol.to_owned()
     _ => raise AddressParseError::MissingProtocol
   }
   guard Protocol::parse(protocol_str[:]) is Some(protocol) else {
@@ -80,7 +91,7 @@ pub fn Address::parse(input : String) -> Address raise {
     "" => raise AddressParseError::MissingHost
     h =>
       if h.has_prefix("[") && h.has_suffix("]") {
-        h[1:h.length() - 1].to_string()
+        h[1:h.length() - 1].to_owned()
       } else {
         h
       }

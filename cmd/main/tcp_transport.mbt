@@ -1,7 +1,7 @@
 ///|
 suberror TransportError {
   TransportError(String)
-} derive(Show)
+} derive(Debug)
 
 ///|
 struct TcpTransportState {
@@ -30,12 +30,12 @@ struct TcpTransport {
 }
 
 ///|
-fn TcpTransport::new(addr_str : String) -> TcpTransport raise {
+async fn TcpTransport::new(addr_str : String) -> TcpTransport {
   let addr = @socket.Addr::parse(addr_str) catch {
     e => abort("Invalid address: " + e.to_string())
   }
   {
-    server: @socket.TcpServer::new(addr, reuse_addr=true),
+    server: @socket.TcpServer(addr, reuse_addr=true),
     connections: {},
     handler: None,
     on_disconnect: None,
@@ -46,7 +46,7 @@ fn TcpTransport::new(addr_str : String) -> TcpTransport raise {
 
 ///|
 impl Transport for TcpTransport with fn send(self, target, data) {
-  let target = target.strip_prefix("tcp://").unwrap_or(target).to_string()
+  let target = target.strip_prefix("tcp://").unwrap_or(target).to_owned()
 
   // Framing: 4 bytes length + data
   let len = data.length()
@@ -71,7 +71,7 @@ impl Transport for TcpTransport with fn send(self, target, data) {
         try {
           let target_addr = @socket.Addr::parse(target)
           let c = @socket.Tcp::connect(target_addr)
-          let wrapper = TcpConnection::{ socket: c, sending: Ref::new(false) }
+          let wrapper = TcpConnection::{ socket: c, sending: Ref(false) }
           self.connections[target] = wrapper
           conn_opt = Some(wrapper)
           created = true
@@ -164,7 +164,7 @@ impl Transport for TcpTransport with fn listen(
     let remote_addr_str = remote_addr.to_string()
     self.connections[remote_addr_str] = TcpConnection::{
       socket: conn,
-      sending: Ref::new(false),
+      sending: Ref(false),
     }
     self.reader_started[remote_addr_str] = true
     let reader = BufferedReader::new(conn)
@@ -203,7 +203,7 @@ impl Transport for TcpTransport with fn listen(
 
 ///|
 impl Transport for TcpTransport with fn local_addr(self) {
-  self.server.addr().to_string()
+  self.server.addr.to_string()
 }
 
 ///|
@@ -218,7 +218,7 @@ impl Transport for TcpTransport with fn protocol_type(_self) {
 
 ///|
 impl Transport for TcpTransport with fn local_address(self) {
-  let addr_str = "tcp://" + self.server.addr().to_string()
+  let addr_str = "tcp://" + self.server.addr.to_string()
   Address::parse(addr_str) catch {
     _ => abort("Invalid local address: " + addr_str)
   }

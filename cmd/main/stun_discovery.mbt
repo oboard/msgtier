@@ -8,7 +8,7 @@ struct StunDiscoveryInfo {
   supports_rfc5780 : Bool
   last_error : String?
   updated_at : UInt64
-} derive(Show, ToJson, Eq)
+} derive(Debug, ToJson, Eq)
 
 ///|
 let stun_default_servers : ReadOnlyArray[String] = [

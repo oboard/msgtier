@@ -125,7 +125,7 @@ async fn run_port_forward_tcp_writer(endpoint : PortForwardTcpEndpoint) -> Bool 
   for ;; {
     match endpoint.pending_writes.val {
       [data, .. rest] => {
-        endpoint.pending_writes.val = rest.to_array()
+        endpoint.pending_writes.val = rest.to_owned()
         if !write_port_forward_tcp_now(endpoint, data) {
           ok = false
           break
@@ -301,14 +301,14 @@ async fn accept_port_forward_tcp_connection(
   )
   let endpoint = {
     socket: conn,
-    send_seq: Ref::new(0),
-    recv_next_seq: Ref::new(0),
-    remote_close_seq: Ref::new(None),
-    recv_buffer: Ref::new({}),
-    pending_writes: Ref::new([]),
-    draining: Ref::new(false),
-    closed: Ref::new(false),
-    cond: @cond_var.Cond::new(),
+    send_seq: Ref(0),
+    recv_next_seq: Ref(0),
+    remote_close_seq: Ref(None),
+    recv_buffer: Ref({}),
+    pending_writes: Ref([]),
+    draining: Ref(false),
+    closed: Ref(false),
+    cond: @cond_var.Cond(),
     rule_id: rule.id,
     peer_id: rule.peer_id,
     protocol: rule.protocol,
@@ -396,20 +396,17 @@ fn start_port_forward_tcp_listener(
   root : @async.TaskGroup[Unit],
   rule : PortForwardForwardRule,
 ) -> Unit {
-  let addr = make_port_forward_socket_addr(rule.listen_host, rule.listen_port)
-  let server = @socket.TcpServer::new(
-    @socket.Addr::parse(addr),
-    reuse_addr=true,
-  ) catch {
-    _ => {
-      log_warn("port_forward tcp listener bind failed: \{addr}")
-      return
-    }
-  }
-  let rule_key = make_port_forward_forward_rule_key(rule)
-  port_forward_registry_state.tcp_forward_started[rule_key] = true
-  port_forward_registry_state.tcp_forward_servers[rule_key] = server
   root.spawn_bg(async fn() {
+    let addr = make_port_forward_socket_addr(rule.listen_host, rule.listen_port)
+    let server = @socket.TcpServer(@socket.Addr::parse(addr), reuse_addr=true) catch {
+      _ => {
+        log_warn("port_forward tcp listener bind failed: \{addr}")
+        return
+      }
+    }
+    let rule_key = make_port_forward_forward_rule_key(rule)
+    port_forward_registry_state.tcp_forward_started[rule_key] = true
+    port_forward_registry_state.tcp_forward_servers[rule_key] = server
     server.run_forever(async fn(conn, _remote_addr) {
       accept_port_forward_tcp_connection(rule, conn)
     })
@@ -489,17 +486,17 @@ fn start_port_forward_udp_listener(
   root : @async.TaskGroup[Unit],
   rule : PortForwardForwardRule,
 ) -> Unit {
-  let addr = make_port_forward_socket_addr(rule.listen_host, rule.listen_port)
-  let server = @socket.UdpServer::new(@socket.Addr::parse(addr)) catch {
-    _ => {
-      log_warn("port_forward udp listener bind failed: \{addr}")
-      return
-    }
-  }
-  let rule_key = make_port_forward_forward_rule_key(rule)
-  let runtime = { rule, server }
-  port_forward_registry_state.udp_forward_runtimes[rule_key] = runtime
   root.spawn_bg(async fn() {
+    let addr = make_port_forward_socket_addr(rule.listen_host, rule.listen_port)
+    let server = @socket.UdpServer(@socket.Addr::parse(addr)) catch {
+      _ => {
+        log_warn("port_forward udp listener bind failed: \{addr}")
+        return
+      }
+    }
+    let rule_key = make_port_forward_forward_rule_key(rule)
+    let runtime = { rule, server }
+    port_forward_registry_state.udp_forward_runtimes[rule_key] = runtime
     run_port_forward_udp_forward_listener(rule_key, runtime)
   })
 }

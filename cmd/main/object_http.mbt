@@ -44,7 +44,7 @@ async fn handle_object_registration(
 
   let id = register_object(path)
 
-  let m = Map::new()
+  let m : Map[String, Json] = {}
   m["id"] = id.to_json()
   let resp_json = m.to_json().stringify()
 
@@ -73,15 +73,15 @@ fn parse_range_header(
         let spec = r.replace(old="bytes=", new="")
         let parts = []
         for part in spec.split("-") {
-          parts.push(part.to_string())
+          parts.push(part.to_owned())
         }
         if parts.length() != 2 {
           None
         } else {
           let start_str = parts[0]
           let end_str = parts[1]
-          let start_opt = try? @string.parse_int(start_str)
-          let end_opt = try? @string.parse_int(end_str)
+          let start_opt : Result[Int, _] = try Ok(@string.parse_int(start_str)) catch { e => Err(e) }
+          let end_opt : Result[Int, _] = try Ok(@string.parse_int(end_str)) catch { e => Err(e) }
           match (start_opt, end_opt) {
             (Ok(start), Ok(end)) =>
               if start < 0 {

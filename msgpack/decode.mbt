@@ -335,7 +335,7 @@ fn decode_map(
   start_offset : Int,
   length : Int,
 ) -> (Value, Int) raise MsgPackError {
-  let map = Map::new()
+  let map : Map[String, Value] = Map([], capacity=0)
   let mut offset = start_offset
   for i = 0; i < length; i = i + 1 {
     if offset >= data.length() {

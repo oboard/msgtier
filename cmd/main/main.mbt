@@ -91,7 +91,7 @@ fn start_listener(
 }
 
 ///|
-fn create_transport(scheme : String, host : String) -> &Transport raise {
+async fn create_transport(scheme : String, host : String) -> &Transport {
   match scheme {
     "tcp" => (TcpTransport::new(host) : &Transport)
     "udp" => (UdpTransport::new(host) : &Transport)

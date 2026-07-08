@@ -116,7 +116,7 @@ async fn handle_ws_incoming(text : String) -> String? {
       let body = match (kind, content_val) {
         ("text", Some(String(s))) => @msgpack.string(s)
         ("file", Some(Object(fields))) | ("image", Some(Object(fields))) => {
-          let mp_map : Map[String, @msgpack.Value] = Map::new()
+          let mp_map : Map[String, @msgpack.Value] = Map([], capacity=0)
           for k, v in fields {
             let mp_val = match v {
               String(s) => @msgpack.string(s)
@@ -166,7 +166,7 @@ async fn handle_ws_connection(
   let client_addr = conn.client_addr().to_string()
   try {
     let ws = @websocket.from_http_server(request, conn)
-    let sending_lock = Ref::new(false)
+    let sending_lock = Ref(false)
     http_state.ws_clients[client_addr] = WsClient::{
       conn: ws,
       sending: sending_lock,
@@ -282,11 +282,11 @@ async fn handle_http_request(
     if query is Some(query) {
       let parts = query.split("&")
       for part in parts {
-        let part_str = part.to_string()
+        let part_str = part.to_owned()
         if part_str.has_prefix("peer=") {
-          peer_id = Some(part_str[5:].to_string())
+          peer_id = Some(part_str[5:].to_owned())
         } else if part_str.has_prefix("filename=") {
-          filename = Some(part_str[9:].to_string())
+          filename = Some(part_str[9:].to_owned())
         }
       }
     }
@@ -310,11 +310,11 @@ async fn handle_http_request(
     if query is Some(query) {
       let parts = query.split("&")
       for part in parts {
-        let part_str = part.to_string()
+        let part_str = part.to_owned()
         if part_str.has_prefix("peer=") {
-          peer_id = Some(part_str[5:].to_string())
+          peer_id = Some(part_str[5:].to_owned())
         } else if part_str.has_prefix("path=") {
-          proxy_path = Some(part_str[5:].to_string())
+          proxy_path = Some(part_str[5:].to_owned())
         }
       }
     }
@@ -337,7 +337,7 @@ async fn handle_http_request(
             forward_headers[k] = v
           }
         }
-        let method_ = request.meth.to_string().to_upper()
+        let method_ = @debug.to_string(request.meth).to_upper()
         let body_bytes = body.read_all().binary()
         let _ = root.spawn_bg(async fn() {
           match
@@ -500,7 +500,7 @@ async fn start_http_service(
   init_chat_store()
   for ;; {
     try {
-      let server = @http.Server::new(@socket.Addr::parse(addr), reuse_addr=true)
+      let server = @http.Server(@socket.Addr::parse(addr), reuse_addr=true)
       server.run_forever((req, body, conn) => {
         handle_http_request(root, req, body, conn)
       })

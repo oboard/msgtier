@@ -17,7 +17,7 @@ struct PeerConnectionInfo {
   bandwidth_mbps : Double
   packet_loss_rate : Int
   nat_type : NatType
-} derive(Show)
+} derive(Debug)
 
 ///|
 fn peer_conn_metadata_to_json_map(

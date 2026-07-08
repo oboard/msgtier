@@ -8,7 +8,7 @@ pub enum Level {
   Fast
   Default
   Best
-} derive(Show)
+} derive(Debug)
 
 // Helper functions to create Level values
 

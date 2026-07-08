@@ -371,7 +371,7 @@ pub fn encode_default(data : Bytes) -> Array[LZ77Token] {
 /// ```
 pub fn encode_to_bytes(data : Bytes, config : LZ77Config) -> Bytes { // First, encode to token format
   let tokens = encode(data, config)
-  let output = @buffer.new()
+  let output = Buffer()
   // Serialize each token to byte format
   for token in tokens {
     match token {
@@ -436,7 +436,7 @@ fn write_uleb128(buffer : @buffer.Buffer, value : Int) -> Unit {
 
 ///|
 test "write_uleb128" {
-  let buffer = @buffer.new()
+  let buffer = Buffer()
   write_uleb128(buffer, 0)
   assert_eq(buffer.to_bytes(), b"\x00")
   buffer.reset()

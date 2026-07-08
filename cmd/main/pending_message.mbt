@@ -18,7 +18,7 @@ struct PendingState {
 ///|
 let pending_state : PendingState = {
   messages: [],
-  cond: @cond_var.Cond::new(),
+  cond: @cond_var.Cond(),
   generation: 0,
   send_times: {},
 }

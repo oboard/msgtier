@@ -3,6 +3,7 @@ package "oboard/msgtier/stun"
 
 import {
   "moonbitlang/async/socket",
+  "moonbitlang/core/debug",
 }
 
 // Values
@@ -38,7 +39,7 @@ pub fn rewrite_socket_port(String, Int) -> String
 pub suberror StunError {
   InvalidMessage(String)
   EncodeError(String)
-} derive(Show)
+} derive(@debug.Debug)
 
 // Types and methods
 pub enum Attribute {
@@ -50,7 +51,7 @@ pub enum Attribute {
   ErrorCode(Int, String)
   Fingerprint(UInt)
   Unknown(Int, Bytes)
-} derive(Eq, Show)
+} derive(Eq, @debug.Debug)
 
 pub struct BindingProbeResult {
   server_address : String
@@ -58,7 +59,7 @@ pub struct BindingProbeResult {
   other_address : String?
   rtt_ms : Int
   supports_rfc5780 : Bool
-} derive(Eq, Show)
+} derive(Eq, @debug.Debug)
 
 pub enum FilteringBehavior {
   EndpointIndependentFiltering
@@ -66,7 +67,7 @@ pub enum FilteringBehavior {
   AddressAndPortDependentFiltering
   Unsupported
   Unknown
-} derive(Eq, Show)
+} derive(Eq, @debug.Debug)
 
 pub enum MappingBehavior {
   EndpointIndependentMapping
@@ -74,27 +75,27 @@ pub enum MappingBehavior {
   AddressAndPortDependentMapping
   Unsupported
   Unknown
-} derive(Eq, Show)
+} derive(Eq, @debug.Debug)
 
 pub struct Message {
   class_ : MessageClass
   msg_method : Int
   transaction_id : Bytes
   attributes : Array[Attribute]
-} derive(Eq, Show)
+} derive(Eq, @debug.Debug)
 
 pub enum MessageClass {
   Request
   Indication
   SuccessResponse
   ErrorResponse
-} derive(Eq, Show)
+} derive(Eq, @debug.Debug)
 
 pub struct NatProbeResult {
   binding : BindingProbeResult
   mapping_behavior : MappingBehavior
   filtering_behavior : FilteringBehavior
-} derive(Eq, Show)
+} derive(Eq, @debug.Debug)
 
 // Type aliases
 

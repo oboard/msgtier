@@ -4,7 +4,7 @@
 struct PeerManager {
   peers : Map[String, PeerNode] // peer_id -> PeerNode
   routes : Map[String, Route] // target_peer_id -> Route
-} derive(Show)
+} derive(Debug)
 
 ///|
 fn PeerManager::new() -> PeerManager {

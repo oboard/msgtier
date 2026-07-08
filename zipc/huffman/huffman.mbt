@@ -7,7 +7,7 @@
 pub struct BitReader {
   data : Bytes
   mut bit_offset : Int // Current bit position
-} derive(Show)
+} derive(Debug)
 
 // Create a new bit reader
 
@@ -341,7 +341,7 @@ pub fn decompress_fixed_huffman_block_bytes(
 
   // Create bit reader starting from the offset
   let remaining_length = compressed.length() - offset
-  let block_data = @buffer.new()
+  let block_data = Buffer()
   for i = 0; i < remaining_length; i = i + 1 {
     block_data.write_byte(compressed[offset + i])
   }
@@ -370,7 +370,7 @@ pub fn decompress_fixed_huffman_block_bytes(
       } else {
         remaining_bytes
       }
-      let fallback = @buffer.new()
+      let fallback = Buffer()
       for i = 0; i < bytes_to_copy; i = i + 1 {
         fallback.write_byte(compressed[offset + i])
       }
@@ -506,7 +506,7 @@ pub fn decompress_huffman_data(
   literal_tree : HuffmanNode,
   distance_tree : HuffmanNode,
 ) -> Bytes raise {
-  let output = @buffer.new()
+  let output = Buffer()
   let mut symbols_decoded = 0
   let max_symbols = 1000000
   while symbols_decoded < max_symbols {

@@ -2,7 +2,7 @@
 pub let dist : Map[StringView, Bytes] = {}
 
 ///|
-let dist_loaded : Ref[Bool] = Ref::new(false)
+let dist_loaded : Ref[Bool] = Ref(false)
 
 ///|
 fn load_dist_archive() -> Unit {

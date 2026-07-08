@@ -7,7 +7,7 @@ pub enum Compression {
   Stored
   Deflate
   Other(Int)
-} derive(Show)
+} derive(Debug)
 
 ///|
 pub type Fpath = String
@@ -68,7 +68,7 @@ pub let max_path_length : Int = 65535
 
 ///|
 pub fn empty() -> Archive {
-  { members: Map::new() }
+  { members: Map([], capacity=0) }
 }
 
 ///|
@@ -267,7 +267,7 @@ pub fn file_to_bytes(file : File) -> Bytes raise {
       let data_view = file.compressed_bytes[file.start:file.start +
         file.compressed_size]
       // Convert view back to bytes
-      data_view.to_bytes()
+      data_view.to_owned()
     }
     Compression::Deflate =>
       // Use bytes-based decompression for better performance
@@ -801,5 +801,5 @@ fn read_file_data_bytes(
     return @deflate.err("File data extends beyond archive")
   }
   let file_data = data[file_data_offset:file_data_offset + compressed_size]
-  @deflate.ok(file_data.to_bytes())
+  @deflate.ok(file_data.to_owned())
 }

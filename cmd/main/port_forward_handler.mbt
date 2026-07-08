@@ -228,14 +228,14 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
           }
           let endpoint = {
             socket: conn,
-            send_seq: Ref::new(0),
-            recv_next_seq: Ref::new(0),
-            remote_close_seq: Ref::new(None),
-            recv_buffer: Ref::new({}),
-            pending_writes: Ref::new([]),
-            draining: Ref::new(false),
-            closed: Ref::new(false),
-            cond: @cond_var.Cond::new(),
+            send_seq: Ref(0),
+            recv_next_seq: Ref(0),
+            remote_close_seq: Ref(None),
+            recv_buffer: Ref({}),
+            pending_writes: Ref([]),
+            draining: Ref(false),
+            closed: Ref(false),
+            cond: @cond_var.Cond(),
             rule_id,
             peer_id: msg.source_id,
             protocol,
@@ -311,7 +311,7 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
               return
             }
           }
-          let client = @socket.UdpClient::new(server_addr) catch {
+          let client = @socket.UdpClient(server_addr) catch {
             _ => {
               log_debug(
                 "port_forward open udp client failed requester=\{msg.source_id} rule=\{rule_id} target=\{rule.target_host}:\{rule.target_port}",

@@ -50,7 +50,9 @@ test "decode basic values" {
 test "error cases" {
   // Test empty data
   let empty_data = Bytes::from_array([])
-  let result : Result[Value, MsgPackError] = try? decode(empty_data)
+  let result : Result[Value, MsgPackError] = Ok(decode(empty_data)) catch {
+    e => Err(e)
+  }
   match result {
     Err(InvalidData(_)) => ()
     _ => fail("Expected InvalidData error")

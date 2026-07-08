@@ -12,7 +12,7 @@ pub(all) enum Frame {
   MaxStreamData(Int64, Int64)
   ConnectionClose(ConnectionCloseFrame)
   HandshakeDone
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub struct StreamFrame {
@@ -20,7 +20,7 @@ pub struct StreamFrame {
   offset : Int64
   fin : Bool
   data : Bytes
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub struct AckFrame {
@@ -28,35 +28,35 @@ pub struct AckFrame {
   delay : Int64
   first_ack_range : Int64
   // ranges : Array[AckRange]
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub struct ResetStreamFrame {
   stream_id : Int64
   error_code : Int64
   final_size : Int64
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub struct StopSendingFrame {
   stream_id : Int64
   error_code : Int64
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub struct CryptoFrame {
   offset : Int64
   data : Bytes
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub struct NewTokenFrame {
   token : Bytes
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub struct ConnectionCloseFrame {
   error_code : Int64
   frame_type : Int64?
   reason_phrase : String
-} derive(Show, Eq)
+} derive(Debug, Eq)

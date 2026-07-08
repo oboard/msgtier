@@ -2,8 +2,7 @@
 fn parse_channel_chat_request(
   body_str : String,
 ) -> (String, String, String, Array[Json], String, Bool)? {
-  let parsed = @json.parse(body_str) catch { _ => return None }
-  guard parsed is Object(obj) else { None }
+  let obj = @json.parse(body_str) catch { _ => return None }
   let peer_id0 = @jsonx.get(obj, "peer_id")
   let channel_id0 = @jsonx.get(obj, "channel_id")
   let instance_id = @jsonx.get(obj, "instance_id")
@@ -166,7 +165,7 @@ fn split_stream_chunks(text : String) -> Array[String] {
   }
   let mut current = ""
   for part in text.split(" ") {
-    let token = part.to_string()
+    let token = part.to_owned()
     let next = if current == "" { token } else { current + " " + token }
     if next.length() >= 24 {
       chunks.push(next)
@@ -199,11 +198,11 @@ fn parse_sse_done_payload(raw : String) -> Json? {
     let mut event_name = ""
     let mut data = ""
     for raw_line in block.split("\n") {
-      let line = raw_line.trim().to_string()
+      let line = raw_line.trim().to_owned()
       if line.has_prefix("event:") {
-        event_name = line[6:].trim().to_string()
+        event_name = line[6:].trim().to_owned()
       } else if line.has_prefix("data:") {
-        data = data + line[5:].trim().to_string()
+        data = data + line[5:].trim().to_owned()
       }
     }
     if event_name == "done" && data != "" {
@@ -325,7 +324,7 @@ async fn proxy_channel_chat_request_stream(
   let req_id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
   add_stream_request(req_id)
   let body = @utf8.encode(body_str)
-  let body_map : Map[String, @msgpack.Value] = Map::new()
+  let body_map : Map[String, @msgpack.Value] = Map([], capacity=0)
   body_map["method"] = @msgpack.string("POST")
   body_map["path"] = @msgpack.string("/api/channels/chat/local/stream")
   body_map["headers"] = headers_to_msgpack({

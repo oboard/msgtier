@@ -101,13 +101,13 @@ test "encode arrays" {
 ///|
 test "encode maps" {
   // Test empty map
-  let empty_map = Map::new()
+  let empty_map : Map[String, Value] = Map([], capacity=0)
   let result_empty = encode(map(empty_map))
   let expected_empty = bytes([0x80])
   inspect(bytes_equal(result_empty, expected_empty), content="true")
 
   // Test simple map - we'll just test that it encodes without error
-  let simple_map = Map::new()
+  let simple_map : Map[String, Value] = Map([], capacity=0)
   simple_map["a"] = int(2)
   simple_map["b"] = int(3)
   let result_simple = encode(map(simple_map))

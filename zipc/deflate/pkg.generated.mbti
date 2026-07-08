@@ -2,6 +2,7 @@
 package "oboard/msgtier/zipc/deflate"
 
 import {
+  "moonbitlang/core/debug",
   "oboard/msgtier/zipc/adler32",
   "oboard/msgtier/zipc/crc32",
 }
@@ -74,7 +75,7 @@ pub enum Level {
   Fast
   Default
   Best
-} derive(Show)
+} derive(@debug.Debug)
 
 pub enum Result[T, E] {
   Ok(T)

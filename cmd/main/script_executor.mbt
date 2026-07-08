@@ -108,16 +108,16 @@ fn resolve_script_request(
   match parts {
     [name, .. args] => {
       if scripts.contains(name) {
-        return (name, args.to_array())
+        return (name, args.to_owned())
       }
       match parts {
         [interpreter, nested_name, .. nested_args] =>
           if is_script_interpreter(interpreter) && scripts.contains(nested_name) {
-            (nested_name, nested_args.to_array())
+            (nested_name, nested_args.to_owned())
           } else {
-            (name, args.to_array())
+            (name, args.to_owned())
           }
-        _ => (name, args.to_array())
+        _ => (name, args.to_owned())
       }
     }
     _ => ("", [])

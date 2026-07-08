@@ -2,7 +2,7 @@
 
 ///|
 pub fn encode(value : Value) -> Bytes {
-  let buffer = @buffer.new()
+  let buffer = Buffer()
   encode_to_buffer(buffer, value)
   buffer.to_bytes()
 }

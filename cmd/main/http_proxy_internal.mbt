@@ -126,7 +126,7 @@ async fn proxy_http_request(
   let timeout_ms_uint = timeout_ms.reinterpret_as_uint()
   let req_id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
   add_pending_request(req_id)
-  let body_map : Map[String, @msgpack.Value] = Map::new()
+  let body_map : Map[String, @msgpack.Value] = Map([], capacity=0)
   body_map["method"] = @msgpack.string(http_method)
   body_map["path"] = @msgpack.string(path)
   body_map["headers"] = headers_to_msgpack(headers)
@@ -179,7 +179,7 @@ async fn proxy_http_request_stream(
     details="req=\{req_id} peer=\{peer_id} path=\{path}",
   )
   add_stream_request(req_id)
-  let body_map : Map[String, @msgpack.Value] = Map::new()
+  let body_map : Map[String, @msgpack.Value] = Map([], capacity=0)
   body_map["method"] = @msgpack.string(http_method)
   body_map["path"] = @msgpack.string(path)
   body_map["headers"] = headers_to_msgpack(headers)
@@ -316,9 +316,9 @@ async fn handle_internal_http_request(
     if query is Some(query) {
       let parts = query.split("&")
       for part in parts {
-        let part_str = part.to_string()
+        let part_str = part.to_owned()
         if part_str.has_prefix("filename=") {
-          filename = Some(part_str[9:].to_string())
+          filename = Some(part_str[9:].to_owned())
         }
       }
     }
@@ -359,7 +359,7 @@ async fn handle_internal_http_request(
   } else if http_method == "POST" && path == "/api/object" {
     let id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
     save_object(id, body)
-    let m = Map::new()
+    let m : Map[String, Json] = {}
     m["id"] = id.to_json()
     let json_str = m.to_json().stringify()
     let resp_headers : Map[String, String] = {
@@ -391,7 +391,7 @@ async fn handle_internal_http_request(
       )
     }
     let id = register_object(path)
-    let m = Map::new()
+    let m : Map[String, Json] = {}
     m["id"] = id.to_json()
     let resp_json = m.to_json().stringify()
     let resp_headers : Map[String, String] = {
@@ -399,7 +399,7 @@ async fn handle_internal_http_request(
     }
     (200, resp_headers, ResponseBody::Bytes(@utf8.encode(resp_json)))
   } else if http_method == "POST" && path == "/object" {
-    let body_str = @utf8.decode(body).trim().to_string()
+    let body_str = @utf8.decode(body).trim().to_owned()
     if body_str == "" {
       let resp_headers : Map[String, String] = {}
       (
@@ -409,7 +409,7 @@ async fn handle_internal_http_request(
       )
     } else {
       let id = register_object(body_str)
-      let m = Map::new()
+      let m : Map[String, Json] = {}
       m["id"] = id.to_json()
       let resp_json = m.to_json().stringify()
       let resp_headers : Map[String, String] = {

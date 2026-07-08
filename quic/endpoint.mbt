@@ -5,17 +5,17 @@ pub struct Endpoint {
 }
 
 ///|
-pub fn Endpoint::new(addr_str : String) -> Endpoint raise {
+pub async fn Endpoint::new(addr_str : String) -> Endpoint {
   let addr = @socket.Addr::parse(addr_str) catch {
     e => abort("Invalid address: " + e.to_string())
   }
-  let socket = @socket.UdpServer::new(addr)
+  let socket = @socket.UdpServer(addr)
   { socket, connections: {} }
 }
 
 ///|
 pub fn Endpoint::addr(self : Endpoint) -> @socket.Addr {
-  self.socket.addr()
+  self.socket.addr
 }
 
 ///|

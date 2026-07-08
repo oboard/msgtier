@@ -2,7 +2,7 @@
 pub suberror StunError {
   InvalidMessage(String)
   EncodeError(String)
-} derive(Show)
+} derive(Debug)
 
 ///|
 pub enum MessageClass {
@@ -10,7 +10,7 @@ pub enum MessageClass {
   Indication
   SuccessResponse
   ErrorResponse
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub enum MappingBehavior {
@@ -19,7 +19,7 @@ pub enum MappingBehavior {
   AddressAndPortDependentMapping
   Unsupported
   Unknown
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub enum FilteringBehavior {
@@ -28,7 +28,7 @@ pub enum FilteringBehavior {
   AddressAndPortDependentFiltering
   Unsupported
   Unknown
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub enum Attribute {
@@ -40,7 +40,7 @@ pub enum Attribute {
   ErrorCode(Int, String)
   Fingerprint(UInt)
   Unknown(Int, Bytes)
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub struct Message {
@@ -48,7 +48,7 @@ pub struct Message {
   msg_method : Int
   transaction_id : Bytes
   attributes : Array[Attribute]
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub struct BindingProbeResult {
@@ -57,14 +57,14 @@ pub struct BindingProbeResult {
   other_address : String?
   rtt_ms : Int
   supports_rfc5780 : Bool
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub struct NatProbeResult {
   binding : BindingProbeResult
   mapping_behavior : MappingBehavior
   filtering_behavior : FilteringBehavior
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 let stun_magic_cookie : Int = 0x2112A442
@@ -208,7 +208,7 @@ pub fn decode_message(raw : Bytes) -> Message raise StunError {
   guard stun_header_len + body_len <= raw.length() else {
     raise InvalidMessage("declared STUN length exceeds packet size")
   }
-  let transaction_id = raw[8:20].to_bytes()
+  let transaction_id = raw[8:20].to_owned()
   let attrs : Array[Attribute] = []
   let mut offset = stun_header_len
   let end = stun_header_len + body_len
@@ -223,7 +223,7 @@ pub fn decode_message(raw : Bytes) -> Message raise StunError {
     guard value_end <= end else {
       raise InvalidMessage("truncated STUN attribute payload")
     }
-    let value = raw[value_start:value_end].to_bytes()
+    let value = raw[value_start:value_end].to_owned()
     attrs.push(decode_attribute(attr_type, value, transaction_id))
     offset = value_end
     while offset % 4 != 0 && offset < end {
@@ -296,7 +296,7 @@ pub async fn probe_binding(
   timeout_ms? : Int = 1500,
   bind_addr? : String = "0.0.0.0:0",
 ) -> BindingProbeResult? {
-  let socket = @socket.UdpServer::new(parse_bind_addr(bind_addr)) catch {
+  let socket = @socket.UdpServer(parse_bind_addr(bind_addr)) catch {
     _ => return None
   }
   defer socket.close()
@@ -305,8 +305,8 @@ pub async fn probe_binding(
   let request = build_binding_request()
   let start = @env.now()
   let encoded = encode_message(request) catch { _ => return None }
-  if (try? socket.sendto(encoded, server_addr)) is Err(_) {
-    return None
+  socket.sendto(encoded, server_addr) catch {
+    _ => return None
   }
   let response = read_transaction_response(
     socket,
@@ -333,7 +333,7 @@ pub async fn probe_nat_behavior(
   timeout_ms? : Int = 1500,
   bind_addr? : String = "0.0.0.0:0",
 ) -> NatProbeResult? {
-  let socket = @socket.UdpServer::new(parse_bind_addr(bind_addr)) catch {
+  let socket = @socket.UdpServer(parse_bind_addr(bind_addr)) catch {
     _ => return None
   }
   defer socket.close()
@@ -411,8 +411,8 @@ pub async fn probe_binding_with_socket(
   let request = build_binding_request(change_ip~, change_port~)
   let start = @env.now()
   let encoded = encode_message(request) catch { _ => return None }
-  if (try? socket.sendto(encoded, server_addr)) is Err(_) {
-    return None
+  socket.sendto(encoded, server_addr) catch {
+    _ => return None
   }
   let response = read_transaction_response(
     socket,
@@ -443,7 +443,7 @@ async fn read_transaction_response(
     for ;; {
       let (n, _) = socket.recvfrom(buf)
       guard n >= stun_header_len else { continue }
-      let raw = buf.unsafe_reinterpret_as_bytes()[0:n].to_bytes()
+      let raw = buf.unsafe_reinterpret_as_bytes()[0:n].to_owned()
       if !is_stun_message(raw) {
         continue
       }
@@ -563,7 +563,7 @@ fn decode_error_code(value : Bytes) -> Attribute raise StunError {
   }
   let code = value[2].to_int() * 100 + value[3].to_int()
   let reason = if value.length() > 4 {
-    value[4:value.length()].to_bytes().to_string()
+    value[4:value.length()].to_owned().to_string()
   } else {
     ""
   }
@@ -738,15 +738,15 @@ fn parse_bind_addr(bind_addr : String) -> @socket.Addr {
 ///|
 pub async fn resolve_server(server : String) -> @socket.Addr? {
   let normalized : String = if server.has_prefix("udp://") {
-    server[6:server.length()].to_string()
+    server[6:server.length()].to_owned()
   } else if server.has_prefix("stun://") {
-    server[7:server.length()].to_string()
+    server[7:server.length()].to_owned()
   } else if server.has_prefix("stun:") {
-    server[5:server.length()].to_string()
+    server[5:server.length()].to_owned()
   } else {
     server
   }
-  let direct = (try? @socket.Addr::parse(normalized)).to_option()
+  let direct = Some(@socket.Addr::parse(normalized)) catch { _ => None }
   match direct {
     Some(addr) => Some(addr)
     None => {
@@ -756,7 +756,9 @@ pub async fn resolve_server(server : String) -> @socket.Addr? {
         split_ipv4_host_port(normalized)
       }
       guard parts is Some((host, port)) else { return None }
-      (try? @socket.Addr::resolve(host, port~)).to_option()
+      Some(@socket.Addr::resolve(host, port~)) catch {
+        _ => None
+      }
     }
   }
 }
@@ -768,9 +770,9 @@ fn split_ipv4_host_port(value : String) -> (String, Int)? {
       if host.contains(":") || port == "" {
         None
       } else {
-        (try? @string.parse_int(port))
-        .to_option()
-        .map(parsed => (host.to_string(), parsed))
+        (Some(@string.parse_int(port)) catch { _ => None }).map(parsed => {
+          (host.to_owned(), parsed)
+        })
       }
     None => None
   }
@@ -783,9 +785,9 @@ fn split_ipv6_host_port(value : String) -> (String, Int)? {
       if !host.has_prefix("[") || port == "" {
         None
       } else {
-        (try? @string.parse_int(port))
-        .to_option()
-        .map(parsed => (host[1:host.length()].to_string(), parsed))
+        (Some(@string.parse_int(port)) catch { _ => None }).map(parsed => {
+          (host[1:host.length()].to_owned(), parsed)
+        })
       }
     None => None
   }
@@ -793,19 +795,21 @@ fn split_ipv6_host_port(value : String) -> (String, Int)? {
 
 ///|
 fn replace_port(addr : @socket.Addr, port : Int) -> @socket.Addr? {
-  (try? @socket.Addr::parse(rewrite_socket_port(addr.to_string(), port))).to_option()
+  Some(@socket.Addr::parse(rewrite_socket_port(addr.to_string(), port))) catch {
+    _ => None
+  }
 }
 
 ///|
 pub fn rewrite_socket_port(socket_addr : String, port : Int) -> String {
   if socket_addr.has_prefix("[") {
     match socket_addr[:].split_once("]:") {
-      Some((host, _)) => host.to_string() + "]:" + port.to_string()
+      Some((host, _)) => host.to_owned() + "]:" + port.to_string()
       None => socket_addr
     }
   } else {
     match socket_addr[:].split_once(":") {
-      Some((host, _)) => host.to_string() + ":" + port.to_string()
+      Some((host, _)) => host.to_owned() + ":" + port.to_string()
       None => socket_addr
     }
   }

@@ -55,7 +55,7 @@ fn add_pending_request(id : String) -> Unit {
     }
   }
   request_tracker_state.tracker.pending[id] = {
-    cond: @cond_var.Cond::new(),
+    cond: @cond_var.Cond(),
     headers: {},
     response: None,
     created_at: @env.now(),
@@ -78,7 +78,7 @@ fn add_stream_request(id : String) -> Unit {
     }
   }
   streams[id] = {
-    cond: @cond_var.Cond::new(),
+    cond: @cond_var.Cond(),
     queue: [],
     queue_head: 0,
     chunks: {},

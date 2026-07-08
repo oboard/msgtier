@@ -16,7 +16,7 @@ struct OpenClawRuntimeInstance {
   executable_path : String?
   state_dir : String?
   profile : String?
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 struct OpenClawPublicInstance {
@@ -27,7 +27,7 @@ struct OpenClawPublicInstance {
   api : String
   state : String
   gateway_port : Int
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 struct ChannelInstance {
@@ -36,7 +36,7 @@ struct ChannelInstance {
   label : String
   state : String
   meta : Json
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 struct OpenClawState {
@@ -260,7 +260,12 @@ async fn write_text_file_if_changed(path : String, contents : String) -> Bool {
   if existing == contents {
     false
   } else {
-    @fs.write_file(path, @utf8.encode(contents), create=0o644) catch {
+    @fs.write_file(
+      path,
+      @utf8.encode(contents),
+      create_mode=@fs.CreateOrTruncate,
+      permission=0o644,
+    ) catch {
       _ => return false
     }
     true
@@ -270,7 +275,7 @@ async fn write_text_file_if_changed(path : String, contents : String) -> Bool {
 ///|
 async fn ensure_msgtier_openclaw_plugin_files(plugin_dir : String) -> Bool {
   let parent_dir = match find_last_path_sep(plugin_dir) {
-    Some(pos) => plugin_dir[:pos].to_string()
+    Some(pos) => plugin_dir[:pos].to_owned()
     None => ""
   }
   if parent_dir != "" {
@@ -415,7 +420,8 @@ async fn set_openclaw_plugin_config_state(
       @fs.write_file(
         config_path,
         @utf8.encode(next_root.to_json().stringify(indent=2)),
-        create=0o600,
+        create_mode=@fs.CreateOrTruncate,
+        permission=0o600,
       ) catch {
         _ => return false
       }
@@ -576,7 +582,7 @@ async fn find_executable_candidates(platform : String) -> Array[String] {
   match command_output {
     Some(paths) =>
       for line in paths.split("\n") {
-        let path = line.trim().to_string()
+        let path = line.trim().to_owned()
         if path != "" && !seen.contains(path) {
           seen[path] = true
           out.push(path)
@@ -667,11 +673,12 @@ async fn read_state_dir_config(state_dir : String) -> Map[String, Json]? {
 ///|
 fn resolve_config_auth_mode(state_config : Map[String, Json]?) -> String? {
   if state_config is Some(config) {
+    let cfg : Json = Json::object(config)
     first_non_empty(
-      @jsonx.strs(config, ["gateway", "auth", "mode"]),
+      @jsonx.strf(cfg, ["gateway", "auth", "mode"]),
       first_non_empty(
-        @jsonx.strs(config, ["gateway", "mode"]),
-        @jsonx.strf(config, "auth_mode"),
+        @jsonx.strf(cfg, ["gateway", "mode"]),
+        @jsonx.strf(cfg, "auth_mode"),
       ),
     )
   } else {
@@ -698,7 +705,7 @@ fn resolve_profile(state_config : Map[String, Json]?) -> String? {
       Some(v)
     }
   } else if state_config is Some(config) {
-    @jsonx.strf(config, "profile")
+    @jsonx.strf(Json::object(config), "profile")
   } else {
     None
   }
@@ -716,7 +723,9 @@ fn parse_base_url_port(base_url : String) -> Int? {
           Some(80)
         }
       } else {
-        (try? @string.parse_int(port)).to_option()
+        Some(@string.parse_int(port)) catch {
+          _ => None
+        }
       }
     }
     None => None
@@ -732,23 +741,24 @@ fn resolve_openclaw_base_url(
   }
   match @sys.get_env_var("OPENCLAW_GATEWAY_PORT") {
     Some(v) =>
-      if (try? @string.parse_int(v)) is Ok(port) {
+      if (Some(@string.parse_int(v)) catch { _ => None }) is Some(port) {
         return ("http://127.0.0.1:" + port.to_string(), port)
       }
     None => ()
   }
   if state_config is Some(config) {
+    let cfg : Json = Json::object(config)
     if first_non_empty(
-        @jsonx.strf(config, "base_url"),
-        @jsonx.strf(config, "gateway_url"),
+        @jsonx.strf(cfg, "base_url"),
+        @jsonx.strf(cfg, "gateway_url"),
       )
       is Some(v) {
       return (v, parse_base_url_port(v).unwrap_or(18789))
     }
-    if @jsonx.intf(config, "gateway_port") is Some(port) {
+    if @jsonx.intf(cfg, "gateway_port") is Some(port) {
       return ("http://127.0.0.1:" + port.to_string(), port)
     }
-    if @jsonx.intf(config, "port") is Some(port) {
+    if @jsonx.intf(cfg, "port") is Some(port) {
       return ("http://127.0.0.1:" + port.to_string(), port)
     }
   }
@@ -766,7 +776,7 @@ fn resolve_agent_id(state_config : Map[String, Json]?) -> String {
   } else if resolve_profile(state_config) is Some(v) {
     v
   } else if state_config is Some(config) {
-    @jsonx.strf(config, "agent_id").unwrap_or("main")
+    @jsonx.strf(Json::object(config), "agent_id").unwrap_or("main")
   } else {
     "main"
   }
@@ -794,13 +804,14 @@ fn resolve_auth(
     @sys.get_env_var("OPENCLAW_PASSWORD"),
   )
   let state_token = if state_config is Some(config) {
+    let cfg : Json = Json::object(config)
     first_non_empty(
-      @jsonx.strs(config, ["gateway", "auth", "token"]),
+      @jsonx.strf(cfg, ["gateway", "auth", "token"]),
       first_non_empty(
-        @jsonx.strs(config, ["gateway", "token"]),
+        @jsonx.strf(cfg, ["gateway", "token"]),
         first_non_empty(
-          @jsonx.strf(config, "gateway_token"),
-          @jsonx.strf(config, "token"),
+          @jsonx.strf(cfg, "gateway_token"),
+          @jsonx.strf(cfg, "token"),
         ),
       ),
     )
@@ -808,13 +819,14 @@ fn resolve_auth(
     None
   }
   let state_password = if state_config is Some(config) {
+    let cfg : Json = Json::object(config)
     first_non_empty(
-      @jsonx.strs(config, ["gateway", "auth", "password"]),
+      @jsonx.strf(cfg, ["gateway", "auth", "password"]),
       first_non_empty(
-        @jsonx.strs(config, ["gateway", "password"]),
+        @jsonx.strf(cfg, ["gateway", "password"]),
         first_non_empty(
-          @jsonx.strf(config, "gateway_password"),
-          @jsonx.strf(config, "password"),
+          @jsonx.strf(cfg, "gateway_password"),
+          @jsonx.strf(cfg, "password"),
         ),
       ),
     )
@@ -935,7 +947,7 @@ fn find_substring(haystack : String, needle : String) -> Int? {
   let max_idx = haystack.length() - needle.length()
   let mut idx = 0
   while idx <= max_idx {
-    if haystack[idx:idx + needle.length()].to_string() == needle {
+    if haystack[idx:idx + needle.length()].to_owned() == needle {
       return Some(idx)
     }
     idx = idx + 1
@@ -955,8 +967,8 @@ fn parse_http_response(raw : String) -> (Int, Map[String, String], String)? {
   }
   match header_end {
     Some((idx, sep_len)) => {
-      let header_text = raw[:idx].to_string()
-      let body = raw[idx + sep_len:].to_string()
+      let header_text = raw[:idx].to_owned()
+      let body = raw[idx + sep_len:].to_owned()
       let lines = header_text.split("\n").to_array()
       if lines.is_empty() {
         return None
@@ -965,17 +977,17 @@ fn parse_http_response(raw : String) -> (Int, Map[String, String], String)? {
       if status_parts.length() < 2 {
         return None
       }
-      let status = @string.parse_int(status_parts[1].to_string()) catch {
+      let status = @string.parse_int(status_parts[1].to_owned()) catch {
         _ => 500
       }
 
       let headers : Map[String, String] = {}
       for i = 1; i < lines.length(); i = i + 1 {
-        let line = lines[i].trim().to_string()
+        let line = lines[i].trim().to_owned()
         match find_substring(line, ":") {
           Some(pos) => {
-            let key = line[:pos].to_string()
-            let value = line[pos + 1:].trim().to_string()
+            let key = line[:pos].to_owned()
+            let value = line[pos + 1:].trim().to_owned()
             if key != "" {
               headers[key] = value
             }
@@ -1039,13 +1051,13 @@ fn decode_chunked_body(body : String) -> String {
   let parts : Array[String] = []
   let mut offset = 0
   while offset < body.length() {
-    let line_end = match find_substring(body[offset:].to_string(), "\r\n") {
+    let line_end = match find_substring(body[offset:].to_owned(), "\r\n") {
       Some(pos) => offset + pos
       None => break
     }
-    let size_line = body[offset:line_end].trim().to_string()
+    let size_line = body[offset:line_end].trim().to_owned()
     let size_hex = match find_substring(size_line, ";") {
-      Some(pos) => size_line[:pos].to_string()
+      Some(pos) => size_line[:pos].to_owned()
       None => size_line
     }
     guard parse_hex_opt(size_hex) is Some(size) else { return body }
@@ -1056,10 +1068,10 @@ fn decode_chunked_body(body : String) -> String {
     if offset + size > body.length() {
       return body
     }
-    parts.push(body[offset:offset + size].to_string())
+    parts.push(body[offset:offset + size].to_owned())
     offset = offset + size
     if offset + 2 <= body.length() &&
-      body[offset:offset + 2].to_string() == "\r\n" {
+      body[offset:offset + 2].to_owned() == "\r\n" {
       offset = offset + 2
     }
   }
@@ -1333,11 +1345,11 @@ fn try_parse_openclaw_json(body : String) -> Json? {
 fn extract_sse_json_payload(body : String) -> String? {
   let payloads : Array[String] = []
   for raw_line in body.split("\n") {
-    let line = raw_line.trim().to_string()
+    let line = raw_line.trim().to_owned()
     if !line.has_prefix("data:") {
       continue
     }
-    let payload = line[5:].trim().to_string()
+    let payload = line[5:].trim().to_owned()
     if payload == "" || payload == "[DONE]" {
       continue
     }

@@ -3,7 +3,7 @@
 struct ConnectionManager {
   connections : Map[String, Connection] // connection_id -> Connection
   peer_connections : Map[String, Array[String]] // peer_id -> connection_ids
-} derive(Show)
+} derive(Debug)
 
 ///|
 fn ConnectionManager::new() -> ConnectionManager {

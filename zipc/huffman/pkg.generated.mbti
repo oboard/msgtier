@@ -1,6 +1,10 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "oboard/msgtier/zipc/huffman"
 
+import {
+  "moonbitlang/core/debug",
+}
+
 // Values
 pub fn block_type_to_btype(BlockType) -> Int
 
@@ -40,7 +44,7 @@ pub fn uncompressed_block_type() -> BlockType
 pub struct BitReader {
   data : Bytes
   mut bit_offset : Int
-} derive(Show)
+} derive(@debug.Debug)
 pub fn BitReader::align_to_byte(Self) -> Unit
 pub fn BitReader::is_at_end(Self) -> Bool
 pub fn BitReader::read_bits(Self, Int) -> Int
@@ -51,12 +55,12 @@ pub enum BlockType {
   Uncompressed
   FixedHuffman
   DynamicHuffman
-} derive(Eq, Show)
+} derive(Eq, @debug.Debug)
 
 pub enum HuffmanNode {
   Leaf(Int)
   Branch(HuffmanNode, HuffmanNode)
-} derive(Eq, Show)
+} derive(Eq, @debug.Debug)
 
 // Type aliases
 

@@ -23,7 +23,7 @@ struct Connection {
   version : String // Version of the peer
   nat_type : NatType
   address_stats : Map[String, AddressStats]
-} derive(Show, ToJson, FromJson)
+} derive(Debug, ToJson, FromJson)
 
 ///|
 struct AddressStats {
@@ -33,14 +33,14 @@ struct AddressStats {
   packets_lost : Int
   packets_received : Int
   latency_ms : Int?
-} derive(Show, ToJson, FromJson, Eq)
+} derive(Debug, ToJson, FromJson, Eq)
 
 ///|
 struct PortMapping {
   src : Int
   protocol : Protocol
   dst : Int
-} derive(Show, ToJson, FromJson)
+} derive(Debug, ToJson, FromJson)
 
 ///|
 enum NatType {
@@ -50,7 +50,21 @@ enum NatType {
   Restricted
   PortRestricted
   Unknown
-} derive(Show, ToJson, FromJson, Eq)
+} derive(Debug, ToJson, FromJson, Eq)
+
+///|
+pub impl Show for NatType with fn output(self, logger) {
+  logger.write_string(
+    match self {
+      NoNAT => "NoNAT"
+      Symmetric => "Symmetric"
+      FullCone => "FullCone"
+      Restricted => "Restricted"
+      PortRestricted => "PortRestricted"
+      Unknown => "Unknown"
+    },
+  )
+}
 
 ///|
 
@@ -221,10 +235,8 @@ fn Connection::get_best_address(
 ///|
 fn extract_host(addr : String) -> String {
   let normalized = if addr.contains("://") { addr } else { "tcp://" + addr }
-  let parsed = try? Address::parse(normalized)
-  match parsed {
-    Ok(value) => value.host
-    Err(_) => addr
+  Address::parse(normalized).host catch {
+    _ => addr
   }
 }
 
@@ -247,7 +259,7 @@ fn is_private(ip : String) -> Bool {
   if ip.has_prefix("172.") {
     let parts = ip.split(".").to_array()
     if parts.length() > 1 {
-      if parse_int_simple(parts[1].to_string()) is Some(v) {
+      if parse_int_simple(parts[1].to_owned()) is Some(v) {
         return v >= 16 && v <= 31
       }
       return false

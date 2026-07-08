@@ -141,7 +141,7 @@ async fn main {
   let addr = @socket.Addr::parse("127.0.0.1:\{port}") catch {
     e => abort(e.to_string())
   }
-  let server = @http.Server::new(addr, reuse_addr=true)
+  let server = @http.Server(addr, reuse_addr=true)
 
   @async.with_task_group(async fn(root) {
     root.spawn_bg(async fn() {

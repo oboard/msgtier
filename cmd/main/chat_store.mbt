@@ -16,7 +16,7 @@ async fn init_chat_store() -> Unit {
   try {
     let engine = @sqlite3.SQLiteEngine::open(db_file)
     @morm.auto_migrate(engine, [@db.Message::table()])
-    let mapper = @db.MessageMapperImpl::new(engine)
+    let mapper = @db.MessageMapperImpl(engine)
     http_state.chat_mapper = Some(mapper)
     http_state.chat_engine = Some(engine)
   } catch {
@@ -47,7 +47,7 @@ async fn persist_chat_message(msg : Message) -> Unit {
 
 ///|
 fn parse_chat_timestamp(timestamp : String) -> UInt64 {
-  if (try? @string.parse_int(timestamp)) is Ok(v) {
+  if (Some(@string.parse_int(timestamp)) catch { _ => None }) is Some(v) {
     if v < 0 {
       0UL
     } else {

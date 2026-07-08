@@ -3,7 +3,7 @@ fn parse_chat_limit(raw : String?) -> Int {
   let default_limit = 30
   match raw {
     Some(s) =>
-      if (try? @string.parse_int(s)) is Ok(v) {
+      if (Some(@string.parse_int(s)) catch { _ => None }) is Some(v) {
         if v < 1 {
           default_limit
         } else if v > 100 {
@@ -22,7 +22,7 @@ fn parse_chat_limit(raw : String?) -> Int {
 fn parse_chat_before(raw : String?) -> UInt64? {
   match raw {
     Some(s) =>
-      if (try? @string.parse_int(s)) is Ok(v) {
+      if (Some(@string.parse_int(s)) catch { _ => None }) is Some(v) {
         if v < 0 {
           None
         } else {
@@ -43,14 +43,14 @@ fn parse_chat_query(query : String?) -> (String, Int, UInt64?) {
 
   if query is Some(q) {
     for part in q.split("&") {
-      let p = part.to_string()
+      let p = part.to_owned()
       if p.has_prefix("peer=") {
-        let v = p[5:].to_string()
+        let v = p[5:].to_owned()
         peer_id = if v == "" { "broadcast" } else { v }
       } else if p.has_prefix("limit=") {
-        limit_raw = Some(p[6:].to_string())
+        limit_raw = Some(p[6:].to_owned())
       } else if p.has_prefix("before=") {
-        before_raw = Some(p[7:].to_string())
+        before_raw = Some(p[7:].to_owned())
       }
     }
   }
