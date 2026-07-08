@@ -291,6 +291,42 @@ async fn handle_http_request(
     return
   }
 
+  // ---- Port scan & mappings ----
+  if request is { meth: Get, path: "/api/port_scan/local", .. } {
+    handle_port_scan_local(conn)
+    return
+  }
+  if request is { meth: Get, path: "/api/port_scan/peers", .. } {
+    handle_port_scan_peers(conn)
+    return
+  }
+  if request is { meth: Post, path: "/api/port_scan/refresh", .. } {
+    handle_port_scan_refresh(conn)
+    return
+  }
+  if request is { meth: Get, path: "/api/port_mappings", .. } {
+    handle_port_mappings_list(conn)
+    return
+  }
+  if request is { meth: Post, path: "/api/port_mappings", .. } {
+    let body_str = body.read_all().text()
+    handle_port_mappings_create(conn, body_str)
+    return
+  }
+  if request is { meth: Delete, path, .. } &&
+    @url.Url::parse("http://localhost" + path)
+    is Some({ path: Segments(["api", "port_mappings", id]), .. }) {
+    handle_port_mappings_delete(conn, id)
+    return
+  }
+  if request is { meth: Patch, path, .. } &&
+    @url.Url::parse("http://localhost" + path)
+    is Some({ path: Segments(["api", "port_mappings", id]), .. }) {
+    let body_str = body.read_all().text()
+    handle_port_mappings_patch(conn, id, body_str)
+    return
+  }
+
   if request is { path, .. } &&
     @url.Url::parse("http://localhost" + path)
     is Some({ path: Segments(["api", "proxy"]), query, .. }) {

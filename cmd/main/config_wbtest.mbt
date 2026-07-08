@@ -8,8 +8,6 @@ fn make_config_hot_reload_test_config() -> Config {
     scripts: Some({ "ping": "echo ping" }),
     web_api: Some("127.0.0.1:19000"),
     metadata: Some({ "role": "worker" }),
-    forwards: Some({ "node-b:ssh": "tcp://127.0.0.1:10022" }),
-    exposes: Some({ "ssh": "tcp://127.0.0.1:22" }),
     log: None,
     relay_network_whitelist: None,
     relay_all_peer_rpc: Some(true),
@@ -33,13 +31,11 @@ test "config response json exposes static and hot layers" {
 test "apply hot reload request updates hot fields" {
   set_config(make_config_hot_reload_test_config())
   let result = apply_hot_reload_request(
-    "{\"secret\":\"reload-secret\",\"config\":{\"scripts\":{\"build\":\"echo build\"},\"forwards\":{},\"exposes\":{},\"hot_reload\":{\"enable\":true,\"secret\":\"next-secret\"}}}",
+    "{\"secret\":\"reload-secret\",\"config\":{\"scripts\":{\"build\":\"echo build\"},\"hot_reload\":{\"enable\":true,\"secret\":\"next-secret\"}}}",
   )
   inspect(result is Ok(_), content="true")
   let config = get_config()
   inspect(config.scripts.unwrap().contains("build"), content="true")
-  inspect(config.forwards.unwrap().is_empty(), content="true")
-  inspect(config.exposes.unwrap().is_empty(), content="true")
   inspect(config.hot_reload.unwrap().secret.unwrap(), content="next-secret")
 }
 

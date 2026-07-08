@@ -40,6 +40,8 @@ pub async fn save_object_from_reader(String, &@io.Reader) -> Unit
 // Errors
 type AddressParseError derive(@debug.Debug)
 
+type PortMappingError derive(@debug.Debug)
+
 type TransportError derive(@debug.Debug)
 
 // Types and methods
@@ -81,6 +83,8 @@ type GlobalState
 type HotReloadSettings derive(ToJson, @debug.Debug, @json.FromJson)
 
 type HttpServiceState
+
+type LocalPortEntry derive(Eq, ToJson, @debug.Debug, @json.FromJson)
 
 type LogLevel derive(Eq, ToJson, @debug.Debug, @json.FromJson)
 
@@ -126,8 +130,6 @@ type PendingState
 
 type PortForwardAuditEntry
 
-type PortForwardExposeRule derive(ToJson, @debug.Debug, @json.FromJson)
-
 type PortForwardForwardRule derive(ToJson, @debug.Debug, @json.FromJson)
 
 type PortForwardRegistryState
@@ -141,6 +143,14 @@ type PortForwardUdpForwardRuntime
 type PortForwardUdpForwardSession
 
 type PortMapping derive(ToJson, @debug.Debug, @json.FromJson)
+
+type PortMappingFile derive(ToJson, @debug.Debug, @json.FromJson)
+
+type PortMappingRule derive(Eq, ToJson, @debug.Debug, @json.FromJson)
+
+type PortMappingStoreState
+
+type PortScannerState
 
 pub enum Protocol {
   Tcp

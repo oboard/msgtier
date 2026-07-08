@@ -51,8 +51,6 @@ async test "handle_text_message replies via sender addr" {
     scripts: None,
     web_api: None,
     metadata: None,
-    forwards: None,
-    exposes: None,
     log: Some(Debug),
     relay_network_whitelist: None,
     relay_all_peer_rpc: None,

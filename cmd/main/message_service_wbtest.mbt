@@ -8,8 +8,6 @@ test "sync message includes local script metadata" {
     scripts: Some({ "ping": "echo ping", "build": "echo build" }),
     web_api: None,
     metadata: Some({ "role": "worker" }),
-    forwards: None,
-    exposes: None,
     log: None,
     relay_network_whitelist: None,
     relay_all_peer_rpc: None,

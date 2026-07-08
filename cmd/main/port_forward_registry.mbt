@@ -75,19 +75,7 @@ let port_forward_registry_state : PortForwardRegistryState = {
 ///|
 fn get_port_forward_metadata_json() -> String {
   let items : Array[Json] = []
-  for rule in get_port_forward_expose_rules() {
-    items.push({
-      "id": rule.id,
-      "protocol": rule.protocol,
-      "direction": "expose",
-      "state": if is_port_forward_rule_enabled(rule.enabled) {
-        "configured"
-      } else {
-        "disabled"
-      },
-    })
-  }
-  for rule in get_port_forward_forward_rules() {
+  for rule in get_port_forward_active_forward_rules() {
     let rule_key = make_port_forward_forward_rule_key(rule)
     let state = if !is_port_forward_rule_enabled(rule.enabled) {
       "disabled"

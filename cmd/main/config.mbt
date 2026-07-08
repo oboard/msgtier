@@ -13,8 +13,6 @@ struct Config {
   scripts : Map[String, String]?
   web_api : String?
   metadata : Map[String, String]?
-  forwards : Map[String, String]?
-  exposes : Map[String, String]?
   log : LogLevel?
   relay_network_whitelist : Array[String]?
   relay_all_peer_rpc : Bool?
@@ -54,8 +52,6 @@ fn empty_config() -> Config {
     scripts: None,
     web_api: None,
     metadata: None,
-    forwards: None,
-    exposes: None,
     log: None,
     relay_network_whitelist: None,
     relay_all_peer_rpc: None,
@@ -98,8 +94,6 @@ fn get_config_hot_json(config : Config) -> Json {
   {
     "scripts": config.scripts,
     "metadata": config.metadata,
-    "forwards": config.forwards,
-    "exposes": config.exposes,
     "log": config.log,
     "relay_network_whitelist": config.relay_network_whitelist,
     "relay_all_peer_rpc": config.relay_all_peer_rpc,
@@ -121,8 +115,6 @@ fn get_config_response_json() -> Json {
     "scripts": config.scripts,
     "web_api": config.web_api,
     "metadata": config.metadata,
-    "forwards": config.forwards,
-    "exposes": config.exposes,
     "log": config.log,
     "relay_network_whitelist": config.relay_network_whitelist,
     "relay_all_peer_rpc": config.relay_all_peer_rpc,
@@ -169,18 +161,6 @@ fn apply_hot_reload_patch(
           next = { ..next, metadata: v }
         } else {
           return Err("invalid `metadata` value")
-        }
-      "forwards" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, forwards: v }
-        } else {
-          return Err("invalid `forwards` value")
-        }
-      "exposes" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, exposes: v }
-        } else {
-          return Err("invalid `exposes` value")
         }
       "log" =>
         if @jsonx.nul(value) is Some(v) {

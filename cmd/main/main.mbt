@@ -38,6 +38,8 @@ async fn run_with_config(
     add_known_peer(peer_url)
   }
   init_port_forward_registry(root)
+  root.spawn_bg(async fn() { init_port_mapping_store(root) })
+  init_port_scanner(root)
   init_foreign_network_manager()
   start_listeners(root, config.listeners, id)
   start_http_api(root, config.web_api)

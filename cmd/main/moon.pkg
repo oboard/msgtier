@@ -27,6 +27,7 @@ import {
   "moonbitlang/async/cond_var",
   "moonbitlang/async/aqueue",
   "moonbitlang/x/crypto",
+  "moonbitlang/x/sys",
   "oboard/msgtier/stun",
   "oboard/jsonx",
   "oboard/morm",
