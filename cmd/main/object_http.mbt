@@ -80,8 +80,12 @@ fn parse_range_header(
         } else {
           let start_str = parts[0]
           let end_str = parts[1]
-          let start_opt : Result[Int, _] = try Ok(@string.parse_int(start_str)) catch { e => Err(e) }
-          let end_opt : Result[Int, _] = try Ok(@string.parse_int(end_str)) catch { e => Err(e) }
+          let start_opt : Result[Int, _] = Ok(@string.parse_int(start_str)) catch {
+            e => Err(e)
+          }
+          let end_opt : Result[Int, _] = Ok(@string.parse_int(end_str)) catch {
+            e => Err(e)
+          }
           match (start_opt, end_opt) {
             (Ok(start), Ok(end)) =>
               if start < 0 {

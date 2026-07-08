@@ -263,17 +263,6 @@ async fn handle_http_request(
     channel_chat_stream_handler(conn, body_str, true)
     return
   }
-  if request is { meth: Post, path: "/api/openclaw/chat", .. } {
-    let body_str = body.read_all().text()
-    openclaw_chat_handler(conn, body_str, false)
-    return
-  }
-  if request is { meth: Post, path: "/api/openclaw/chat/local", .. } {
-    let body_str = body.read_all().text()
-    openclaw_chat_handler(conn, body_str, true)
-    return
-  }
-
   if request is { meth: Get, path, .. } &&
     @url.Url::parse("http://localhost" + path)
     is Some({ path: Segments(["api", "object", id]), query, .. }) {

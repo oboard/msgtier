@@ -37,8 +37,6 @@ async fn run_with_config(
   for peer_url in config.peers {
     add_known_peer(peer_url)
   }
-  root.spawn_bg(async fn() { ensure_managed_openclaw_plugin() })
-  init_openclaw_registry(root)
   init_port_forward_registry(root)
   init_foreign_network_manager()
   start_listeners(root, config.listeners, id)

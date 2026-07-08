@@ -8,9 +8,6 @@ test "sync message includes local script metadata" {
     scripts: Some({ "ping": "echo ping", "build": "echo build" }),
     web_api: None,
     metadata: Some({ "role": "worker" }),
-    openclaw: None,
-    openclaw_plugin_version: None,
-    openclaw_token: None,
     forwards: None,
     exposes: None,
     log: None,
@@ -44,7 +41,6 @@ test "sync message includes local script metadata" {
         content="true",
       )
       inspect(metadata.get("channels").unwrap().has_prefix("["), content="true")
-      inspect(metadata.get("openclaw").unwrap().has_prefix("["), content="true")
       inspect(
         metadata.get("port_forwards").unwrap().has_prefix("["),
         content="true",

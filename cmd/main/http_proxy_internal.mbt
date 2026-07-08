@@ -470,63 +470,12 @@ async fn handle_internal_http_request(
         ),
       ),
     )
-  } else if http_method == "GET" &&
-    @url.Url::parse("http://localhost" + path)
-    is Some(
-      {
-        path: Segments(["api", "chat", "messages", "openclaw", "local"]),
-        query,
-        ..,
-      }
-    ) {
-    let (peer_id, limit, before) = parse_chat_query(query)
-    let requester_id = query_param(query, "requester_id").unwrap_or(
-      get_config().id,
-    )
-    let resp_headers : Map[String, String] = {
-      "Content-Type": "application/json",
-    }
-    (
-      200,
-      resp_headers,
-      ResponseBody::Bytes(
-        @utf8.encode(
-          load_openclaw_session_messages_json(
-            peer_id, requester_id, limit, before,
-          ).stringify(),
-        ),
-      ),
-    )
   } else if http_method == "POST" && path == "/api/channels/chat/local" {
     let body_str = @utf8.decode(body)
     match parse_channel_chat_request(body_str) {
       Some((_, channel_id, channel_type, messages, session_key, stream)) => {
         let (status_code, response_body) = local_channel_chat_request(
           channel_id, channel_type, messages, session_key, stream,
-        )
-        (
-          status_code,
-          { "Content-Type": "application/json" },
-          ResponseBody::Bytes(@utf8.encode(response_body.stringify())),
-        )
-      }
-      None =>
-        (
-          400,
-          { "Content-Type": "application/json" },
-          ResponseBody::Bytes(
-            @utf8.encode(
-              { "error": "invalid_channel_chat_request" }.to_json().stringify(),
-            ),
-          ),
-        )
-    }
-  } else if http_method == "POST" && path == "/api/openclaw/chat/local" {
-    let body_str = @utf8.decode(body)
-    match parse_channel_chat_request(body_str) {
-      Some((_, channel_id, _, messages, session_key, stream)) => {
-        let (status_code, response_body) = local_channel_chat_request(
-          channel_id, "openclaw", messages, session_key, stream,
         )
         (
           status_code,

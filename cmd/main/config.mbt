@@ -13,9 +13,6 @@ struct Config {
   scripts : Map[String, String]?
   web_api : String?
   metadata : Map[String, String]?
-  openclaw : Bool?
-  openclaw_plugin_version : String?
-  openclaw_token : String?
   forwards : Map[String, String]?
   exposes : Map[String, String]?
   log : LogLevel?
@@ -57,9 +54,6 @@ fn empty_config() -> Config {
     scripts: None,
     web_api: None,
     metadata: None,
-    openclaw: None,
-    openclaw_plugin_version: None,
-    openclaw_token: None,
     forwards: None,
     exposes: None,
     log: None,
@@ -104,9 +98,6 @@ fn get_config_hot_json(config : Config) -> Json {
   {
     "scripts": config.scripts,
     "metadata": config.metadata,
-    "openclaw": config.openclaw,
-    "openclaw_plugin_version": config.openclaw_plugin_version,
-    "openclaw_token": config.openclaw_token,
     "forwards": config.forwards,
     "exposes": config.exposes,
     "log": config.log,
@@ -130,9 +121,6 @@ fn get_config_response_json() -> Json {
     "scripts": config.scripts,
     "web_api": config.web_api,
     "metadata": config.metadata,
-    "openclaw": config.openclaw,
-    "openclaw_plugin_version": config.openclaw_plugin_version,
-    "openclaw_token": config.openclaw_token,
     "forwards": config.forwards,
     "exposes": config.exposes,
     "log": config.log,
@@ -181,24 +169,6 @@ fn apply_hot_reload_patch(
           next = { ..next, metadata: v }
         } else {
           return Err("invalid `metadata` value")
-        }
-      "openclaw" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, openclaw: v }
-        } else {
-          return Err("invalid `openclaw` value")
-        }
-      "openclaw_plugin_version" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, openclaw_plugin_version: v }
-        } else {
-          return Err("invalid `openclaw_plugin_version` value")
-        }
-      "openclaw_token" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, openclaw_token: v }
-        } else {
-          return Err("invalid `openclaw_token` value")
         }
       "forwards" =>
         if @jsonx.nul(value) is Some(v) {

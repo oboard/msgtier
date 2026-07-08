@@ -235,44 +235,7 @@ async fn chat_messages_handler(
   query : String?,
 ) -> Unit {
   let (peer_id, limit, before) = parse_chat_query(query)
-  let my_id = get_config().id
-  let local_page = list_chat_messages_page_json(peer_id, limit, before)
-  let page = if is_openclaw_channel_target_id(peer_id) &&
-    !chat_page_has_items(local_page) {
-    match parse_channel_target_id(peer_id) {
-      Some((target_peer_id, _)) =>
-        if target_peer_id == my_id {
-          load_openclaw_session_messages_json(peer_id, my_id, limit, before)
-        } else {
-          let requester_id = query_param(query, "requester_id").unwrap_or(my_id)
-          let path = "/api/chat/messages/openclaw/local?peer=" +
-            peer_id +
-            "&limit=" +
-            limit.to_string() +
-            "&requester_id=" +
-            requester_id +
-            (match before {
-              Some(cursor) => "&before=" + cursor.to_string()
-              None => ""
-            })
-          match
-            proxy_http_request(target_peer_id, "GET", path, {}, b"", 30000) {
-            Some((status_code, _, resp_body)) =>
-              if status_code >= 200 && status_code < 300 {
-                @json.parse(@utf8.decode(resp_body)) catch {
-                  _ => local_page
-                }
-              } else {
-                local_page
-              }
-            None => local_page
-          }
-        }
-      None => local_page
-    }
-  } else {
-    local_page
-  }
+  let page = list_chat_messages_page_json(peer_id, limit, before)
   let body = page.stringify()
   conn
   ..send_response(200, "OK", extra_headers={

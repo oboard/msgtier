@@ -65,7 +65,7 @@ Hot-reloadable fields:
 - `scripts`
 - `forwards`
 - `exposes`
-- other runtime options such as `metadata`, relay settings, `openclaw`, `upload_dir`, and `hot_reload`
+- other runtime options such as `metadata`, relay settings, `upload_dir`, and `hot_reload`
 
 ### Bastion Port Forwarding
 

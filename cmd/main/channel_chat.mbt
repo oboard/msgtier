@@ -3,15 +3,18 @@ fn parse_channel_chat_request(
   body_str : String,
 ) -> (String, String, String, Array[Json], String, Bool)? {
   let obj = @json.parse(body_str) catch { _ => return None }
-  let peer_id0 = @jsonx.get(obj, "peer_id")
-  let channel_id0 = @jsonx.get(obj, "channel_id")
-  let instance_id = @jsonx.get(obj, "instance_id")
-  let channel_id = first_non_empty(channel_id0, instance_id).unwrap_or("")
+  let peer_id0 : String? = @jsonx.get(obj, "peer_id")
+  let channel_id0 : String? = @jsonx.get(obj, "channel_id")
+  let instance_id : String? = @jsonx.get(obj, "instance_id")
+  let channel_id = match channel_id0 {
+    Some(v) if v != "" => v
+    _ => instance_id.unwrap_or("")
+  }
   guard channel_id != "" else { None }
-  let channel_type0 = @jsonx.get(obj, "channel_type")
-  let messages0 = @jsonx.get(obj, "messages")
-  let session_key0 = @jsonx.get(obj, "session_key")
-  let stream0 = @jsonx.get(obj, "stream")
+  let channel_type0 : String? = @jsonx.get(obj, "channel_type")
+  let messages0 : Array[Json]? = @jsonx.get(obj, "messages")
+  let session_key0 : String? = @jsonx.get(obj, "session_key")
+  let stream0 : Bool? = @jsonx.get(obj, "stream")
   let peer_id = peer_id0.unwrap_or(get_config().id)
   let session_key = session_key0.unwrap_or(
     "chat:" + get_config().id + ":" + peer_id + ":" + channel_id,
@@ -20,7 +23,7 @@ fn parse_channel_chat_request(
     (
       peer_id,
       channel_id,
-      channel_type0.unwrap_or("openclaw"),
+      channel_type0.unwrap_or(""),
       messages0.unwrap_or([]),
       session_key,
       stream0.unwrap_or(false),
@@ -92,25 +95,25 @@ async fn proxy_channel_chat_request(
 }
 
 ///|
-async fn local_channel_chat_request(
-  channel_id : String,
+fn local_channel_chat_request(
+  _channel_id : String,
   channel_type : String,
-  messages : Array[Json],
-  session_key : String,
-  stream : Bool,
+  _messages : Array[Json],
+  _session_key : String,
+  _stream : Bool,
 ) -> (Int, Json) {
-  match channel_type {
-    "openclaw" =>
-      chat_with_openclaw_local(channel_id, messages, session_key, stream)
-    _ =>
-      (
-        404,
-        {
-          "error": "unknown_channel_type".to_json(),
-          "channel_type": channel_type.to_json(),
-        },
-      )
-  }
+  (
+    404,
+    {
+      "error": "unknown_channel_type".to_json(),
+      "channel_type": channel_type.to_json(),
+    },
+  )
+}
+
+///|
+fn channel_target_id(peer_id : String, channel_id : String) -> String {
+  "channel::" + peer_id + "::" + channel_id
 }
 
 ///|
@@ -121,7 +124,7 @@ async fn finish_channel_chat_request(
   response_body : Json,
 ) -> Unit {
   let my_id = get_config().id
-  let target_id = openclaw_channel_target_id(peer_id, channel_id)
+  let target_id = channel_target_id(peer_id, channel_id)
   let prompt = extract_user_text_from_messages(messages)
   if prompt != "" {
     emit_channel_chat_message(my_id, target_id, prompt)
@@ -468,13 +471,4 @@ async fn channel_chat_handler(
       ..write({ "error": "invalid_channel_chat_request" }.to_json().stringify())
       .end_response()
   }
-}
-
-///|
-async fn openclaw_chat_handler(
-  conn : @http.ServerConnection,
-  body_str : String,
-  local_only : Bool,
-) -> Unit {
-  channel_chat_handler(conn, body_str, local_only)
 }

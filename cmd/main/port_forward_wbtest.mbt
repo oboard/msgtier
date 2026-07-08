@@ -8,9 +8,6 @@ fn make_port_forward_test_config() -> Config {
     scripts: None,
     web_api: None,
     metadata: None,
-    openclaw: None,
-    openclaw_plugin_version: None,
-    openclaw_token: None,
     forwards: Some({
       "node-b:db": "tcp://127.0.0.1:15432",
       "node-b:web": "http://127.0.0.1:18080",

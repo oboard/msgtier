@@ -104,8 +104,7 @@ fn get_local_node_metadata() -> Map[String, String] {
         None => ()
       }
       metadata["scripts"] = script_names.to_json().stringify()
-      metadata["channels"] = get_channel_metadata_json()
-      metadata["openclaw"] = get_openclaw_metadata_json()
+      metadata["channels"] = "[]"
       metadata["port_forwards"] = get_port_forward_metadata_json()
       metadata
     }
@@ -113,7 +112,6 @@ fn get_local_node_metadata() -> Map[String, String] {
       let metadata : Map[String, String] = {}
       metadata["scripts"] = "[]"
       metadata["channels"] = "[]"
-      metadata["openclaw"] = "[]"
       metadata["port_forwards"] = "[]"
       metadata
     }
