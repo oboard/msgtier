@@ -1,5 +1,6 @@
 ///|
 async fn main {
+  @signal.set_global_cancellation_signals([@signal.SIGTERM, @signal.SIGINT])
   @async.with_task_group(root => {
     let cmd = @argparse.Command(
       "msgtier",
@@ -30,6 +31,7 @@ async fn run_with_config(
   root : @async.TaskGroup[Unit],
   config_path : String,
 ) -> Unit {
+  root.add_defer(fn() { log_info("node shutting down") })
   let config = Config::from_file(config_path)
   app_state.root = Some(root)
   set_config(config)

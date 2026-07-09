@@ -10,6 +10,7 @@ import {
   "moonbitlang/core/bigint",
   "moonbitlang/core/bytes",
   "moonbitlang/async",
+  "moonbitlang/async/signal",
   "moonbitlang/async/socket",
   "moonbitlang/async/fs",
   "oboard/msgtier/url",
