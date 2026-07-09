@@ -15,9 +15,7 @@ async fn main {
     )
     // On parse failure argparse already prints the error + usage to stdout;
     // we swallow the raise and return without additional logging.
-    let matches = cmd.parse(argv=@env.args()[1:]) catch {
-      _ => return
-    }
+    let matches = cmd.parse(argv=@env.args()[1:]) catch { _ => return }
     let config_path = matches.values.get("config").unwrap_or([])
     if config_path.is_empty() {
       log_info(cmd.render_help())

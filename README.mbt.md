@@ -284,6 +284,24 @@ Example script map:
 5. Start the HTTP + WebSocket API on `web_api`.
 6. Background tasks run indefinitely: heartbeat, reconnect, pending-message processor, bench-trace flusher.
 
+## Linux Deployment Notes
+
+The port scanner (`/api/port_scan/*`) publishes local listening ports to peers. On Linux it reads `/proc/net/{tcp,tcp6,udp,udp6}` — a world-readable, kernel-provided list of every socket on the box — so a non-root msgtier sees the whole system's listeners without any extra setup. `process_name` is `None` on this path, because linking a socket inode back to a pid requires walking `/proc/<pid>/fd/`, which is uid-restricted.
+
+If you want the `process_name` field populated too (or you're deploying under systemd), grant msgtier the capabilities that let it inspect other uids' `/proc/<pid>/fd/`:
+
+```ini
+# /etc/systemd/system/msgtier.service
+[Service]
+ExecStart=/opt/msgtier/msgtier /etc/msgtier/config.json
+AmbientCapabilities=CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
+CapabilityBoundingSet=CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
+```
+
+Without these, `/api/port_scan/local` still returns every listener — just with `process_name: null`. With them, msgtier's `lsof` fallback can also cross uid boundaries when `/proc/net/*` is unavailable (e.g. `hidepid=2` mount options don't affect `/proc/net/*` but might affect other paths).
+
+macOS is unaffected — `lsof` on Darwin uses `proc_pidinfo(2)`, which is not uid-gated.
+
 ## Project Layout
 
 ```

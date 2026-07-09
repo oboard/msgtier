@@ -238,9 +238,27 @@ async fn run_scanner_command(program : String, args : Array[String]) -> String? 
 ///|
 /// Scan local listening ports.
 ///
-/// Currently backed by `lsof` (macOS + Linux). Windows returns an empty list
-/// and logs a warning on first call.
+/// On Linux we prefer `/proc/net/{tcp,tcp6,udp,udp6}` because it lists sockets
+/// system-wide regardless of the socket owner's uid — `lsof` on Linux walks
+/// `/proc/<pid>/fd/` and can only see file descriptors belonging to the same
+/// uid, so a non-root msgtier would otherwise be blind to every other user's
+/// listeners. The `/proc/net/*` files are world-readable but do not carry a
+/// process name, so `process_name` becomes `None` on that path.
+///
+/// macOS (and any other platform where `/proc/net/tcp` is missing) falls back
+/// to `lsof`. Windows still returns an empty list.
 async fn scan_local_listening_ports() -> Array[LocalPortEntry] {
+  let entries = match scan_via_proc_net() {
+    Some(entries) => entries
+    None => scan_via_lsof()
+  }
+  let filtered = filter_self_and_forward_ports(entries)
+  filtered.sort_by(compare_local_port_entry)
+  filtered
+}
+
+///|
+async fn scan_via_lsof() -> Array[LocalPortEntry] {
   let tcp_raw = run_scanner_command("lsof", [
     "-nP", "-iTCP", "-sTCP:LISTEN", "-Fpcn",
   ]).unwrap_or("")
@@ -254,9 +272,280 @@ async fn scan_local_listening_ports() -> Array[LocalPortEntry] {
   for e in parse_lsof_output(udp_raw, "udp") {
     entries.push(e)
   }
-  let filtered = filter_self_and_forward_ports(entries)
-  filtered.sort_by(compare_local_port_entry)
-  filtered
+  entries
+}
+
+///|
+/// Read `/proc/net/{tcp,tcp6,udp,udp6}` when present.
+///
+/// Returns `None` on any platform where `/proc/net/tcp` is not readable — the
+/// caller then falls back to `lsof`. When present, all four files are read and
+/// the union of their listening sockets is returned.
+async fn scan_via_proc_net() -> Array[LocalPortEntry]? {
+  if !(@fs.exists("/proc/net/tcp") catch { _ => false }) {
+    return None
+  }
+  let entries : Array[LocalPortEntry] = []
+  for
+    spec in [
+      ("/proc/net/tcp", "tcp", false, true),
+      ("/proc/net/tcp6", "tcp", true, true),
+      ("/proc/net/udp", "udp", false, false),
+      ("/proc/net/udp6", "udp", true, false),
+    ] {
+    let (path, protocol, is_v6, listen_only) = spec
+    let raw = @fs.read_file(path).text() catch { _ => continue }
+    for e in parse_proc_net(raw, protocol, is_v6~, listen_only~) {
+      entries.push(e)
+    }
+  }
+  Some(entries)
+}
+
+///|
+/// Parse the body of a `/proc/net/{tcp,udp}[6]` file into port entries.
+///
+/// Format (relevant columns only):
+/// ```
+///   sl  local_address rem_address st ...
+///    0: 0100007F:1F90 00000000:0000 0A ...
+/// ```
+/// - `local_address` is `<hex-addr>:<hex-port>`
+/// - `st == "0A"` is TCP LISTEN. UDP has no LISTEN state, so `listen_only=false`
+///   keeps every bound socket regardless of `st`.
+///
+/// Malformed rows fold silently to nothing — `/proc/net/*` layout is stable
+/// but skipping a bad row is cheaper than raising on a kernel edge case.
+fn parse_proc_net(
+  raw : String,
+  protocol : String,
+  is_v6~ : Bool,
+  listen_only~ : Bool,
+) -> Array[LocalPortEntry] {
+  let out : Array[LocalPortEntry] = []
+  let mut first_line = true
+  for line in raw.split("\n") {
+    let line = line.to_owned()
+    if first_line {
+      // Header row: `  sl  local_address rem_address st ...`
+      first_line = false
+      continue
+    }
+    if line.trim() == "" {
+      continue
+    }
+    match parse_proc_net_line(line, is_v6~, listen_only~) {
+      Some((bind_addr, port)) =>
+        out.push({ protocol, bind_addr, port, process_name: None })
+      None => ()
+    }
+  }
+  out
+}
+
+///|
+/// Parse one non-header line from `/proc/net/{tcp,udp}[6]`.
+///
+/// Splits on whitespace, decodes column 1 (`local_address = HEXADDR:HEXPORT`)
+/// and — when `listen_only` — checks column 3 (`st`) is TCP LISTEN (`0A`).
+fn parse_proc_net_line(
+  line : String,
+  is_v6~ : Bool,
+  listen_only~ : Bool,
+) -> (String, Int)? {
+  let cols : Array[String] = []
+  let mut cur = StringBuilder::new()
+  let space = ' '.to_int()
+  let tab = '\t'.to_int()
+  for i = 0; i < line.length(); i = i + 1 {
+    let ch = line[i].to_int()
+    if ch == space || ch == tab {
+      let piece = cur.to_string()
+      if piece != "" {
+        cols.push(piece)
+      }
+      cur = StringBuilder::new()
+    } else {
+      cur.write_char(ch.unsafe_to_char())
+    }
+  }
+  let last_piece = cur.to_string()
+  if last_piece != "" {
+    cols.push(last_piece)
+  }
+  // Column layout: [sl, local_addr, rem_addr, st, ...]
+  if cols.length() < 4 {
+    return None
+  }
+  if listen_only && cols[3] != "0A" {
+    return None
+  }
+  let local_addr = cols[1]
+  let colon = index_of_char(local_addr, ':') // exactly one ':' in this column
+  guard colon is Some(idx) else { return None }
+  let addr_hex = local_addr[:idx].to_owned()
+  let port_hex = local_addr[idx + 1:].to_owned()
+  let port = @string.parse_int(port_hex, base=16) catch { _ => return None }
+  if port <= 0 || port > 65535 {
+    return None
+  }
+  let addr = if is_v6 {
+    decode_proc_net_ipv6(addr_hex)
+  } else {
+    decode_proc_net_ipv4(addr_hex)
+  }
+  guard addr is Some(bind_addr) else { return None }
+  Some((bind_addr, port))
+}
+
+///|
+fn index_of_char(s : String, target : Char) -> Int? {
+  let target_int = target.to_int()
+  for i = 0; i < s.length(); i = i + 1 {
+    if s[i].to_int() == target_int {
+      return Some(i)
+    }
+  }
+  None
+}
+
+///|
+/// Decode a `/proc/net/tcp` IPv4 hex address.
+///
+/// The 4 bytes are printed **little-endian** (`0100007F` reads back as bytes
+/// `01 00 00 7F` which on a little-endian host means network-order
+/// `7F 00 00 01` = `127.0.0.1`).
+fn decode_proc_net_ipv4(hex : String) -> String? {
+  if hex.length() != 8 {
+    return None
+  }
+  let bytes : Array[Int] = []
+  for i = 0; i < 4; i = i + 1 {
+    let byte = @string.parse_int(hex[i * 2:i * 2 + 2].to_owned(), base=16) catch {
+      _ => return None
+    }
+    bytes.push(byte)
+  }
+  // File is little-endian; reverse for dotted-decimal (network order).
+  Some("\{bytes[3]}.\{bytes[2]}.\{bytes[1]}.\{bytes[0]}")
+}
+
+///|
+/// Decode a `/proc/net/tcp6` IPv6 hex address.
+///
+/// The 16 bytes are printed as four 32-bit words, each word in host
+/// (little-endian) byte order. So `00000000000000000000000001000000` decodes
+/// to `::1`. Also detects v4-mapped addresses `::ffff:a.b.c.d` and prints them
+/// as dotted-decimal for parity with `lsof` output.
+fn decode_proc_net_ipv6(hex : String) -> String? {
+  if hex.length() != 32 {
+    return None
+  }
+  // Decode into 16 network-order bytes.
+  let bytes : Array[Int] = []
+  for w = 0; w < 4; w = w + 1 {
+    let word_hex = hex[w * 8:w * 8 + 8].to_owned()
+    let word_bytes : Array[Int] = []
+    for i = 0; i < 4; i = i + 1 {
+      let b = @string.parse_int(word_hex[i * 2:i * 2 + 2].to_owned(), base=16) catch {
+        _ => return None
+      }
+      word_bytes.push(b)
+    }
+    // Little-endian word → reverse to get network order for this word.
+    for i = 3; i >= 0; i = i - 1 {
+      bytes.push(word_bytes[i])
+    }
+  }
+  // v4-mapped: ::ffff:a.b.c.d — first 10 bytes 0, next 2 bytes 0xff.
+  let mut is_v4_mapped = true
+  for i = 0; i < 10; i = i + 1 {
+    if bytes[i] != 0 {
+      is_v4_mapped = false
+      break
+    }
+  }
+  if is_v4_mapped && bytes[10] == 0xff && bytes[11] == 0xff {
+    return Some("\{bytes[12]}.\{bytes[13]}.\{bytes[14]}.\{bytes[15]}")
+  }
+  // Assemble 8 groups of 16-bit hex, then apply `::` compression.
+  let groups : Array[String] = []
+  for i = 0; i < 8; i = i + 1 {
+    let hi = bytes[i * 2]
+    let lo = bytes[i * 2 + 1]
+    let val = hi * 256 + lo
+    groups.push(int_to_hex_lowercase(val))
+  }
+  Some(compress_ipv6_groups(groups))
+}
+
+///|
+/// Format an int (0..=0xffff) as lowercase hex, no leading zeros. `0` → `"0"`.
+fn int_to_hex_lowercase(v : Int) -> String {
+  if v == 0 {
+    return "0"
+  }
+  let digits = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+  ]
+  let sb = StringBuilder::new()
+  let buf : Array[Char] = []
+  let mut n = v
+  while n > 0 {
+    buf.push(digits[n % 16])
+    n = n / 16
+  }
+  for i = buf.length() - 1; i >= 0; i = i - 1 {
+    sb.write_char(buf[i])
+  }
+  sb.to_string()
+}
+
+///|
+/// Compress the longest run of consecutive zero groups with `::` per RFC 5952.
+///
+/// Runs of length 1 are still compressed to `::` when they are the *only* zero
+/// span — matches the widely-used stringify behavior (`0:0:0:0:0:0:0:0` →
+/// `::`, `1:0:0:0:0:0:0:1` → `1::1`, `1:0:2:3:4:5:6:7` → `1:0:2:3:4:5:6:7`).
+fn compress_ipv6_groups(groups : Array[String]) -> String {
+  // Find the longest run of "0" groups.
+  let mut best_start = -1
+  let mut best_len = 0
+  let mut cur_start = -1
+  let mut cur_len = 0
+  for i = 0; i < groups.length(); i = i + 1 {
+    if groups[i] == "0" {
+      if cur_len == 0 {
+        cur_start = i
+      }
+      cur_len = cur_len + 1
+      if cur_len > best_len {
+        best_len = cur_len
+        best_start = cur_start
+      }
+    } else {
+      cur_len = 0
+    }
+  }
+  if best_len < 2 {
+    return groups.join(":")
+  }
+  let sb = StringBuilder::new()
+  for i = 0; i < best_start; i = i + 1 {
+    if i > 0 {
+      sb.write_char(':')
+    }
+    sb.write_string(groups[i])
+  }
+  sb.write_string("::")
+  let tail_start = best_start + best_len
+  for i = tail_start; i < groups.length(); i = i + 1 {
+    if i > tail_start {
+      sb.write_char(':')
+    }
+    sb.write_string(groups[i])
+  }
+  sb.to_string()
 }
 
 ///|
