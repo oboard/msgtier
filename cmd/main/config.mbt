@@ -139,6 +139,26 @@ fn validate_hot_reload_patch_fields(obj : Map[String, Json]) -> String? {
 }
 
 ///|
+/// Apply a `Json` value to `next.<field>` via `@json.from_json`, returning
+/// an error result when the payload does not match the target type.
+///
+/// Each hot-reloadable field goes through this helper so `null` clears the
+/// value and any other JSON is deserialized against the field's declared type.
+fn[T : @json.FromJson] parse_hot_field(
+  value : Json,
+  key : String,
+) -> Result[T?, String] {
+  if value is Null {
+    Ok(None)
+  } else {
+    let parsed : T = @json.from_json(value) catch {
+      _ => return Err("invalid `\{key}` value")
+    }
+    Ok(Some(parsed))
+  }
+}
+
+///|
 fn apply_hot_reload_patch(
   config : Config,
   obj : Map[String, Json],
@@ -146,63 +166,53 @@ fn apply_hot_reload_patch(
   if validate_hot_reload_patch_fields(obj) is Some(err) {
     return Err(err)
   }
-
   let mut next = config
   for key, value in obj {
     match key {
       "scripts" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, scripts: v }
-        } else {
-          return Err("invalid `scripts` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, scripts: v }
+          Err(e) => return Err(e)
         }
       "metadata" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, metadata: v }
-        } else {
-          return Err("invalid `metadata` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, metadata: v }
+          Err(e) => return Err(e)
         }
       "log" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, log: v }
-        } else {
-          return Err("invalid `log` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, log: v }
+          Err(e) => return Err(e)
         }
       "relay_network_whitelist" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, relay_network_whitelist: v }
-        } else {
-          return Err("invalid `relay_network_whitelist` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, relay_network_whitelist: v }
+          Err(e) => return Err(e)
         }
       "relay_all_peer_rpc" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, relay_all_peer_rpc: v }
-        } else {
-          return Err("invalid `relay_all_peer_rpc` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, relay_all_peer_rpc: v }
+          Err(e) => return Err(e)
         }
       "foreign_relay_bps_limit" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, foreign_relay_bps_limit: v }
-        } else {
-          return Err("invalid `foreign_relay_bps_limit` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, foreign_relay_bps_limit: v }
+          Err(e) => return Err(e)
         }
       "upload_dir" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, upload_dir: v }
-        } else {
-          return Err("invalid `upload_dir` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, upload_dir: v }
+          Err(e) => return Err(e)
         }
       "disable_encryption" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, disable_encryption: v }
-        } else {
-          return Err("invalid `disable_encryption` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, disable_encryption: v }
+          Err(e) => return Err(e)
         }
       "hot_reload" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, hot_reload: v }
-        } else {
-          return Err("invalid `hot_reload` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, hot_reload: v }
+          Err(e) => return Err(e)
         }
       _ => return Err("unsupported hot reload field `\{key}`")
     }

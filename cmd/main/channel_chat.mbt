@@ -1,32 +1,42 @@
 ///|
+/// Wire shape for `POST /api/channels/chat[/local]` bodies.
+///
+/// Every field is optional so the parser tolerates partial payloads; missing
+/// values collapse into the defaults inside [parse_channel_chat_request].
+struct ChannelChatRequest {
+  peer_id : String?
+  channel_id : String?
+  instance_id : String?
+  channel_type : String?
+  messages : Array[Json]?
+  session_key : String?
+  stream : Bool?
+} derive(FromJson)
+
+///|
 fn parse_channel_chat_request(
   body_str : String,
 ) -> (String, String, String, Array[Json], String, Bool)? {
-  let obj = @json.parse(body_str) catch { _ => return None }
-  let peer_id0 : String? = @jsonx.get(obj, "peer_id")
-  let channel_id0 : String? = @jsonx.get(obj, "channel_id")
-  let instance_id : String? = @jsonx.get(obj, "instance_id")
-  let channel_id = match channel_id0 {
+  let req : ChannelChatRequest = (@json.parse(body_str) |> @json.from_json) catch {
+    _ => return None
+  }
+  let channel_id = match req.channel_id {
     Some(v) if v != "" => v
-    _ => instance_id.unwrap_or("")
+    _ => req.instance_id.unwrap_or("")
   }
   guard channel_id != "" else { None }
-  let channel_type0 : String? = @jsonx.get(obj, "channel_type")
-  let messages0 : Array[Json]? = @jsonx.get(obj, "messages")
-  let session_key0 : String? = @jsonx.get(obj, "session_key")
-  let stream0 : Bool? = @jsonx.get(obj, "stream")
-  let peer_id = peer_id0.unwrap_or(get_config().id)
-  let session_key = session_key0.unwrap_or(
+  let peer_id = req.peer_id.unwrap_or(get_config().id)
+  let session_key = req.session_key.unwrap_or(
     "chat:" + get_config().id + ":" + peer_id + ":" + channel_id,
   )
   Some(
     (
       peer_id,
       channel_id,
-      channel_type0.unwrap_or(""),
-      messages0.unwrap_or([]),
+      req.channel_type.unwrap_or(""),
+      req.messages.unwrap_or([]),
       session_key,
-      stream0.unwrap_or(false),
+      req.stream.unwrap_or(false),
     ),
   )
 }
@@ -36,17 +46,20 @@ fn extract_user_text_from_messages(messages : Array[Json]) -> String {
   let mut idx = messages.length()
   while idx > 0 {
     idx = idx - 1
-    match messages[idx] {
-      Object(obj) =>
-        match (obj.get("role"), obj.get("content")) {
-          (Some(String(role)), Some(String(content))) =>
-            if role == "user" {
-              return content
-            }
-          _ => ()
-        }
-      _ => ()
+    if messages[idx] is { "role": "user", "content": String(content), .. } {
+      return content
     }
+    // match messages[idx] {
+    //   Object(obj) =>
+    //     match (obj.get("role"), obj.get("content")) {
+    //       (Some(String(role)), Some(String(content))) =>
+    //         if role == "user" {
+    //           return content
+    //         }
+    //       _ => ()
+    //     }
+    //   _ => ()
+    // }
   }
   ""
 }
