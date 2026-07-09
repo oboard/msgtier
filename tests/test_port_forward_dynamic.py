@@ -299,7 +299,12 @@ def main():
             print("FAILURE: node-a did not connect to node-b")
             return 1
 
-        # Force a scan on node-b so we don't have to wait 30 s for the first tick.
+        # With the new snapshot_new_peers loop the scanner should push a
+        # snapshot to node-a within 500 ms of the handshake completing, but
+        # we're also racing the payload HTTP server's LISTEN starting after
+        # the node came up — the very first scan (T=0 in the node) may have
+        # missed BENCH_PORT. A refresh forces a rescan so we don't wait 30 s
+        # for the next automatic tick.
         log("kicking node-b's port scanner")
         http_request(f"http://{NODE_B_WEB}/api/port_scan/refresh",
                      method="POST", timeout=5)

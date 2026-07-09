@@ -290,6 +290,14 @@ async fn handle_incoming_message(
         "DEBUG: new connection broadcast_sync peer=\{msg.source_id} local=\{local_addr}",
       )
       broadcast_sync(id, local_addr)
+      // Push our current port scan to the newly-connected peer immediately, so
+      // they don't have to wait for the next 500 ms poll tick — or, in the
+      // worst case, the next 30 s full scan tick — to learn what we're
+      // exposing. `snapshot_new_peers` is idempotent per-peer, so calling it
+      // here does not cause duplicate sends when the poll loop also fires.
+      snapshot_new_peers() catch {
+        _ => ()
+      }
     } else {
       log_debug(
         "DEBUG: secondary connection established peer=\{msg.source_id} count=\{peer_conns.length()} - skipping broadcast_sync",

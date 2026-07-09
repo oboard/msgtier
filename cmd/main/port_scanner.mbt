@@ -715,6 +715,39 @@ async fn broadcast_scan_result(
 }
 
 ///|
+/// Send a full snapshot to every peer we haven't sent to yet.
+///
+/// This is what covers the "peer connected mid-cycle" case: the 30 s scan tick
+/// fires only every 30 s, but peer handshakes complete on their own schedule
+/// (typically within a few seconds of startup). Without this, a peer that
+/// connects at T = 5 s wouldn't see any snapshot until T = 30 s. Calling this
+/// on the 500 ms wait loop closes that window down to ~500 ms.
+///
+/// No-op for peers that have already received any snapshot.
+async fn snapshot_new_peers() -> Unit {
+  let peers = get_global_peer_manager().get_all_peers()
+  let self_id = get_config().id
+  let now = @env.now()
+  let curr = port_scanner_state.last_scan
+  for peer in peers {
+    if peer.id == self_id {
+      continue
+    }
+    if !port_scanner_state.snapshot_sent_at.contains(peer.id) {
+      ignore(
+        send_port_forward_message_via(
+          peer.id,
+          "port_scan_snapshot",
+          make_port_scan_snapshot_body(curr),
+          None,
+        ),
+      )
+      port_scanner_state.snapshot_sent_at[peer.id] = now
+    }
+  }
+}
+
+///|
 /// Perform one scan+diff+broadcast cycle.
 ///
 /// Returns the fresh entries so callers (e.g. the HTTP refresh endpoint) can
@@ -732,26 +765,7 @@ async fn perform_port_scan_cycle(
   if should_broadcast {
     broadcast_scan_result(curr, added, removed, force_snapshot)
   } else {
-    // Snapshot brand-new peers even without local changes.
-    let peers = get_global_peer_manager().get_all_peers()
-    let self_id = get_config().id
-    let now = @env.now()
-    for peer in peers {
-      if peer.id == self_id {
-        continue
-      }
-      if !port_scanner_state.snapshot_sent_at.contains(peer.id) {
-        ignore(
-          send_port_forward_message_via(
-            peer.id,
-            "port_scan_snapshot",
-            make_port_scan_snapshot_body(curr),
-            None,
-          ),
-        )
-        port_scanner_state.snapshot_sent_at[peer.id] = now
-      }
-    }
+    snapshot_new_peers()
   }
   curr
 }
@@ -763,6 +777,10 @@ async fn perform_port_scan_cycle(
 /// Start the port scanner background task.
 ///
 /// - First scan runs immediately, then every 30 s.
+/// - Between ticks, every 500 ms we check for peers that connected since the
+///   last cycle and send them a first snapshot — otherwise a peer that
+///   handshakes right after the initial scan waits a full 30 s to learn our
+///   ports.
 /// - `request_port_scan_refresh` short-circuits the wait for the next tick.
 fn init_port_scanner(root : @async.TaskGroup[Unit]) -> Unit {
   if port_scanner_state.initialized {
@@ -777,6 +795,7 @@ fn init_port_scanner(root : @async.TaskGroup[Unit]) -> Unit {
       let interval_ms : UInt64 = 30000UL
       while @env.now() - start < interval_ms &&
             !port_scanner_state.refresh_pending {
+        snapshot_new_peers()
         @async.sleep(500)
       }
       let forced = port_scanner_state.refresh_pending
