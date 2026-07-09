@@ -703,9 +703,9 @@ async fn start_http_service(
   let app = @mocket.new()
   register_routes(app)
   for ;; {
-    log_info("mocket HTTP listening on \{addr}")
+    log_info("HTTP listening on http://\{addr}")
     app.listen(addr)
-    log_warn("mocket HTTP server on \{addr} exited; retrying in 5s")
+    log_warn("HTTP server on \{addr} exited; retrying in 5s")
     @async.sleep(5000)
   }
 }
