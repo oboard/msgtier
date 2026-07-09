@@ -200,8 +200,6 @@ type ServerState
 
 type StatusInfo derive(ToJson)
 
-type StreamRequest
-
 type StreamRoute
 
 type StunDiscoveryInfo derive(Eq, ToJson, @debug.Debug)

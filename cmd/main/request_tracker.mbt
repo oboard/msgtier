@@ -17,9 +17,7 @@ struct RequestTrackerState {
 }
 
 ///|
-let request_tracker_state : RequestTrackerState = {
-  tracker: { pending: {} },
-}
+let request_tracker_state : RequestTrackerState = { tracker: { pending: {} } }
 
 ///|
 fn add_pending_request(id : String) -> Unit {
