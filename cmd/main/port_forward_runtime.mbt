@@ -536,6 +536,18 @@ fn stop_port_forward_udp_listener(rule_key : String) -> Unit {
 }
 
 ///|
+/// Returns the current set of active forward rules to be running.
+///
+/// Populated by [port_mapping_store] once wired; empty until then so the
+/// runtime happily runs with zero mappings.
+fn get_port_forward_active_forward_rules() -> Array[PortForwardForwardRule] {
+  match port_mapping_store_state.active_rules {
+    Some(rules) => rules
+    None => []
+  }
+}
+
+///|
 fn refresh_port_forward_registry(root : @async.TaskGroup[Unit]) -> Unit {
   if !port_forward_registry_state.initialized {
     port_forward_registry_state.initialized = true
@@ -549,7 +561,7 @@ fn refresh_port_forward_registry(root : @async.TaskGroup[Unit]) -> Unit {
 
   let desired_tcp : Map[String, PortForwardForwardRule] = {}
   let desired_udp : Map[String, PortForwardForwardRule] = {}
-  for rule in get_port_forward_forward_rules() {
+  for rule in get_port_forward_active_forward_rules() {
     if !is_port_forward_rule_enabled(rule.enabled) {
       continue
     }

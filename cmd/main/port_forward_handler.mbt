@@ -82,6 +82,8 @@ fn register_port_forward_handlers(dispatcher : MessageDispatcher) -> Unit {
   dispatcher.register("port_forward_data", handle_port_forward_data_message)
   dispatcher.register("port_forward_close", handle_port_forward_close_message)
   dispatcher.register("port_forward_error", handle_port_forward_error_message)
+  dispatcher.register("port_scan_snapshot", handle_port_scan_snapshot_message)
+  dispatcher.register("port_scan_delta", handle_port_scan_delta_message)
 }
 
 ///|
@@ -165,7 +167,14 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
   let connection_id = port_forward_string_field(msg.body, "connection_id").unwrap_or(
     "",
   )
-  if rule_id == "" || connection_id == "" {
+  let target_host_raw = port_forward_string_field(msg.body, "target_host").unwrap_or(
+    "",
+  )
+  let target_port = port_forward_int_field(msg.body, "target_port").unwrap_or(0)
+  if rule_id == "" ||
+    connection_id == "" ||
+    target_host_raw == "" ||
+    !is_valid_port_forward_port(target_port) {
     log_debug(
       "port_forward open invalid requester=\{msg.source_id} rule=\{rule_id} protocol=\{protocol}",
     )
@@ -185,77 +194,43 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
     })
     return
   }
+
+  // Authorization: the requested target must be a port this node is currently
+  // broadcasting to peers.  Any other port is rejected.
+  if !is_local_port_broadcast(protocol, target_port) {
+    log_debug(
+      "port_forward open rejected requester=\{msg.source_id} target=\{target_host_raw}:\{target_port} protocol=\{protocol}",
+    )
+    ctx.root.spawn_bg(async fn() {
+      send_port_forward_message(
+        msg.source_id,
+        "port_forward_open_ack",
+        make_port_forward_open_ack_body(
+          rule_id,
+          protocol,
+          connection_id,
+          false,
+          Some("rejected"),
+        ),
+        None,
+      )
+    })
+    return
+  }
+  let target_host = normalize_port_forward_connect_host(target_host_raw)
   log_debug(
-    "port_forward open request requester=\{msg.source_id} rule=\{rule_id} protocol=\{protocol} connection=\{connection_id}",
+    "port_forward open request requester=\{msg.source_id} rule=\{rule_id} protocol=\{protocol} target=\{target_host}:\{target_port} connection=\{connection_id}",
   )
-  match find_port_forward_expose_rule(rule_id, protocol) {
-    Some(rule) =>
-      if is_port_forward_tcp_protocol(protocol) {
-        ctx.root.spawn_bg(async fn() {
-          let target_host = normalize_port_forward_connect_host(
-            rule.target_host,
-          )
-          let target = target_host + ":" + rule.target_port.to_string()
+  if is_port_forward_tcp_protocol(protocol) {
+    ctx.root.spawn_bg(async fn() {
+      let target = target_host + ":" + target_port.to_string()
+      log_debug(
+        "port_forward open begin connect requester=\{msg.source_id} target=\{target}",
+      )
+      let conn = @socket.Tcp::connect_to_host(target_host, port=target_port) catch {
+        _ => {
           log_debug(
-            "port_forward open begin connect requester=\{msg.source_id} rule=\{rule_id} target=\{target}",
-          )
-          let conn = @socket.Tcp::connect_to_host(
-            target_host,
-            port=rule.target_port,
-          ) catch {
-            _ => {
-              log_debug(
-                "port_forward open tcp connect failed requester=\{msg.source_id} rule=\{rule_id} target=\{target}",
-              )
-              ignore(
-                send_port_forward_message_via(
-                  msg.source_id,
-                  "port_forward_open_ack",
-                  make_port_forward_open_ack_body(
-                    rule_id,
-                    protocol,
-                    connection_id,
-                    false,
-                    Some("target_connect_failed"),
-                  ),
-                  None,
-                  route_protocol=ctx.transport.protocol(),
-                  route_addr=ctx.sender_addr,
-                ),
-              )
-              return
-            }
-          }
-          let endpoint = {
-            socket: conn,
-            send_seq: Ref(0),
-            recv_next_seq: Ref(0),
-            remote_close_seq: Ref(None),
-            recv_buffer: Ref({}),
-            pending_writes: Ref([]),
-            draining: Ref(false),
-            closed: Ref(false),
-            cond: @cond_var.Cond(),
-            rule_id,
-            peer_id: msg.source_id,
-            protocol,
-            connection_id,
-            route_protocol: ctx.transport.protocol(),
-            route_addr: ctx.sender_addr,
-            opened: true,
-            failed: false,
-            error: None,
-            audit: record_port_forward_audit_open(
-              rule_id,
-              protocol,
-              msg.source_id,
-              get_config().id,
-              target,
-            ),
-          }
-          port_forward_registry_state.tcp_expose_connections[connection_id] = endpoint
-          log_debug(
-            "port_forward open tcp established requester=\{msg.source_id} rule=\{rule_id} target=\{target}",
+            "port_forward open tcp connect failed requester=\{msg.source_id} target=\{target}",
           )
           ignore(
             send_port_forward_message_via(
@@ -265,93 +240,79 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
                 rule_id,
                 protocol,
                 connection_id,
-                true,
-                None,
+                false,
+                Some("target_connect_failed"),
               ),
               None,
               route_protocol=ctx.transport.protocol(),
               route_addr=ctx.sender_addr,
             ),
           )
-          run_port_forward_expose_tcp_reader(endpoint)
-          match remove_port_forward_tcp_expose_connection(connection_id) {
-            Some(value) => {
-              record_port_forward_audit_close(value.audit, "closed")
-              close_port_forward_tcp_endpoint(value)
-            }
-            None => ()
-          }
-        })
-      } else if protocol == "udp" {
-        ctx.root.spawn_bg(async fn() {
-          let server_addr = @socket.Addr::resolve(
-            rule.target_host,
-            port=rule.target_port,
-          ) catch {
-            _ => {
-              log_debug(
-                "port_forward open udp resolve failed requester=\{msg.source_id} rule=\{rule_id} target=\{rule.target_host}:\{rule.target_port}",
-              )
-              ignore(
-                send_port_forward_message_via(
-                  msg.source_id,
-                  "port_forward_open_ack",
-                  make_port_forward_open_ack_body(
-                    rule_id,
-                    protocol,
-                    connection_id,
-                    false,
-                    Some("target_resolve_failed"),
-                  ),
-                  None,
-                  route_protocol=ctx.transport.protocol(),
-                  route_addr=ctx.sender_addr,
-                ),
-              )
-              return
-            }
-          }
-          let client = @socket.UdpClient(server_addr) catch {
-            _ => {
-              log_debug(
-                "port_forward open udp client failed requester=\{msg.source_id} rule=\{rule_id} target=\{rule.target_host}:\{rule.target_port}",
-              )
-              ignore(
-                send_port_forward_message_via(
-                  msg.source_id,
-                  "port_forward_open_ack",
-                  make_port_forward_open_ack_body(
-                    rule_id,
-                    protocol,
-                    connection_id,
-                    false,
-                    Some("target_connect_failed"),
-                  ),
-                  None,
-                  route_protocol=ctx.transport.protocol(),
-                  route_addr=ctx.sender_addr,
-                ),
-              )
-              return
-            }
-          }
-          let session = {
-            peer_id: msg.source_id,
-            route_protocol: ctx.transport.protocol(),
-            route_addr: ctx.sender_addr,
-            client,
-            last_seen: @env.now(),
-            audit: record_port_forward_audit_open(
-              rule_id,
-              "udp",
-              msg.source_id,
-              get_config().id,
-              rule.target_host + ":" + rule.target_port.to_string(),
-            ),
-          }
-          port_forward_registry_state.udp_expose_sessions[connection_id] = session
+          return
+        }
+      }
+      let endpoint = {
+        socket: conn,
+        send_seq: Ref(0),
+        recv_next_seq: Ref(0),
+        remote_close_seq: Ref(None),
+        recv_buffer: Ref({}),
+        pending_writes: Ref([]),
+        draining: Ref(false),
+        closed: Ref(false),
+        cond: @cond_var.Cond(),
+        rule_id,
+        peer_id: msg.source_id,
+        protocol,
+        connection_id,
+        route_protocol: ctx.transport.protocol(),
+        route_addr: ctx.sender_addr,
+        opened: true,
+        failed: false,
+        error: None,
+        audit: record_port_forward_audit_open(
+          rule_id,
+          protocol,
+          msg.source_id,
+          get_config().id,
+          target,
+        ),
+      }
+      port_forward_registry_state.tcp_expose_connections[connection_id] = endpoint
+      log_debug(
+        "port_forward open tcp established requester=\{msg.source_id} target=\{target}",
+      )
+      ignore(
+        send_port_forward_message_via(
+          msg.source_id,
+          "port_forward_open_ack",
+          make_port_forward_open_ack_body(
+            rule_id,
+            protocol,
+            connection_id,
+            true,
+            None,
+          ),
+          None,
+          route_protocol=ctx.transport.protocol(),
+          route_addr=ctx.sender_addr,
+        ),
+      )
+      run_port_forward_expose_tcp_reader(endpoint)
+      match remove_port_forward_tcp_expose_connection(connection_id) {
+        Some(value) => {
+          record_port_forward_audit_close(value.audit, "closed")
+          close_port_forward_tcp_endpoint(value)
+        }
+        None => ()
+      }
+    })
+  } else if protocol == "udp" {
+    ctx.root.spawn_bg(async fn() {
+      let server_addr = @socket.Addr::resolve(target_host, port=target_port) catch {
+        _ => {
           log_debug(
-            "port_forward open udp established requester=\{msg.source_id} rule=\{rule_id} target=\{rule.target_host}:\{rule.target_port}",
+            "port_forward open udp resolve failed requester=\{msg.source_id} target=\{target_host}:\{target_port}",
           )
           ignore(
             send_port_forward_message_via(
@@ -359,90 +320,131 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
               "port_forward_open_ack",
               make_port_forward_open_ack_body(
                 rule_id,
-                "udp",
+                protocol,
                 connection_id,
-                true,
-                None,
+                false,
+                Some("target_resolve_failed"),
               ),
               None,
               route_protocol=ctx.transport.protocol(),
               route_addr=ctx.sender_addr,
             ),
           )
-          let buf = FixedArray::make(65536, b'\x00')
-          try {
-            for ;; {
-              let n = session.client.recv(buf)
-              if n <= 0 {
-                break
-              }
-              touch_port_forward_udp_expose_session(connection_id)
-              let chunk = slice_bytes(buf.unsafe_reinterpret_as_bytes(), 0, n)
-              session.audit.bytes_out = session.audit.bytes_out + chunk.length()
-              ignore(
-                send_port_forward_message_via(
-                  session.peer_id,
-                  "port_forward_data",
-                  make_port_forward_data_body(rule_id, "udp", connection_id, 0),
-                  Some(chunk),
-                  route_protocol=session.route_protocol,
-                  route_addr=session.route_addr,
-                ),
-              )
-            }
-          } catch {
-            _ => ()
-          }
-          send_port_forward_close_if_possible(
-            session.peer_id,
-            rule_id,
-            "udp",
-            connection_id,
-            None,
-            None,
-            route_protocol=session.route_protocol,
-            route_addr=session.route_addr,
-          )
-          remove_port_forward_udp_expose_session(connection_id)
-        })
-      } else {
-        log_debug(
-          "port_forward open unsupported protocol requester=\{msg.source_id} rule=\{rule_id} protocol=\{protocol}",
-        )
-        ctx.root.spawn_bg(async fn() {
-          send_port_forward_message(
-            msg.source_id,
-            "port_forward_open_ack",
-            make_port_forward_open_ack_body(
-              rule_id,
-              protocol,
-              connection_id,
-              false,
-              Some("protocol_mismatch"),
-            ),
-            None,
-          )
-        })
+          return
+        }
       }
-    None => {
+      let client = @socket.UdpClient(server_addr) catch {
+        _ => {
+          log_debug(
+            "port_forward open udp client failed requester=\{msg.source_id} target=\{target_host}:\{target_port}",
+          )
+          ignore(
+            send_port_forward_message_via(
+              msg.source_id,
+              "port_forward_open_ack",
+              make_port_forward_open_ack_body(
+                rule_id,
+                protocol,
+                connection_id,
+                false,
+                Some("target_connect_failed"),
+              ),
+              None,
+              route_protocol=ctx.transport.protocol(),
+              route_addr=ctx.sender_addr,
+            ),
+          )
+          return
+        }
+      }
+      let session = {
+        peer_id: msg.source_id,
+        route_protocol: ctx.transport.protocol(),
+        route_addr: ctx.sender_addr,
+        client,
+        last_seen: @env.now(),
+        audit: record_port_forward_audit_open(
+          rule_id,
+          "udp",
+          msg.source_id,
+          get_config().id,
+          target_host + ":" + target_port.to_string(),
+        ),
+      }
+      port_forward_registry_state.udp_expose_sessions[connection_id] = session
       log_debug(
-        "port_forward open rule not found requester=\{msg.source_id} rule=\{rule_id} protocol=\{protocol}",
+        "port_forward open udp established requester=\{msg.source_id} target=\{target_host}:\{target_port}",
       )
-      ctx.root.spawn_bg(async fn() {
-        send_port_forward_message(
+      ignore(
+        send_port_forward_message_via(
           msg.source_id,
           "port_forward_open_ack",
           make_port_forward_open_ack_body(
             rule_id,
-            protocol,
+            "udp",
             connection_id,
-            false,
-            Some("rejected"),
+            true,
+            None,
           ),
           None,
-        )
-      })
-    }
+          route_protocol=ctx.transport.protocol(),
+          route_addr=ctx.sender_addr,
+        ),
+      )
+      let buf = FixedArray::make(65536, b'\x00')
+      try {
+        for ;; {
+          let n = session.client.recv(buf)
+          if n <= 0 {
+            break
+          }
+          touch_port_forward_udp_expose_session(connection_id)
+          let chunk = slice_bytes(buf.unsafe_reinterpret_as_bytes(), 0, n)
+          session.audit.bytes_out = session.audit.bytes_out + chunk.length()
+          ignore(
+            send_port_forward_message_via(
+              session.peer_id,
+              "port_forward_data",
+              make_port_forward_data_body(rule_id, "udp", connection_id, 0),
+              Some(chunk),
+              route_protocol=session.route_protocol,
+              route_addr=session.route_addr,
+            ),
+          )
+        }
+      } catch {
+        _ => ()
+      }
+      send_port_forward_close_if_possible(
+        session.peer_id,
+        rule_id,
+        "udp",
+        connection_id,
+        None,
+        None,
+        route_protocol=session.route_protocol,
+        route_addr=session.route_addr,
+      )
+      remove_port_forward_udp_expose_session(connection_id)
+    })
+  } else {
+    log_debug(
+      "port_forward open unsupported protocol requester=\{msg.source_id} rule=\{rule_id} protocol=\{protocol}",
+    )
+    ctx.root.spawn_bg(async fn() {
+      send_port_forward_message(
+        msg.source_id,
+        "port_forward_open_ack",
+        make_port_forward_open_ack_body(
+          rule_id,
+          protocol,
+          connection_id,
+          false,
+          Some("protocol_mismatch"),
+        ),
+        None,
+      )
+    })
   }
 }
 

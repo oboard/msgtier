@@ -1,25 +1,30 @@
 ///|
 async fn main {
-  @async.with_task_group(async fn(root) {
-    let args = @env.args()[1:]
-    match args {
-      [""] | ["--help"] => {
-        print_usage()
-        return
-      }
-      ["--version"] => {
-        log_info("Version: \{app_state.version}")
-        return
-      }
-      [config] => run_with_config(root, config)
-      _ => log_info("MsgTier 0.1")
+  @async.with_task_group(root => {
+    let cmd = @argparse.Command(
+      "msgtier",
+      about="Decentralized P2P messaging network",
+      version=app_state.version,
+      positionals=[
+        PositionArg(
+          "config",
+          about="Path to config JSON",
+          num_args=@argparse.ValueRange::single(),
+        ),
+      ],
+    )
+    // On parse failure argparse already prints the error + usage to stdout;
+    // we swallow the raise and return without additional logging.
+    let matches = cmd.parse(argv=@env.args()[1:]) catch {
+      _ => return
     }
+    let config_path = matches.values.get("config").unwrap_or([])
+    if config_path.is_empty() {
+      log_info(cmd.render_help())
+      return
+    }
+    run_with_config(root, config_path[0])
   })
-}
-
-///|
-fn print_usage() -> Unit {
-  log_info("Usage: msgtier [config.json]")
 }
 
 ///|
@@ -37,9 +42,9 @@ async fn run_with_config(
   for peer_url in config.peers {
     add_known_peer(peer_url)
   }
-  root.spawn_bg(async fn() { ensure_managed_openclaw_plugin() })
-  init_openclaw_registry(root)
   init_port_forward_registry(root)
+  root.spawn_bg(async fn() { init_port_mapping_store(root) })
+  init_port_scanner(root)
   init_foreign_network_manager()
   start_listeners(root, config.listeners, id)
   start_http_api(root, config.web_api)

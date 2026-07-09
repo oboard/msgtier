@@ -80,29 +80,6 @@ fn write_u32(buf : FixedArray[Byte], offset : Int, value : Int) -> Unit {
 }
 
 ///|
-fn read_u16(buf : Bytes, offset : Int) -> Int? {
-  if offset + 2 > buf.length() {
-    None
-  } else {
-    Some((buf[offset].to_int() << 8) | buf[offset + 1].to_int())
-  }
-}
-
-///|
-fn read_u32(buf : Bytes, offset : Int) -> Int? {
-  if offset + 4 > buf.length() {
-    None
-  } else {
-    Some(
-      (buf[offset].to_int() << 24) |
-      (buf[offset + 1].to_int() << 16) |
-      (buf[offset + 2].to_int() << 8) |
-      buf[offset + 3].to_int(),
-    )
-  }
-}
-
-///|
 fn encode_stream_frame(
   correlation_id : String,
   index : Int,
@@ -173,85 +150,6 @@ fn encode_stream_frame(
 }
 
 ///|
-fn decode_stream_frame(
-  raw : Bytes,
-) -> (String, Int, Int, Bytes, Map[String, String]?, Bool)? {
-  if raw.length() < 24 ||
-    raw[0] != app_data_handler_state.stream_frame_magic[0] ||
-    raw[1] != app_data_handler_state.stream_frame_magic[1] ||
-    raw[2] != app_data_handler_state.stream_frame_magic[2] ||
-    raw[3] != app_data_handler_state.stream_frame_magic[3] ||
-    raw[4].to_int() != app_data_handler_state.stream_frame_version {
-    return None
-  }
-  let flags = raw[5].to_int()
-  let encrypted = (flags & 1) != 0
-  let meta_count = read_u16(raw, 6).unwrap_or(0)
-  let index = read_u32(raw, 8).unwrap_or(-1)
-  let total = read_u32(raw, 12).unwrap_or(-1)
-  let corr_len = read_u32(raw, 16).unwrap_or(-1)
-  let data_len = read_u32(raw, 20).unwrap_or(-1)
-  if index < 0 || total <= 0 || index >= total || corr_len < 0 || data_len < 0 {
-    return None
-  }
-  let mut offset = 24
-  if offset + corr_len > raw.length() {
-    return None
-  }
-  let correlation_id = @utf8.decode(slice_bytes(raw, offset, offset + corr_len)) catch {
-    _ => return None
-  }
-  offset = offset + corr_len
-  let headers : Map[String, String] = {}
-  for i = 0; i < meta_count; i = i + 1 {
-    let key_len = read_u16(raw, offset).unwrap_or(-1)
-    offset = offset + 2
-    let value_len = read_u32(raw, offset).unwrap_or(-1)
-    offset = offset + 4
-    if key_len < 0 ||
-      value_len < 0 ||
-      offset + key_len + value_len > raw.length() {
-      return None
-    }
-    let key = @utf8.decode(slice_bytes(raw, offset, offset + key_len)) catch {
-      _ => return None
-    }
-    offset = offset + key_len
-    let value = @utf8.decode(slice_bytes(raw, offset, offset + value_len)) catch {
-      _ => return None
-    }
-    offset = offset + value_len
-    headers[key] = value
-  }
-  if offset + data_len > raw.length() {
-    return None
-  }
-  let data = slice_bytes(raw, offset, offset + data_len)
-  let decoded_data = if encrypted {
-    match decrypt_with_message_key(correlation_id, data) {
-      Some(decrypted) => decrypted
-      None => return None
-    }
-  } else {
-    data
-  }
-  Some(
-    (
-      correlation_id,
-      index,
-      total,
-      decoded_data,
-      if headers.is_empty() {
-        None
-      } else {
-        Some(headers)
-      },
-      encrypted,
-    ),
-  )
-}
-
-///|
 fn merge_stream_headers(
   status : String?,
   headers : Map[String, String]?,
@@ -268,17 +166,6 @@ fn merge_stream_headers(
     None
   } else {
     Some(merged)
-  }
-}
-
-///|
-fn try_handle_stream_frame(raw : Bytes) -> Bool {
-  match decode_stream_frame(raw) {
-    Some((correlation_id, index, total, data, headers, _)) => {
-      push_stream_chunk(correlation_id, index, total, data, headers)
-      true
-    }
-    None => false
   }
 }
 
@@ -486,18 +373,6 @@ fn parse_response_chunk_array(
     None
   } else {
     Some((index, total, data, status, headers))
-  }
-}
-
-///|
-fn stream_done_from_headers(headers : Map[String, String]?) -> Bool {
-  match headers {
-    Some(h) =>
-      match h.get("x-msgtier-stream-done") {
-        Some(v) => v == "1"
-        None => false
-      }
-    None => false
   }
 }
 
@@ -859,21 +734,6 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
     details="req=\{correlation_id} from=\{msg.source_id} path=\{path} stream=\{prefer_stream_frame}",
   )
   ctx.root.spawn_bg(async fn() {
-    if prefer_stream_frame &&
-      http_method == "POST" &&
-      path == "/api/channels/chat/local/stream" {
-      stream_internal_channel_chat_request(
-        ctx.transport,
-        ctx.sender_addr,
-        ctx.my_id,
-        ctx.local_addr,
-        msg.source_id,
-        correlation_id,
-        body,
-        msg.encrypted,
-      )
-      return
-    }
     let (status_code, resp_headers, resp_body) = handle_internal_http_request(
       http_method, path, headers, body,
     )
@@ -1589,109 +1449,6 @@ async fn send_response_message_direct(
 }
 
 ///|
-async fn stream_internal_channel_chat_request(
-  transport : &Transport,
-  target_addr : String,
-  source_id : String,
-  source_addr : String,
-  target_id : String,
-  correlation_id : String,
-  body : Bytes,
-  is_encrypted : Bool,
-) -> Unit {
-  let body_str = @utf8.decode(body)
-  match parse_channel_chat_request(body_str) {
-    Some((peer_id, channel_id, channel_type, messages, session_key, _)) => {
-      let (status_code, response_body) = local_channel_chat_request(
-        channel_id, channel_type, messages, session_key, false,
-      )
-      if status_code < 200 || status_code >= 300 {
-        let resp_map : Map[String, @msgpack.Value] = Map([], capacity=0)
-        resp_map["status"] = @msgpack.string(status_code.to_string())
-        resp_map["headers"] = headers_to_msgpack({
-          "Content-Type": "application/json",
-          "x-msgtier-stream-done": "1",
-        })
-        resp_map["data"] = @msgpack.binary(
-          @utf8.encode(response_body.stringify()),
-        )
-        send_response_message_direct(
-          transport,
-          target_addr,
-          source_id,
-          source_addr,
-          target_id,
-          correlation_id,
-          ResponseSource::MsgPack(@msgpack.map(resp_map)),
-          Some(is_encrypted),
-          false,
-        )
-        return
-      }
-      let events = make_channel_stream_events(
-        peer_id, channel_id, channel_type, response_body,
-      )
-      let mut idx = 0
-      for event_chunk in events {
-        let headers : Map[String, String] = if idx == 0 {
-          {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "x-msgtier-stream-done": "0",
-          }
-        } else if idx == events.length() - 1 {
-          { "x-msgtier-stream-done": "1" }
-        } else {
-          { "x-msgtier-stream-done": "0" }
-        }
-        let resp_map : Map[String, @msgpack.Value] = Map([], capacity=0)
-        resp_map["status"] = @msgpack.string("200")
-        resp_map["headers"] = headers_to_msgpack(headers)
-        resp_map["data"] = @msgpack.binary(@utf8.encode(event_chunk))
-        send_response_message_direct(
-          transport,
-          target_addr,
-          source_id,
-          source_addr,
-          target_id,
-          correlation_id,
-          ResponseSource::MsgPack(@msgpack.map(resp_map)),
-          Some(is_encrypted),
-          false,
-        )
-        idx = idx + 1
-        @async.sleep(10)
-      }
-    }
-    None => {
-      let resp_map : Map[String, @msgpack.Value] = Map([], capacity=0)
-      resp_map["status"] = @msgpack.string("400")
-      resp_map["headers"] = headers_to_msgpack({
-        "Content-Type": "application/json",
-        "x-msgtier-stream-done": "1",
-      })
-      resp_map["data"] = @msgpack.binary(
-        @utf8.encode(
-          { "error": "invalid_channel_chat_request" }.to_json().stringify(),
-        ),
-      )
-      send_response_message_direct(
-        transport,
-        target_addr,
-        source_id,
-        source_addr,
-        target_id,
-        correlation_id,
-        ResponseSource::MsgPack(@msgpack.map(resp_map)),
-        Some(is_encrypted),
-        false,
-      )
-    }
-  }
-}
-
-///|
 fn handle_data_response(
   correlation_id : String,
   response_data : @msgpack.Value,
@@ -1701,93 +1458,6 @@ fn handle_data_response(
   log_debug(
     "DataResponse: resolve correlation=\{correlation_id} from=\{source_id}",
   )
-  if is_stream_request(correlation_id) {
-    match response_data {
-      Binary(b) => push_stream_data(correlation_id, b, None)
-      Array(arr) =>
-        match parse_response_chunk_array(arr) {
-          Some((index, total, data, status, headers)) => {
-            let real_data = match attachment {
-              Some(b) => b
-              None => data
-            }
-            let merged_headers = match status {
-              Some(s) => Some(ensure_status_header(s, headers))
-              None => headers
-            }
-            push_stream_chunk(
-              correlation_id, index, total, real_data, merged_headers,
-            )
-          }
-          None => {
-            let strings = []
-            for v in arr {
-              if v is String(s) {
-                strings.push(s)
-              }
-            }
-            push_stream_data(
-              correlation_id,
-              @utf8.encode(strings.to_json().stringify()),
-              None,
-            )
-          }
-        }
-      Map(m) =>
-        match parse_response_chunk(m) {
-          Some((index, total, data, status, headers)) => {
-            let merged_headers = match status {
-              Some(s) => Some(ensure_status_header(s, headers))
-              None => headers
-            }
-            push_stream_chunk(
-              correlation_id, index, total, data, merged_headers,
-            )
-          }
-          None => {
-            let status = match m.get("status") {
-              Some(String(s)) => Some(s)
-              _ => None
-            }
-            let headers = parse_headers_map(m)
-            let data = match m.get("data") {
-              Some(Binary(b)) => Some(b)
-              _ => None
-            }
-            match (status, data) {
-              (Some(status), Some(data)) => {
-                let merged_headers = Some(ensure_status_header(status, headers))
-                push_stream_data_part(
-                  correlation_id,
-                  data,
-                  merged_headers,
-                  stream_done_from_headers(merged_headers),
-                )
-              }
-              _ => {
-                let output = match m.get("output") {
-                  Some(String(s)) => s
-                  _ => response_data.to_string().unwrap_or("error")
-                }
-                push_stream_data_part(
-                  correlation_id,
-                  @utf8.encode(output),
-                  None,
-                  true,
-                )
-              }
-            }
-          }
-        }
-      _ =>
-        push_stream_data(
-          correlation_id,
-          @utf8.encode(response_data.to_string().unwrap_or("error")),
-          None,
-        )
-    }
-    return
-  }
   match response_data {
     Binary(b) => resolve_request(correlation_id, {}, b)
     Array(arr) =>

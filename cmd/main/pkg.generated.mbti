@@ -40,7 +40,9 @@ pub async fn save_object_from_reader(String, &@io.Reader) -> Unit
 // Errors
 type AddressParseError derive(@debug.Debug)
 
-type TransportError derive(Show)
+type PortMappingError derive(@debug.Debug)
+
+type TransportError derive(@debug.Debug)
 
 // Types and methods
 pub struct Address {
@@ -64,7 +66,7 @@ type AppState
 
 type BufferedReader
 
-type ChannelInstance derive(Eq, @debug.Debug)
+type ChannelChatRequest derive(@json.FromJson)
 
 type Config derive(ToJson, @debug.Debug, @json.FromJson)
 
@@ -72,9 +74,11 @@ type Connection derive(ToJson, @debug.Debug, @json.FromJson)
 
 type ConnectionManager derive(@debug.Debug)
 
-type ForeignNetworkManager derive(Show)
+type CreateMappingRequest derive(@json.FromJson)
 
-type ForeignNetworkPacket derive(Show, ToJson, @json.FromJson)
+type ForeignNetworkManager derive(@debug.Debug)
+
+type ForeignNetworkPacket derive(ToJson, @debug.Debug, @json.FromJson)
 
 type ForeignNetworkState
 
@@ -83,6 +87,8 @@ type GlobalState
 type HotReloadSettings derive(ToJson, @debug.Debug, @json.FromJson)
 
 type HttpServiceState
+
+type LocalPortEntry derive(Eq, ToJson, @debug.Debug, @json.FromJson)
 
 type LogLevel derive(Eq, ToJson, @debug.Debug, @json.FromJson)
 
@@ -98,6 +104,7 @@ type NatType derive(Eq, ToJson, @debug.Debug, @json.FromJson)
 pub impl Show for NatType
 
 type NetworkAddress derive(Eq, ToJson, @debug.Debug, @json.FromJson)
+pub impl Show for NetworkAddress
 
 type NetworkDiscoveryInfo derive(ToJson, @debug.Debug, @json.FromJson)
 
@@ -105,11 +112,7 @@ type ObjectStore
 
 type ObjectStoreState
 
-type OpenClawPublicInstance derive(Eq, @debug.Debug)
-
-type OpenClawRuntimeInstance derive(Eq, @debug.Debug)
-
-type OpenClawState
+type PatchMappingRequest derive(@json.FromJson)
 
 type PeerConnectionInfo derive(@debug.Debug)
 
@@ -133,8 +136,6 @@ type PendingState
 
 type PortForwardAuditEntry
 
-type PortForwardExposeRule derive(ToJson, @debug.Debug, @json.FromJson)
-
 type PortForwardForwardRule derive(ToJson, @debug.Debug, @json.FromJson)
 
 type PortForwardRegistryState
@@ -149,6 +150,14 @@ type PortForwardUdpForwardSession
 
 type PortMapping derive(ToJson, @debug.Debug, @json.FromJson)
 
+type PortMappingFile derive(ToJson, @debug.Debug, @json.FromJson)
+
+type PortMappingRule derive(Eq, ToJson, @debug.Debug, @json.FromJson)
+
+type PortMappingStoreState
+
+type PortScannerState
+
 pub enum Protocol {
   Tcp
   Udp
@@ -158,6 +167,7 @@ pub enum Protocol {
 } derive(Eq, Hash, @debug.Debug)
 pub fn Protocol::parse(StringView) -> Self?
 pub fn Protocol::to_string(Self) -> String
+pub impl Show for Protocol
 pub impl ToJson for Protocol
 pub impl @json.FromJson for Protocol
 
@@ -190,8 +200,6 @@ type ServerState
 
 type StatusInfo derive(ToJson)
 
-type StreamRequest
-
 type StreamRoute
 
 type StunDiscoveryInfo derive(Eq, ToJson, @debug.Debug)
@@ -207,8 +215,6 @@ type UdpTransport
 type WebSocketConnWrapper
 
 type WebSocketTransport
-
-type WsClient
 
 // Type aliases
 

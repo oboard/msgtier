@@ -1,18 +1,4 @@
 ///|
-fn status_text(code : Int) -> String {
-  match code {
-    200 => "OK"
-    206 => "Partial Content"
-    400 => "Bad Request"
-    404 => "Not Found"
-    500 => "Internal Server Error"
-    502 => "Bad Gateway"
-    504 => "Gateway Timeout"
-    _ => "OK"
-  }
-}
-
-///|
 fn message_route_candidates(
   peer_id : String,
   protocol : String,
@@ -157,142 +143,6 @@ async fn proxy_http_request(
       Some((status_code, headers, data))
     }
     None => None
-  }
-}
-
-///|
-async fn proxy_http_request_stream(
-  peer_id : String,
-  http_method : String,
-  path : String,
-  headers : Map[String, String],
-  body : Bytes,
-  timeout_ms : Int,
-  filename : String?,
-  conn : @http.ServerConnection,
-) -> Unit {
-  let timeout_ms_uint = timeout_ms.reinterpret_as_uint()
-  let timeout_ms_u64 = timeout_ms.to_uint64()
-  let req_id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
-  log_bench(
-    "proxy_stream_start",
-    details="req=\{req_id} peer=\{peer_id} path=\{path}",
-  )
-  add_stream_request(req_id)
-  let body_map : Map[String, @msgpack.Value] = Map([], capacity=0)
-  body_map["method"] = @msgpack.string(http_method)
-  body_map["path"] = @msgpack.string(path)
-  body_map["headers"] = headers_to_msgpack(headers)
-  body_map["body"] = @msgpack.binary(body)
-  body_map["stream_mode"] = @msgpack.string("frame_v1")
-  let config = get_config()
-  let is_encrypted = config.is_encrypt()
-  let msg = Message::new(
-    kind="http_proxy",
-    source_id=get_config().id,
-    relay=1,
-    version=app_state.version,
-    body=@msgpack.map(body_map),
-    encrypted=is_encrypted,
-    timeout_ms=timeout_ms_uint,
-  )
-  let msg = { ..msg, target_id: Some(peer_id), payload: Some(req_id) }
-  if !send_message_now(peer_id, msg) {
-    add_pending_message(msg)
-  }
-  let start = @env.now()
-  let mut last_log = start
-  let mut response_sent = false
-  let mut logged_first = false
-  let mut resp_headers : Map[String, String] = {}
-  let mut status_code = 200
-  let mut last_chunk_time = start
-  let mut total_bytes = 0
-  for ;; {
-    let now = @env.now()
-    if now - start > timeout_ms_u64 {
-      if !response_sent {
-        conn
-        ..send_response(504, "Gateway Timeout", extra_headers={})
-        ..write("Timeout fetching object from peer")
-        .end_response()
-      } else {
-        conn.end_response()
-      }
-      return
-    }
-    let remaining_ms_u64 = timeout_ms_u64 - (now - start)
-    let wait_ms = if remaining_ms_u64 > 1000UL {
-      1000
-    } else {
-      remaining_ms_u64.to_int()
-    }
-    match wait_stream_chunk(req_id, wait_ms) {
-      Some((chunk, done, headers_opt)) => {
-        last_chunk_time = @env.now()
-        if !logged_first {
-          log_info("http_proxy_stream first_chunk peer=\{peer_id} path=\{path}")
-          log_bench(
-            "proxy_stream_first_chunk",
-            details="req=\{req_id} peer=\{peer_id} path=\{path}",
-          )
-          logged_first = true
-        }
-        if !response_sent {
-          match headers_opt {
-            Some(h) => resp_headers = h
-            None => resp_headers = {}
-          }
-          status_code = match resp_headers.get("status") {
-            Some(s) => @string.parse_int(s) catch { _ => 200 }
-            None => 200
-          }
-          resp_headers.remove("status")
-          if !resp_headers.contains("Content-Type") {
-            resp_headers["Content-Type"] = "application/octet-stream"
-          }
-          match filename {
-            Some(fname) =>
-              if !resp_headers.contains("Content-Disposition") {
-                resp_headers["Content-Disposition"] = "attachment; filename=\"\{fname}\""
-              }
-            None => ()
-          }
-          conn.send_response(
-            status_code,
-            status_text(status_code),
-            extra_headers=resp_headers,
-          )
-          response_sent = true
-        }
-        if chunk.length() > 0 {
-          total_bytes = total_bytes + chunk.length()
-          conn.write(chunk)
-        }
-        if done {
-          log_bench(
-            "proxy_stream_done",
-            details="req=\{req_id} peer=\{peer_id} path=\{path} bytes=\{total_bytes}",
-          )
-          conn.end_response()
-          return
-        }
-      }
-      None => {
-        let now = @env.now()
-        if now - last_log > 2000UL {
-          log_debug("http_proxy_stream waiting peer=\{peer_id} path=\{path}")
-          last_log = now
-        }
-        if !response_sent && now - last_chunk_time > 5000UL {
-          log_warn(
-            "http_proxy_stream: no response for 5s, retrying request... peer=\{peer_id}",
-          )
-          add_pending_message(msg)
-          last_chunk_time = now
-        }
-      }
-    }
   }
 }
 
@@ -470,63 +320,12 @@ async fn handle_internal_http_request(
         ),
       ),
     )
-  } else if http_method == "GET" &&
-    @url.Url::parse("http://localhost" + path)
-    is Some(
-      {
-        path: Segments(["api", "chat", "messages", "openclaw", "local"]),
-        query,
-        ..,
-      }
-    ) {
-    let (peer_id, limit, before) = parse_chat_query(query)
-    let requester_id = query_param(query, "requester_id").unwrap_or(
-      get_config().id,
-    )
-    let resp_headers : Map[String, String] = {
-      "Content-Type": "application/json",
-    }
-    (
-      200,
-      resp_headers,
-      ResponseBody::Bytes(
-        @utf8.encode(
-          load_openclaw_session_messages_json(
-            peer_id, requester_id, limit, before,
-          ).stringify(),
-        ),
-      ),
-    )
   } else if http_method == "POST" && path == "/api/channels/chat/local" {
     let body_str = @utf8.decode(body)
     match parse_channel_chat_request(body_str) {
       Some((_, channel_id, channel_type, messages, session_key, stream)) => {
         let (status_code, response_body) = local_channel_chat_request(
           channel_id, channel_type, messages, session_key, stream,
-        )
-        (
-          status_code,
-          { "Content-Type": "application/json" },
-          ResponseBody::Bytes(@utf8.encode(response_body.stringify())),
-        )
-      }
-      None =>
-        (
-          400,
-          { "Content-Type": "application/json" },
-          ResponseBody::Bytes(
-            @utf8.encode(
-              { "error": "invalid_channel_chat_request" }.to_json().stringify(),
-            ),
-          ),
-        )
-    }
-  } else if http_method == "POST" && path == "/api/openclaw/chat/local" {
-    let body_str = @utf8.decode(body)
-    match parse_channel_chat_request(body_str) {
-      Some((_, channel_id, _, messages, session_key, stream)) => {
-        let (status_code, response_body) = local_channel_chat_request(
-          channel_id, "openclaw", messages, session_key, stream,
         )
         (
           status_code,

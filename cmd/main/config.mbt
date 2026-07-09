@@ -13,11 +13,6 @@ struct Config {
   scripts : Map[String, String]?
   web_api : String?
   metadata : Map[String, String]?
-  openclaw : Bool?
-  openclaw_plugin_version : String?
-  openclaw_token : String?
-  forwards : Map[String, String]?
-  exposes : Map[String, String]?
   log : LogLevel?
   relay_network_whitelist : Array[String]?
   relay_all_peer_rpc : Bool?
@@ -57,11 +52,6 @@ fn empty_config() -> Config {
     scripts: None,
     web_api: None,
     metadata: None,
-    openclaw: None,
-    openclaw_plugin_version: None,
-    openclaw_token: None,
-    forwards: None,
-    exposes: None,
     log: None,
     relay_network_whitelist: None,
     relay_all_peer_rpc: None,
@@ -104,11 +94,6 @@ fn get_config_hot_json(config : Config) -> Json {
   {
     "scripts": config.scripts,
     "metadata": config.metadata,
-    "openclaw": config.openclaw,
-    "openclaw_plugin_version": config.openclaw_plugin_version,
-    "openclaw_token": config.openclaw_token,
-    "forwards": config.forwards,
-    "exposes": config.exposes,
     "log": config.log,
     "relay_network_whitelist": config.relay_network_whitelist,
     "relay_all_peer_rpc": config.relay_all_peer_rpc,
@@ -130,11 +115,6 @@ fn get_config_response_json() -> Json {
     "scripts": config.scripts,
     "web_api": config.web_api,
     "metadata": config.metadata,
-    "openclaw": config.openclaw,
-    "openclaw_plugin_version": config.openclaw_plugin_version,
-    "openclaw_token": config.openclaw_token,
-    "forwards": config.forwards,
-    "exposes": config.exposes,
     "log": config.log,
     "relay_network_whitelist": config.relay_network_whitelist,
     "relay_all_peer_rpc": config.relay_all_peer_rpc,
@@ -159,6 +139,26 @@ fn validate_hot_reload_patch_fields(obj : Map[String, Json]) -> String? {
 }
 
 ///|
+/// Apply a `Json` value to `next.<field>` via `@json.from_json`, returning
+/// an error result when the payload does not match the target type.
+///
+/// Each hot-reloadable field goes through this helper so `null` clears the
+/// value and any other JSON is deserialized against the field's declared type.
+fn[T : @json.FromJson] parse_hot_field(
+  value : Json,
+  key : String,
+) -> Result[T?, String] {
+  if value is Null {
+    Ok(None)
+  } else {
+    let parsed : T = @json.from_json(value) catch {
+      _ => return Err("invalid `\{key}` value")
+    }
+    Ok(Some(parsed))
+  }
+}
+
+///|
 fn apply_hot_reload_patch(
   config : Config,
   obj : Map[String, Json],
@@ -166,93 +166,53 @@ fn apply_hot_reload_patch(
   if validate_hot_reload_patch_fields(obj) is Some(err) {
     return Err(err)
   }
-
   let mut next = config
   for key, value in obj {
     match key {
       "scripts" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, scripts: v }
-        } else {
-          return Err("invalid `scripts` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, scripts: v }
+          Err(e) => return Err(e)
         }
       "metadata" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, metadata: v }
-        } else {
-          return Err("invalid `metadata` value")
-        }
-      "openclaw" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, openclaw: v }
-        } else {
-          return Err("invalid `openclaw` value")
-        }
-      "openclaw_plugin_version" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, openclaw_plugin_version: v }
-        } else {
-          return Err("invalid `openclaw_plugin_version` value")
-        }
-      "openclaw_token" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, openclaw_token: v }
-        } else {
-          return Err("invalid `openclaw_token` value")
-        }
-      "forwards" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, forwards: v }
-        } else {
-          return Err("invalid `forwards` value")
-        }
-      "exposes" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, exposes: v }
-        } else {
-          return Err("invalid `exposes` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, metadata: v }
+          Err(e) => return Err(e)
         }
       "log" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, log: v }
-        } else {
-          return Err("invalid `log` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, log: v }
+          Err(e) => return Err(e)
         }
       "relay_network_whitelist" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, relay_network_whitelist: v }
-        } else {
-          return Err("invalid `relay_network_whitelist` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, relay_network_whitelist: v }
+          Err(e) => return Err(e)
         }
       "relay_all_peer_rpc" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, relay_all_peer_rpc: v }
-        } else {
-          return Err("invalid `relay_all_peer_rpc` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, relay_all_peer_rpc: v }
+          Err(e) => return Err(e)
         }
       "foreign_relay_bps_limit" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, foreign_relay_bps_limit: v }
-        } else {
-          return Err("invalid `foreign_relay_bps_limit` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, foreign_relay_bps_limit: v }
+          Err(e) => return Err(e)
         }
       "upload_dir" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, upload_dir: v }
-        } else {
-          return Err("invalid `upload_dir` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, upload_dir: v }
+          Err(e) => return Err(e)
         }
       "disable_encryption" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, disable_encryption: v }
-        } else {
-          return Err("invalid `disable_encryption` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, disable_encryption: v }
+          Err(e) => return Err(e)
         }
       "hot_reload" =>
-        if @jsonx.nul(value) is Some(v) {
-          next = { ..next, hot_reload: v }
-        } else {
-          return Err("invalid `hot_reload` value")
+        match parse_hot_field(value, key) {
+          Ok(v) => next = { ..next, hot_reload: v }
+          Err(e) => return Err(e)
         }
       _ => return Err("unsupported hot reload field `\{key}`")
     }
@@ -302,27 +262,22 @@ fn apply_hot_reload_request(body_str : String) -> Result[Config, String] {
   let parsed = @json.parse(body_str) catch {
     _ => return Err("invalid json payload")
   }
-  let (provided_secret, patch_obj) = match parsed {
-    Object(obj) =>
-      match obj.get("config") {
-        Some(Object(patch)) => {
-          let provided_secret = match obj.get("secret") {
-            Some(String(secret)) => Some(secret)
-            _ => None
-          }
-          (provided_secret, patch)
-        }
-        _ => return Err("missing `config` object")
-      }
-    _ => return Err("request body must be a JSON object")
+  guard parsed is Object(_) else {
+    return Err("request body must be a JSON object")
   }
-
+  guard parsed is { "config": Object(patch_obj), .. } else {
+    return Err("missing `config` object")
+  }
+  let provided_secret = if parsed is { "secret": String(secret), .. } {
+    Some(secret)
+  } else {
+    None
+  }
   let current = get_config()
   match ensure_hot_reload_allowed(current, provided_secret) {
     Some(err) => return Err(err)
     None => ()
   }
-
   let next = match apply_hot_reload_patch(current, patch_obj) {
     Ok(config) => config
     Err(err) => return Err(err)

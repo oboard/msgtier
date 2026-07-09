@@ -5,6 +5,6 @@ struct NetworkAddress {
 } derive(Debug, ToJson, FromJson, Eq)
 
 ///|
-pub impl Show for NetworkAddress with output(self, logger) {
+pub impl Show for NetworkAddress with fn output(self, logger) {
   logger.write_string(self.address)
 }

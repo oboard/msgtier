@@ -120,10 +120,7 @@ test "IPv4::parse_number" {
   json_inspect(IPv4::parse_number("255"), content="255")
   json_inspect(IPv4::parse_number("0xff"), content="255")
   json_inspect(IPv4::parse_number("0377"), content="255")
-  json_inspect(
-    Ok(IPv4::parse_number("09")) catch {
-      e => Err(e)
-    },
-    content={ "Err": "IPv4NonNumericPart" },
-  )
+  json_inspect(Ok(IPv4::parse_number("09")) catch { e => Err(e) }, content={
+    "Err": "IPv4NonNumericPart",
+  })
 }

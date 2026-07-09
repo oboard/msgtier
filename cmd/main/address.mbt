@@ -9,14 +9,16 @@ pub enum Protocol {
 } derive(Debug, Eq, Hash)
 
 ///|
-pub impl Show for Protocol with output(self, logger) {
-  logger.write_string(match self {
-    Tcp => "Tcp"
-    Udp => "Udp"
-    Ws => "Ws"
-    Wss => "Wss"
-    Quic => "Quic"
-  })
+pub impl Show for Protocol with fn output(self, logger) {
+  logger.write_string(
+    match self {
+      Tcp => "Tcp"
+      Udp => "Udp"
+      Ws => "Ws"
+      Wss => "Wss"
+      Quic => "Quic"
+    },
+  )
 }
 
 ///|
