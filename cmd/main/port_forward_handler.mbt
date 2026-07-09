@@ -197,7 +197,15 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
 
   // Authorization: the requested target must be a port this node is currently
   // broadcasting to peers.  Any other port is rejected.
-  if !is_local_port_broadcast(protocol, target_port) {
+  //
+  // The scanner only ever labels a LISTEN socket by its transport (`tcp` or
+  // `udp`), never by the application-layer protocol running on top of it, so
+  // we authorize by the transport, not by the requester's protocol label.
+  // That makes `http`, `https`, `ws`, `wss`, `grpc`, `mysql`, and any other
+  // TCP-based application protocol all authorize against the same
+  // `tcp|<port>` broadcast entry.
+  let broadcast_protocol = port_forward_transport(protocol)
+  if !is_local_port_broadcast(broadcast_protocol, target_port) {
     log_debug(
       "port_forward open rejected requester=\{msg.source_id} target=\{target_host_raw}:\{target_port} protocol=\{protocol}",
     )
@@ -307,7 +315,7 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
         None => ()
       }
     })
-  } else if protocol == "udp" {
+  } else if port_forward_transport(protocol) == "udp" {
     ctx.root.spawn_bg(async fn() {
       let server_addr = @socket.Addr::resolve(target_host, port=target_port) catch {
         _ => {
@@ -509,7 +517,7 @@ fn handle_port_forward_data_message(ctx : MessageContext) -> Unit {
           None => ()
         }
     }
-  } else if protocol == "udp" {
+  } else if port_forward_transport(protocol) == "udp" {
     match
       port_forward_registry_state.udp_forward_session_by_id.get(connection_id) {
       Some(session) =>

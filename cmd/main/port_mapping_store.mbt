@@ -121,16 +121,19 @@ fn recompute_port_mapping_active_rules() -> Unit {
     if !m.enabled {
       continue
     }
-    let protocol = m.remote_protocol
-    if !(protocol is ("tcp" | "udp" | "http")) {
+    // Any non-empty protocol label is acceptable — the transport that actually
+    // gets used is decided by [port_forward_transport] downstream.
+    if normalize_port_forward_protocol(m.remote_protocol) is None {
       continue
     }
     rules.push({
       id: m.id,
-      protocol,
+      protocol: m.remote_protocol,
       peer_id: m.peer_id,
       listen_host: m.local_host,
       listen_port: m.local_port,
+      remote_host: m.remote_host,
+      remote_port: m.remote_port,
       enabled: Some(true),
     })
   }
@@ -230,7 +233,7 @@ async fn is_local_port_available(
 ) -> Bool {
   let addr_str = make_port_forward_socket_addr(host, port)
   let addr = @socket.Addr::parse(addr_str) catch { _ => return false }
-  if protocol == "udp" {
+  if port_forward_transport(protocol) == "udp" {
     let server = @socket.UdpServer(addr) catch { _ => return false }
     server.close()
     true
@@ -300,7 +303,9 @@ suberror PortMappingError {
 ///
 /// - `local_port_opt = None` triggers auto-allocation.
 /// - Fails with `DuplicatePort` if a mapping already claims `local_port`.
-/// - Fails with `InvalidProtocol` on anything other than tcp/udp/http.
+/// - Fails with `InvalidProtocol` if the protocol string is empty (any other
+///   non-empty label is accepted — the transport used is derived by
+///   [port_forward_transport]).
 async fn create_port_mapping_rule(
   peer_id : String,
   remote_protocol : String,

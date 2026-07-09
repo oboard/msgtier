@@ -1,0 +1,13 @@
+{
+  "id": "node-a",
+  "secret": "dynamic-port-forward-secret",
+  "listeners": [
+    "tcp://0.0.0.0:16201"
+  ],
+  "peers": [
+    "tcp://127.0.0.1:16202"
+  ],
+  "web_api": "127.0.0.1:19200",
+  "log": "Debug",
+  "disable_encryption": true
+}

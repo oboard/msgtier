@@ -34,6 +34,8 @@ test "port forward metadata reflects runtime state only" {
     peer_id: "node-b",
     listen_host: "127.0.0.1",
     listen_port: 18080,
+    remote_host: "127.0.0.1",
+    remote_port: 8080,
     enabled: None,
   }
   let rule_key = make_port_forward_forward_rule_key(rule)

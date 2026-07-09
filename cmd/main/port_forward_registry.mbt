@@ -82,7 +82,7 @@ fn get_port_forward_metadata_json() -> String {
     } else if is_port_forward_tcp_protocol(rule.protocol) &&
       port_forward_registry_state.tcp_forward_started.contains(rule_key) {
       "listening"
-    } else if rule.protocol == "udp" &&
+    } else if port_forward_transport(rule.protocol) == "udp" &&
       port_forward_registry_state.udp_forward_runtimes.contains(rule_key) {
       "listening"
     } else if get_global_peer_manager().get_peer(rule.peer_id) is Some(_) {

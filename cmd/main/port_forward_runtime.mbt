@@ -297,7 +297,7 @@ async fn accept_port_forward_tcp_connection(
     rule.protocol,
     get_config().id,
     rule.peer_id,
-    rule.listen_host + ":" + rule.listen_port.to_string(),
+    rule.remote_host + ":" + rule.remote_port.to_string(),
   )
   let endpoint = {
     socket: conn,
@@ -324,7 +324,13 @@ async fn accept_port_forward_tcp_connection(
   let (sent, route_protocol, route_addr) = send_port_forward_message_select_route(
     rule.peer_id,
     "port_forward_open",
-    make_port_forward_open_body(rule.id, rule.protocol, connection_id),
+    make_port_forward_open_body(
+      rule.id,
+      rule.protocol,
+      connection_id,
+      target_host=rule.remote_host,
+      target_port=rule.remote_port,
+    ),
     None,
   )
   if !sent {
@@ -442,7 +448,13 @@ async fn run_port_forward_udp_forward_listener(
           let (sent, route_protocol, route_addr) = send_port_forward_message_select_route(
             runtime.rule.peer_id,
             "port_forward_open",
-            make_port_forward_open_body(runtime.rule.id, "udp", next_session_id),
+            make_port_forward_open_body(
+              runtime.rule.id,
+              runtime.rule.protocol,
+              next_session_id,
+              target_host=runtime.rule.remote_host,
+              target_port=runtime.rule.remote_port,
+            ),
             None,
           )
           guard sent else { continue }
@@ -568,7 +580,7 @@ fn refresh_port_forward_registry(root : @async.TaskGroup[Unit]) -> Unit {
     let rule_key = make_port_forward_forward_rule_key(rule)
     if is_port_forward_tcp_protocol(rule.protocol) {
       desired_tcp[rule_key] = rule
-    } else if rule.protocol == "udp" {
+    } else if port_forward_transport(rule.protocol) == "udp" {
       desired_udp[rule_key] = rule
     }
   }
