@@ -449,20 +449,17 @@ async fn process_pending_message(
     // if pending_msg.kind == "response" || pending_msg.kind == "http_proxy" {
     //   return
     // }
-    let allow_non_string_body = pending_msg.kind == "file" ||
-      pending_msg.kind == "image" ||
-      pending_msg.kind == "http_proxy" ||
-      pending_msg.kind == "response"
-    if pending_msg.kind != "ping" &&
-      pending_msg.kind != "pong" &&
-      pending_msg.kind != "hello" &&
-      pending_msg.kind != "sync" {
-      if !allow_non_string_body {
-        match pending_msg.body {
-          String(_) => ()
-          _ => return
-        }
-      }
+    if !(pending_msg.kind
+      is ("ping"
+      | "pong"
+      | "hello"
+      | "sync"
+      | "file"
+      | "image"
+      | "http_proxy"
+      | "response")) &&
+      !(pending_msg.body is String(_)) {
+      return
     }
   }
   let cm = get_global_connection_manager()
@@ -500,7 +497,7 @@ async fn process_pending_message(
       }
       continue
     }
-    if (pending_msg.kind == "response" || pending_msg.kind == "http_proxy") &&
+    if pending_msg.kind is ("response" | "http_proxy") &&
       transport.protocol() != "tcp" {
       let has_tcp_addr = pick_peer_address(target_peer_id, "tcp") is Some(_) ||
         pick_peer_lan_address(target_peer_id, "tcp") is Some(_)
@@ -1009,9 +1006,6 @@ async fn handle_incoming_message(
   transport : &Transport,
   dispatcher : Ref[MessageDispatcher],
 ) -> Unit noraise {
-  if try_handle_stream_frame(bytes) {
-    return
-  }
   if bytes.length() < 4 {
     log_warn("Received message too short: \{bytes.length()} bytes")
     return
@@ -1073,12 +1067,8 @@ async fn handle_incoming_message(
     Some(tid) => tid == id
     None => false
   }
-  let should_ack = msg.kind != "ack" &&
-    msg.kind != "ping" &&
-    msg.kind != "pong" &&
-    msg.kind != "hello" &&
-    msg.kind != "port_forward_data" &&
-    msg.kind != "sync" &&
+  let should_ack = !(msg.kind
+    is ("ack" | "ping" | "pong" | "hello" | "port_forward_data" | "sync")) &&
     (is_unicast_to_me || is_broadcast)
   if should_ack {
     let ack_msg = if is_broadcast {
@@ -1177,9 +1167,9 @@ async fn handle_incoming_message(
       let addrs : Array[NetworkAddress] = []
 
       // Helper to add unique non-self address
-      let add_if_valid = fn(addr : String) {
+      let add_if_valid = (addr : String) => {
         if !my_listeners.contains(addr) &&
-          !addrs.iter().any(fn(a) { a.address == addr }) {
+          !addrs.iter().any(a => a.address == addr) {
           addrs.push(NetworkAddress::{ address: addr })
         }
       }
@@ -1338,7 +1328,7 @@ async fn handle_incoming_message(
   // Log all received messages for debugging
   // log_info("RAW MSG: kind=\{msg.kind} from=\{msg.source_id}")
 
-  if msg.kind != "ping" && msg.kind != "pong" {
+  if !(msg.kind is ("ping" | "pong")) {
     if !(msg.kind == "hello" && should_skip_hello_callback) {
       log_debug("Received \{msg.kind} from \{msg.source_id}")
     }

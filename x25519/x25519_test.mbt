@@ -37,5 +37,5 @@ test "encrypt_decrypt" {
 
   // Decrypt
   let decrypted = decrypt(shared, encrypted)
-  inspect(decrypted, content="Some(b\"Hello, World!\")")
+  debug_inspect(decrypted, content="Some(b\"Hello, World!\")")
 }

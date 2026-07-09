@@ -20,7 +20,7 @@ fn normalize_port_forward_protocol(raw : String) -> String? {
   } else {
     value0
   }
-  if value == "tcp" || value == "udp" || value == "http" {
+  if value is ("tcp" | "udp" | "http") {
     Some(value)
   } else {
     None
@@ -29,7 +29,7 @@ fn normalize_port_forward_protocol(raw : String) -> String? {
 
 ///|
 fn is_port_forward_tcp_protocol(protocol : String) -> Bool {
-  protocol == "tcp" || protocol == "http"
+  protocol is ("tcp" | "http")
 }
 
 ///|

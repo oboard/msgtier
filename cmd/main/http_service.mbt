@@ -82,7 +82,7 @@ async fn handle_ws_incoming(text : String) -> String? {
         Some(String(k)) => k
         _ => "text"
       }
-      if kind == "ping" || kind == "pong" || kind == "sync" {
+      if kind is ("ping" | "pong" | "sync") {
         return Some(kind)
       }
       let body = match (kind, content_val) {
@@ -395,7 +395,7 @@ async fn proxy_handler(
       let forward_headers : Map[String, String] = {}
       for k, v in headers {
         let key = k.to_owned()
-        if key != "target" && key != "path" && key != "peer" {
+        if !(key is ("target" | "path" | "peer")) {
           forward_headers[key] = v.to_owned()
         }
       }

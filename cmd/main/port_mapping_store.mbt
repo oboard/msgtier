@@ -122,7 +122,7 @@ fn recompute_port_mapping_active_rules() -> Unit {
       continue
     }
     let protocol = m.remote_protocol
-    if !(protocol == "tcp" || protocol == "udp" || protocol == "http") {
+    if !(protocol is ("tcp" | "udp" | "http")) {
       continue
     }
     rules.push({

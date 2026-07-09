@@ -1,6 +1,6 @@
 ///|
 fn is_persistable_chat_kind(kind : String) -> Bool {
-  kind == "text" || kind == "file" || kind == "image" || kind == "video"
+  kind is ("text" | "file" | "image" | "video")
 }
 
 ///|
