@@ -43,25 +43,13 @@ fn parse_channel_chat_request(
 
 ///|
 fn extract_user_text_from_messages(messages : Array[Json]) -> String {
-  let mut idx = messages.length()
-  while idx > 0 {
-    idx = idx - 1
-    if messages[idx] is { "role": "user", "content": String(content), .. } {
-      return content
+  for i in messages.length()..<0 {
+    if messages[i] is { "role": "user", "content": String(content), .. } {
+      break content
     }
-    // match messages[idx] {
-    //   Object(obj) =>
-    //     match (obj.get("role"), obj.get("content")) {
-    //       (Some(String(role)), Some(String(content))) =>
-    //         if role == "user" {
-    //           return content
-    //         }
-    //       _ => ()
-    //     }
-    //   _ => ()
-    // }
+  } nobreak {
+    ""
   }
-  ""
 }
 
 ///|
@@ -142,18 +130,8 @@ async fn finish_channel_chat_request(
   if prompt != "" {
     emit_channel_chat_message(my_id, target_id, prompt)
   }
-  match response_body {
-    Object(obj) =>
-      match obj.get("message") {
-        Some(Object(msg_obj)) =>
-          match msg_obj.get("content") {
-            Some(String(content)) =>
-              emit_channel_chat_message(target_id, my_id, content)
-            _ => ()
-          }
-        _ => ()
-      }
-    _ => ()
+  if response_body is { "message": { "content": String(content), .. }, .. } {
+    emit_channel_chat_message(target_id, my_id, content)
   }
 }
 

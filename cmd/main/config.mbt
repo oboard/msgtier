@@ -262,27 +262,22 @@ fn apply_hot_reload_request(body_str : String) -> Result[Config, String] {
   let parsed = @json.parse(body_str) catch {
     _ => return Err("invalid json payload")
   }
-  let (provided_secret, patch_obj) = match parsed {
-    Object(obj) =>
-      match obj.get("config") {
-        Some(Object(patch)) => {
-          let provided_secret = match obj.get("secret") {
-            Some(String(secret)) => Some(secret)
-            _ => None
-          }
-          (provided_secret, patch)
-        }
-        _ => return Err("missing `config` object")
-      }
-    _ => return Err("request body must be a JSON object")
+  guard parsed is Object(_) else {
+    return Err("request body must be a JSON object")
   }
-
+  guard parsed is { "config": Object(patch_obj), .. } else {
+    return Err("missing `config` object")
+  }
+  let provided_secret = if parsed is { "secret": String(secret), .. } {
+    Some(secret)
+  } else {
+    None
+  }
   let current = get_config()
   match ensure_hot_reload_allowed(current, provided_secret) {
     Some(err) => return Err(err)
     None => ()
   }
-
   let next = match apply_hot_reload_patch(current, patch_obj) {
     Ok(config) => config
     Err(err) => return Err(err)
