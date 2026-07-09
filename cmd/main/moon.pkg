@@ -33,6 +33,7 @@ import {
   "oboard/morm",
   "oboard/msgtier/db",
   "oboard/morm/engine/sqlite3",
+  "oboard/mocket",
 }
 
 supported_targets = "native"

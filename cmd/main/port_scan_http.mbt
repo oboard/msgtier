@@ -1,45 +1,52 @@
 ///|
 /// HTTP handlers for port scanning and mapping management.
 ///
-/// Response bodies are JSON with `Content-Type: application/json`.  Errors
-/// follow the `{"error": "code", "message": "..."}` shape.
+/// Handlers return `Json` directly (mocket treats `Json` as a `&Responder`)
+/// or an `@mocket.HttpResponse` when a non-200 status is needed. Error bodies
+/// follow the `{ "error": code, "message": msg }` shape.
 
 ///|
-async fn write_json_response(
-  conn : @http.ServerConnection,
-  status_code : Int,
-  payload : Json,
-) -> Unit {
-  conn
-  ..send_response(status_code, status_text(status_code), extra_headers={
-    "Content-Type": "application/json",
-  })
-  ..write(payload.stringify())
-  .end_response()
-}
+/// Request body for `POST /api/port_mappings`. Parsed via `derive(FromJson)`
+/// through `event.req.json()`.
+struct CreateMappingRequest {
+  peer_id : String
+  remote_protocol : String
+  remote_host : String?
+  remote_port : Int
+  local_host : String?
+  local_port : Int?
+  note : String?
+} derive(FromJson)
 
 ///|
-async fn write_json_error(
-  conn : @http.ServerConnection,
-  status_code : Int,
+/// Request body for `PATCH /api/port_mappings/:id`. Both fields optional.
+struct PatchMappingRequest {
+  enabled : Bool?
+  note : String?
+} derive(FromJson)
+
+///|
+fn json_error(
+  status : @mocket.StatusCode,
   code : String,
   message : String,
-) -> Unit {
-  let payload : Json = { "error": code.to_json(), "message": message.to_json() }
-  write_json_response(conn, status_code, payload)
+) -> @mocket.HttpResponse {
+  @mocket.HttpResponse::new(status).body(
+    ({ "error": code.to_json(), "message": message.to_json() } : Json),
+  )
 }
 
 ///|
-async fn handle_port_scan_local(conn : @http.ServerConnection) -> Unit {
+fn handle_port_scan_local() -> Json {
   let items : Array[Json] = []
   for e in port_scanner_state.last_scan {
     items.push(e.to_json())
   }
-  write_json_response(conn, 200, { "ports": items.to_json() })
+  { "ports": items.to_json() }
 }
 
 ///|
-async fn handle_port_scan_peers(conn : @http.ServerConnection) -> Unit {
+fn handle_port_scan_peers() -> Json {
   let peers_obj : Map[String, Json] = {}
   for peer_id, entries in port_scanner_state.remote_ports_by_peer {
     let items : Array[Json] = []
@@ -54,25 +61,22 @@ async fn handle_port_scan_peers(conn : @http.ServerConnection) -> Unit {
       "ports": items.to_json(),
     }
   }
-  write_json_response(conn, 200, { "peers": Json::object(peers_obj) })
+  { "peers": Json::object(peers_obj) }
 }
 
 ///|
-async fn handle_port_scan_refresh(conn : @http.ServerConnection) -> Unit {
+async fn handle_port_scan_refresh() -> Json {
   let entries = perform_port_scan_cycle(true)
-  write_json_response(conn, 200, {
-    "scanned": entries.length().to_json(),
-    "broadcast": true,
-  })
+  { "scanned": entries.length().to_json(), "broadcast": true }
 }
 
 ///|
-async fn handle_port_mappings_list(conn : @http.ServerConnection) -> Unit {
+fn handle_port_mappings_list() -> Json {
   let items : Array[Json] = []
   for m in list_port_mapping_rules() {
     items.push(m.to_json())
   }
-  write_json_response(conn, 200, { "mappings": items.to_json() })
+  { "mappings": items.to_json() }
 }
 
 ///|
@@ -82,120 +86,75 @@ async fn handle_port_mappings_list(conn : @http.ServerConnection) -> Unit {
 ///   local_host?, local_port?, note? }
 /// ```
 async fn handle_port_mappings_create(
-  conn : @http.ServerConnection,
-  body_str : String,
-) -> Unit {
-  let obj = @json.parse(body_str) catch {
-    _ => {
-      write_json_error(conn, 400, "invalid_json", "request body must be JSON")
-      return
-    }
+  event : @mocket.MocketEvent,
+) -> @mocket.HttpResponse {
+  let req : CreateMappingRequest = event.req.json() catch {
+    _ =>
+      return json_error(BadRequest, "invalid_body", "request body must match schema")
   }
-  let peer_id : String? = @jsonx.get(obj, "peer_id")
-  let remote_protocol : String? = @jsonx.get(obj, "remote_protocol")
-  let remote_host : String? = @jsonx.get(obj, "remote_host")
-  let remote_port : Int? = @jsonx.get(obj, "remote_port")
-  let local_host : String? = @jsonx.get(obj, "local_host")
-  let local_port : Int? = @jsonx.get(obj, "local_port")
-  let note : String? = @jsonx.get(obj, "note")
-  guard peer_id is Some(peer_id) && peer_id != "" else {
-    write_json_error(conn, 400, "missing_field", "peer_id required")
-    return
+  guard req.peer_id != "" else {
+    return json_error(BadRequest, "missing_field", "peer_id required")
   }
-  guard remote_protocol is Some(remote_protocol) else {
-    write_json_error(conn, 400, "missing_field", "remote_protocol required")
-    return
-  }
-  guard remote_port is Some(remote_port) else {
-    write_json_error(conn, 400, "missing_field", "remote_port required")
-    return
-  }
-  let remote_host_v = remote_host.unwrap_or("127.0.0.1")
   let rule = create_port_mapping_rule(
-    peer_id, remote_protocol, remote_host_v, remote_port, local_host, local_port,
-    note,
+    req.peer_id,
+    req.remote_protocol,
+    req.remote_host.unwrap_or("127.0.0.1"),
+    req.remote_port,
+    req.local_host,
+    req.local_port,
+    req.note,
   ) catch {
-    PortMappingError::DuplicatePort(p) => {
-      write_json_error(
-        conn,
-        409,
+    PortMappingError::DuplicatePort(p) =>
+      return json_error(
+        Conflict,
         "port_in_use",
         "local port \{p} already claimed by another mapping",
       )
-      return
-    }
-    PortMappingError::InvalidProtocol(p) => {
-      write_json_error(
-        conn,
-        400,
+    PortMappingError::InvalidProtocol(p) =>
+      return json_error(
+        BadRequest,
         "invalid_protocol",
         "unsupported protocol: \{p}",
       )
-      return
-    }
-    PortMappingError::InvalidPort(p) => {
-      write_json_error(conn, 400, "invalid_port", "port out of range: \{p}")
-      return
-    }
-    PortMappingError::AllocationFailed => {
-      write_json_error(
-        conn, 409, "allocation_failed", "could not find a free local port",
+    PortMappingError::InvalidPort(p) =>
+      return json_error(BadRequest, "invalid_port", "port out of range: \{p}")
+    PortMappingError::AllocationFailed =>
+      return json_error(
+        Conflict, "allocation_failed", "could not find a free local port",
       )
-      return
-    }
-    PortMappingError::NotFound(id) => {
-      write_json_error(conn, 404, "not_found", "mapping \{id} not found")
-      return
-    }
-    _ => {
-      write_json_error(conn, 500, "internal_error", "create failed")
-      return
-    }
+    PortMappingError::NotFound(id) =>
+      return json_error(NotFound, "not_found", "mapping \{id} not found")
+    _ =>
+      return json_error(InternalServerError, "internal_error", "create failed")
   }
-  write_json_response(conn, 200, rule.to_json())
+  @mocket.HttpResponse::new(OK).body(rule.to_json())
 }
 
 ///|
-async fn handle_port_mappings_delete(
-  conn : @http.ServerConnection,
-  id : String,
-) -> Unit {
+async fn handle_port_mappings_delete(id : String) -> @mocket.HttpResponse {
   delete_port_mapping_rule(id) catch {
-    PortMappingError::NotFound(id) => {
-      write_json_error(conn, 404, "not_found", "mapping \{id} not found")
-      return
-    }
-    _ => {
-      write_json_error(conn, 500, "internal_error", "delete failed")
-      return
-    }
+    PortMappingError::NotFound(id) =>
+      return json_error(NotFound, "not_found", "mapping \{id} not found")
+    _ =>
+      return json_error(InternalServerError, "internal_error", "delete failed")
   }
-  write_json_response(conn, 200, { "removed": true })
+  @mocket.HttpResponse::new(OK).body(({ "removed": true } : Json))
 }
 
 ///|
 async fn handle_port_mappings_patch(
-  conn : @http.ServerConnection,
   id : String,
-  body_str : String,
-) -> Unit {
-  let obj = @json.parse(body_str) catch {
-    _ => {
-      write_json_error(conn, 400, "invalid_json", "request body must be JSON")
-      return
-    }
+  event : @mocket.MocketEvent,
+) -> @mocket.HttpResponse {
+  let req : PatchMappingRequest = event.req.json() catch {
+    _ =>
+      return json_error(BadRequest, "invalid_body", "request body must match schema")
   }
-  let enabled : Bool? = @jsonx.get(obj, "enabled")
-  let note : String? = @jsonx.get(obj, "note")
-  let rule = update_port_mapping_rule(id, enabled, note) catch {
-    PortMappingError::NotFound(id) => {
-      write_json_error(conn, 404, "not_found", "mapping \{id} not found")
-      return
-    }
-    _ => {
-      write_json_error(conn, 500, "internal_error", "update failed")
-      return
-    }
+  let rule = update_port_mapping_rule(id, req.enabled, req.note) catch {
+    PortMappingError::NotFound(id) =>
+      return json_error(NotFound, "not_found", "mapping \{id} not found")
+    _ =>
+      return json_error(InternalServerError, "internal_error", "update failed")
   }
-  write_json_response(conn, 200, rule.to_json())
+  @mocket.HttpResponse::new(OK).body(rule.to_json())
 }

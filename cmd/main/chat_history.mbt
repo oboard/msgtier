@@ -230,17 +230,7 @@ async fn list_chat_messages_page_json(
 }
 
 ///|
-async fn chat_messages_handler(
-  conn : @http.ServerConnection,
-  query : String?,
-) -> Unit {
+async fn chat_messages_handler(query : String?) -> Json {
   let (peer_id, limit, before) = parse_chat_query(query)
-  let page = list_chat_messages_page_json(peer_id, limit, before)
-  let body = page.stringify()
-  conn
-  ..send_response(200, "OK", extra_headers={
-    "Content-Type": "application/json",
-  })
-  ..write(body)
-  .end_response()
+  list_chat_messages_page_json(peer_id, limit, before)
 }
