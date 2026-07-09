@@ -90,7 +90,11 @@ async fn handle_port_mappings_create(
 ) -> @mocket.HttpResponse {
   let req : CreateMappingRequest = event.req.json() catch {
     _ =>
-      return json_error(BadRequest, "invalid_body", "request body must match schema")
+      return json_error(
+        BadRequest,
+        "invalid_body",
+        "request body must match schema",
+      )
   }
   guard req.peer_id != "" else {
     return json_error(BadRequest, "missing_field", "peer_id required")
@@ -120,7 +124,9 @@ async fn handle_port_mappings_create(
       return json_error(BadRequest, "invalid_port", "port out of range: \{p}")
     PortMappingError::AllocationFailed =>
       return json_error(
-        Conflict, "allocation_failed", "could not find a free local port",
+        Conflict,
+        "allocation_failed",
+        "could not find a free local port",
       )
     PortMappingError::NotFound(id) =>
       return json_error(NotFound, "not_found", "mapping \{id} not found")
@@ -148,7 +154,11 @@ async fn handle_port_mappings_patch(
 ) -> @mocket.HttpResponse {
   let req : PatchMappingRequest = event.req.json() catch {
     _ =>
-      return json_error(BadRequest, "invalid_body", "request body must match schema")
+      return json_error(
+        BadRequest,
+        "invalid_body",
+        "request body must match schema",
+      )
   }
   let rule = update_port_mapping_rule(id, req.enabled, req.note) catch {
     PortMappingError::NotFound(id) =>

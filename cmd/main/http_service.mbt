@@ -128,33 +128,6 @@ async fn handle_ws_incoming(text : String) -> String? {
 }
 
 ///|
-/// Convert a numeric HTTP status into a mocket StatusCode enum.
-fn status_code_from_int(code : Int) -> @mocket.StatusCode {
-  match code {
-    200 => OK
-    201 => Created
-    202 => Accepted
-    204 => NoContent
-    206 => PartialContent
-    301 => MovedPermanently
-    302 => Found
-    304 => NotModified
-    400 => BadRequest
-    401 => Unauthorized
-    403 => Forbidden
-    404 => NotFound
-    405 => MethodNotAllowed
-    409 => Conflict
-    413 => RequestEntityTooLarge
-    416 => RequestedRangeNotSatisfiable
-    429 => TooManyRequests
-    500 => InternalServerError
-    502 => BadGateway
-    503 => ServiceUnavailable
-    504 => GatewayTimeout
-    _ => InternalServerError
-  }
-}
 
 ///|
 fn view_map_from_string_map(
@@ -319,10 +292,14 @@ async fn download_handler() -> @mocket.HttpResponse {
         "failed to read executable: \{e}",
       )
   }
-  @mocket.HttpResponse::new(OK, headers={
-    "Content-Type": "application/octet-stream",
-    "Content-Disposition": "attachment; filename=\"msgtier\"",
-  }, raw_body=bytes)
+  @mocket.HttpResponse::new(
+    OK,
+    headers={
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": "attachment; filename=\"msgtier\"",
+    },
+    raw_body=bytes,
+  )
 }
 
 ///|
@@ -429,7 +406,7 @@ async fn proxy_handler(
             resp_headers["Content-Length"] = resp_body.length().to_string()
           }
           @mocket.HttpResponse::new(
-            status_code_from_int(status_code),
+            @mocket.StatusCode::from_int(status_code),
             headers=view_map_from_string_map(resp_headers),
             raw_body=resp_body,
           )
@@ -454,14 +431,16 @@ async fn handle_object_get(
       let bytes = @fs.read_file(path).binary() catch {
         _ =>
           return json_error(
-            NotFound, "object_not_found", "object \{id} could not be read",
+            NotFound,
+            "object_not_found",
+            "object \{id} could not be read",
           )
       }
       let (status_code, resp_headers, body) = build_object_download_response(
         bytes, filename, request_headers,
       )
       @mocket.HttpResponse::new(
-        status_code_from_int(status_code),
+        @mocket.StatusCode::from_int(status_code),
         headers=view_map_from_string_map(resp_headers),
         raw_body=body,
       )
@@ -473,7 +452,7 @@ async fn handle_object_get(
             data, filename, request_headers,
           )
           @mocket.HttpResponse::new(
-            status_code_from_int(status_code),
+            @mocket.StatusCode::from_int(status_code),
             headers=view_map_from_string_map(resp_headers),
             raw_body=body,
           )
@@ -501,7 +480,11 @@ fn serve_static_handler(path : String) -> @mocket.HttpResponse {
     Some(bytes) => (bytes, content_type_for(key))
     None => (@web.dist["index.html"], "text/html")
   }
-  @mocket.HttpResponse::new(OK, headers={ "Content-Type": content_type }, raw_body=bytes)
+  @mocket.HttpResponse::new(
+    OK,
+    headers={ "Content-Type": content_type },
+    raw_body=bytes,
+  )
 }
 
 ///|
@@ -583,50 +566,61 @@ fn register_routes(app : @mocket.Mocket) -> Unit {
     let body : String = e.req.body() catch { _ => "" }
     hot_reload_config_handler(body)
   })
-  app.get("/api/download", _ => try {
-    download_handler()
-  } catch {
-    err =>
-      json_error(InternalServerError, "download_failed", "\{err}")
+  app.get("/api/download", _ => {
+    download_handler() catch {
+      err => json_error(InternalServerError, "download_failed", "\{err}")
+    }
   })
-  app.post("/api/send", e => try {
-    let body : String = e.req.body() catch { _ => "" }
-    send_message_handler(e.req.headers, body)
-  } catch {
-    err => json_error(InternalServerError, "send_failed", "\{err}")
+  app.post("/api/send", e => {
+    try {
+      let body : String = e.req.body() catch { _ => "" }
+      send_message_handler(e.req.headers, body)
+    } catch {
+      err => json_error(InternalServerError, "send_failed", "\{err}")
+    }
   })
-  app.all("/api/proxy", e => try {
-    let body : Bytes = e.req.body() catch { _ => b"" }
-    let query = request_query(e.req)
-    proxy_handler(e.req.http_method, e.req.headers, query, body)
-  } catch {
-    err => json_error(InternalServerError, "proxy_failed", "\{err}")
+  app.all("/api/proxy", e => {
+    try {
+      let body : Bytes = e.req.body() catch { _ => b"" }
+      let query = request_query(e.req)
+      proxy_handler(e.req.http_method, e.req.headers, query, body)
+    } catch {
+      err => json_error(InternalServerError, "proxy_failed", "\{err}")
+    }
   })
-  app.get("/api/chat/messages", e => try {
-    let query = request_query(e.req)
-    @mocket.HttpResponse::new(OK).body(chat_messages_handler(query))
-  } catch {
-    err => json_error(InternalServerError, "chat_history_failed", "\{err}")
+  app.get("/api/chat/messages", e => {
+    try {
+      let query = request_query(e.req)
+      @mocket.HttpResponse::new(OK).body(chat_messages_handler(query))
+    } catch {
+      err => json_error(InternalServerError, "chat_history_failed", "\{err}")
+    }
   })
-  app.post("/api/channels/chat", e => try {
-    let body : String = e.req.body() catch { _ => "" }
-    channel_chat_handler(body, false)
-  } catch {
-    err => json_error(InternalServerError, "channel_chat_failed", "\{err}")
+  app.post("/api/channels/chat", e => {
+    try {
+      let body : String = e.req.body() catch { _ => "" }
+      channel_chat_handler(body, false)
+    } catch {
+      err => json_error(InternalServerError, "channel_chat_failed", "\{err}")
+    }
   })
-  app.post("/api/channels/chat/local", e => try {
-    let body : String = e.req.body() catch { _ => "" }
-    channel_chat_handler(body, true)
-  } catch {
-    err => json_error(InternalServerError, "channel_chat_failed", "\{err}")
+  app.post("/api/channels/chat/local", e => {
+    try {
+      let body : String = e.req.body() catch { _ => "" }
+      channel_chat_handler(body, true)
+    } catch {
+      err => json_error(InternalServerError, "channel_chat_failed", "\{err}")
+    }
   })
-  app.post("/api/object", e => try {
-    let body : Bytes = e.req.body() catch { _ => b"" }
-    let id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
-    save_object(id, body)
-    @mocket.HttpResponse::new(OK).body(({ "id": id.to_json() } : Json))
-  } catch {
-    err => json_error(InternalServerError, "object_upload_failed", "\{err}")
+  app.post("/api/object", e => {
+    try {
+      let body : Bytes = e.req.body() catch { _ => b"" }
+      let id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
+      save_object(id, body)
+      @mocket.HttpResponse::new(OK).body(({ "id": id.to_json() } : Json))
+    } catch {
+      err => json_error(InternalServerError, "object_upload_failed", "\{err}")
+    }
   })
   app.post("/api/object/register", e => {
     let body : String = e.req.body() catch { _ => "" }
@@ -643,39 +637,45 @@ fn register_routes(app : @mocket.Mocket) -> Unit {
     let id = register_object(path)
     @mocket.HttpResponse::new(OK).body(({ "id": id.to_json() } : Json))
   })
-  app.get("/api/object/:id", e => try {
-    let id = e.params.get("id").map(s => s.to_owned()).unwrap_or("")
-    let query_map = parse_query_map(request_query(e.req))
-    let filename = query_map.get("filename")
-    let request_headers = owned_headers(e.req.headers)
-    handle_object_get(id, filename, request_headers)
-  } catch {
-    err => json_error(InternalServerError, "object_get_failed", "\{err}")
+  app.get("/api/object/:id", e => {
+    try {
+      let id = e.params.get("id").map(s => s.to_owned()).unwrap_or("")
+      let query_map = parse_query_map(request_query(e.req))
+      let filename = query_map.get("filename")
+      let request_headers = owned_headers(e.req.headers)
+      handle_object_get(id, filename, request_headers)
+    } catch {
+      err => json_error(InternalServerError, "object_get_failed", "\{err}")
+    }
   })
   app.get("/api/port_scan/local", _ => handle_port_scan_local())
   app.get("/api/port_scan/peers", _ => handle_port_scan_peers())
-  app.post("/api/port_scan/refresh", _ => try {
-    @mocket.HttpResponse::new(OK).body(handle_port_scan_refresh())
-  } catch {
-    err => json_error(InternalServerError, "scan_failed", "\{err}")
+  app.post("/api/port_scan/refresh", _ => {
+    @mocket.HttpResponse::new(OK).body(handle_port_scan_refresh()) catch {
+      err => json_error(InternalServerError, "scan_failed", "\{err}")
+    }
   })
   app.get("/api/port_mappings", _ => handle_port_mappings_list())
-  app.post("/api/port_mappings", e => try {
-    handle_port_mappings_create(e)
-  } catch {
-    err => json_error(InternalServerError, "mapping_create_failed", "\{err}")
+  app.post("/api/port_mappings", e => {
+    handle_port_mappings_create(e) catch {
+      err => json_error(InternalServerError, "mapping_create_failed", "\{err}")
+    }
   })
-  app.delete("/api/port_mappings/:id", e => try {
-    let id = e.params.get("id").map(s => s.to_owned()).unwrap_or("")
-    handle_port_mappings_delete(id)
-  } catch {
-    err => json_error(InternalServerError, "mapping_delete_failed", "\{err}")
+  app.delete("/api/port_mappings/:id", e => {
+    try {
+      let id = e.params.get("id").map(s => s.to_owned()).unwrap_or("")
+      handle_port_mappings_delete(id)
+    } catch {
+      err => json_error(InternalServerError, "mapping_delete_failed", "\{err}")
+    }
   })
-  app.patch("/api/port_mappings/:id", e => try {
-    let id = e.params.get("id").map(s => s.to_owned()).unwrap_or("")
-    handle_port_mappings_patch(id, e)
-  } catch {
-    err => json_error(InternalServerError, "mapping_patch_failed", "\{err}")
+  app.patch("/api/port_mappings/:id", e => {
+    try {
+      let id = e.params.get("id").map(s => s.to_owned()).unwrap_or("")
+      handle_port_mappings_patch(id, e)
+    } catch {
+      err => json_error(InternalServerError, "mapping_patch_failed", "\{err}")
+    }
   })
 
   // Fallback: serve embedded static SPA for anything not matched above.

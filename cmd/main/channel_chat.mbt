@@ -169,7 +169,7 @@ async fn channel_chat_handler(
           peer_id, channel_id, messages, response_body,
         )
       }
-      @mocket.HttpResponse::new(status_code_from_int(status_code)).body(
+      @mocket.HttpResponse::new(@mocket.StatusCode::from_int(status_code)).body(
         response_body,
       )
     }
