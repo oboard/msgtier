@@ -327,15 +327,17 @@ async fn handle_incoming_message(
   }
 
   // Handle message relaying: if target is set and we're not the target, forward it
-  if msg.target_id is Some(target_peer_id) {
-    if app_state.config is Some({ id, .. }) && id == target_peer_id {
-      // Message is for us, continue to process
-    } else {
-      // Message is for someone else, forward it
-      ignore(
-        relay_message(transport, id, msg, target_peer_id, allow_queueing=true),
-      )
-    }
+  // and stop — relay nodes must NOT dispatch the message locally.
+  if msg.target_id is Some(target_peer_id) &&
+    !(app_state.config is Some({ id, .. }) && id == target_peer_id) {
+    // Message is for someone else: relay and stop processing here.
+    // Without this early return every intermediate hop would also dispatch
+    // the message (e.g. execute scripts, handle http_proxy requests, etc.)
+    // that were only intended for the final target.
+    ignore(
+      relay_message(transport, id, msg, target_peer_id, allow_queueing=true),
+    )
+    return
   }
 
   // Handle broadcast forwarding: if broadcast is true, forward to all peers (except sender)
@@ -361,10 +363,9 @@ async fn handle_incoming_message(
       }
     }
   }
-  if !(msg.kind is ("ping" | "pong")) {
-    if !(msg.kind == "hello" && should_skip_hello_callback) {
-      log_debug("Received \{msg.kind} from \{msg.source_id}")
-    }
+  if !(msg.kind is ("ping" | "pong")) &&
+    !(msg.kind == "hello" && should_skip_hello_callback) {
+    log_debug("Received \{msg.kind} from \{msg.source_id}")
   }
   let ctx = MessageContext::{
     root,
