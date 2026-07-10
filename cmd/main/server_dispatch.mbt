@@ -75,20 +75,19 @@ async fn handle_incoming_message(
   // Relay nodes still forward correctly; TCP seq numbers handle any duplicates.
   if msg.kind == "port_forward_data" {
     if msg.target_id == Some(id) {
-      dispatch_message(
-        dispatcher,
-        MessageContext::{
-          root,
-          transport,
-          local_addr,
-          sender_addr,
-          my_id: id,
-          msg,
-          should_skip_hello_callback: false,
-        },
-      )
+      dispatch_message(dispatcher, MessageContext::{
+        root,
+        transport,
+        local_addr,
+        sender_addr,
+        my_id: id,
+        msg,
+        should_skip_hello_callback: false,
+      })
     } else if msg.target_id is Some(target_peer_id) {
-      ignore(relay_message(transport, id, msg, target_peer_id, allow_queueing=true))
+      ignore(
+        relay_message(transport, id, msg, target_peer_id, allow_queueing=true),
+      )
     }
     return
   }
@@ -102,7 +101,7 @@ async fn handle_incoming_message(
     (is_unicast_to_me || is_broadcast)
   if should_ack {
     let ack_msg = if is_broadcast {
-      Message::new(
+      Message(
         kind="ack",
         source_id=id,
         source_addr=local_addr,
@@ -111,7 +110,7 @@ async fn handle_incoming_message(
         encrypted=msg.encrypted,
       )
     } else {
-      Message::new(
+      Message(
         kind="ack",
         source_id=id,
         source_addr=local_addr,

@@ -64,7 +64,7 @@ async fn emit_channel_chat_message(
   target_id : String,
   content : String,
 ) -> Unit {
-  let msg = Message::new(
+  let msg = Message(
     kind="text",
     source_id~,
     target_id~,

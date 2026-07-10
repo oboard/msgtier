@@ -103,7 +103,7 @@ async fn handle_ws_incoming(text : String) -> String? {
       }
       let config = get_config()
       let my_id = config.id
-      let msg = Message::new(
+      let msg = Message(
         kind~,
         source_id=my_id,
         target_id?=target_id_opt,
@@ -327,7 +327,7 @@ async fn send_message_handler(
   let is_self = target_id.trim() == my_id
   let data_val = @msgpack.string(body_str)
   let is_encrypted = !is_self && config.is_encrypt()
-  let msg = Message::new(
+  let msg = Message(
     kind~,
     source_id=my_id,
     relay=1,

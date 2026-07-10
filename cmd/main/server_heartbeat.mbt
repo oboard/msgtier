@@ -39,7 +39,7 @@ async fn handle_heartbeat(
             log_debug(
               "DEBUG: heartbeat ping via relay to=\{peer_id} next_hop=\{route.next_hop}",
             )
-            let ping_msg = Message::new(
+            let ping_msg = Message(
               kind="ping",
               source_id=from,
               source_addr=local_addr,
@@ -57,7 +57,7 @@ async fn handle_heartbeat(
       // Send ping to all connections of this peer
       for conn in peer_conns {
         let ping_local_addr = local_addr
-        let ping_msg = Message::new(
+        let ping_msg = Message(
           kind="ping",
           source_id=from,
           source_addr=ping_local_addr,
@@ -214,7 +214,7 @@ fn broadcast_sync(my_id : String, local_addr : String) -> Unit {
   for peer in all_peers {
     // Create individual message for each peer to ensure single delivery
     // Reuse body from base_msg to avoid recomputing connections
-    let msg = Message::new(
+    let msg = Message(
       kind="sync",
       source_id=my_id,
       source_addr=local_addr,

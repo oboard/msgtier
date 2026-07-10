@@ -18,7 +18,7 @@ async fn send_port_forward_message_via(
   route_addr? : String,
 ) -> Bool {
   let config = get_config()
-  let msg = Message::new(
+  let msg = Message(
     kind~,
     source_id=config.id,
     relay=1,
@@ -54,7 +54,7 @@ async fn send_port_forward_message_select_route(
   attachment : Bytes?,
 ) -> (Bool, String?, String?) {
   let config = get_config()
-  let msg = Message::new(
+  let msg = Message(
     kind~,
     source_id=config.id,
     relay=1,

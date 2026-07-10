@@ -183,10 +183,7 @@ async fn send_raw_port_forward_via(
   for transport in get_registered_transports() {
     if transport.protocol() == route_protocol {
       return transport.send_raw_port_forward(
-        route_addr,
-        connection_id,
-        seq,
-        data,
+        route_addr, connection_id, seq, data,
       )
     }
   }
@@ -210,12 +207,12 @@ async fn send_port_forward_tcp_chunks(
     // Try the raw fast path first (bypasses msgpack encode/decode entirely).
     // Fall back to the message path for transports without raw support (UDP).
     let ok = if send_raw_port_forward_via(
-      endpoint.route_protocol,
-      endpoint.route_addr,
-      endpoint.connection_id,
-      seq,
-      chunk,
-    ) {
+        endpoint.route_protocol,
+        endpoint.route_addr,
+        endpoint.connection_id,
+        seq,
+        chunk,
+      ) {
       true
     } else {
       send_port_forward_message_via(

@@ -106,7 +106,9 @@ fn get_local_node_metadata() -> Map[String, String] {
       metadata["scripts"] = script_names.to_json().stringify()
       metadata["channels"] = "[]"
       metadata["port_forwards"] = get_port_forward_metadata_json()
-      metadata["local_ports"] = port_scanner_state.last_scan.to_json().stringify()
+      metadata["local_ports"] = port_scanner_state.last_scan
+        .to_json()
+        .stringify()
       metadata
     }
     None => {
@@ -142,7 +144,7 @@ fn create_sync_message(my_id : String, local_addr : String) -> Message {
     let conn_val = updated_conn.to_msgpack()
     connections_data.push(conn_val)
   }
-  Message::new(
+  Message(
     kind="sync",
     source_id=my_id,
     source_addr=local_addr,
@@ -205,7 +207,8 @@ async fn send_message(
 
     // Copy Attachment Bytes
     match msg.attachment {
-      Some(a) => payload_arr.blit_from_bytes(4 + msgpack_len, a, 0, attachment_len)
+      Some(a) =>
+        payload_arr.blit_from_bytes(4 + msgpack_len, a, 0, attachment_len)
       None => ()
     }
 
@@ -232,7 +235,7 @@ fn create_hello_message(
     Some(p) => if p.is_empty() { None } else { Some(p) }
     None => None
   }
-  Message::new(
+  Message(
     kind="hello",
     source_id=peer_id,
     source_addr=local_addr,

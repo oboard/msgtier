@@ -36,9 +36,7 @@ fn QuicTransport::dispatch_quic_frame(
         if sep < 1 || sep + 5 > bytes.length() {
           return
         }
-        let connection_id = try {
-          @utf8.decode(slice_bytes(bytes, 1, sep))
-        } catch {
+        let connection_id = @utf8.decode(slice_bytes(bytes, 1, sep)) catch {
           _ => return
         }
         let seq = (bytes[sep + 1].to_int() << 24) |
@@ -121,10 +119,7 @@ impl Transport for QuicTransport with fn send_raw_port_forward(
 }
 
 ///|
-impl Transport for QuicTransport with fn set_raw_data_handler(
-  self,
-  handler,
-) -> Unit {
+impl Transport for QuicTransport with fn set_raw_data_handler(self, handler) -> Unit {
   self.raw_data_handler = Some(handler)
 }
 

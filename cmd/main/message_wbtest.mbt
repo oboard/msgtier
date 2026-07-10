@@ -1,7 +1,7 @@
 ///|
 test "message roundtrip encoding/decoding" {
   // Create a test message with minimal fields
-  let original : Message = Message::new(
+  let original : Message = Message(
     id="test-msg-1",
     kind="hello",
     source_id="node-a",
@@ -30,7 +30,7 @@ test "message roundtrip encoding/decoding" {
 ///|
 test "message with optional fields subset 1" {
   // Test a subset of optional fields
-  let original : Message = Message::new(
+  let original : Message = Message(
     id="test-msg-2",
     kind="script",
     source_id="node-a",
@@ -63,7 +63,7 @@ test "message with peers" {
     NetworkAddress::{ address: "127.0.0.1:8001" },
     NetworkAddress::{ address: "127.0.0.1:8002" },
   ]
-  let original : Message = Message::new(
+  let original : Message = Message(
     id="test-msg-3",
     kind="script",
     source_id="node-a",

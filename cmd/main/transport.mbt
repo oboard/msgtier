@@ -34,13 +34,7 @@ pub trait Transport {
   /// data: payload bytes
   /// Returns false if the transport does not support raw frames (caller should fall back to send_message).
   ///|
-  async fn send_raw_port_forward(
-    Self,
-    String,
-    String,
-    Int,
-    Bytes,
-  ) -> Bool = _
+  async fn send_raw_port_forward(Self, String, String, Int, Bytes) -> Bool = _
 
   ///|
   /// Register a handler for raw port-forward data frames received on this transport.

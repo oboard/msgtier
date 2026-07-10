@@ -7,12 +7,7 @@ fn reset_pending_state() -> Unit {
 ///|
 test "pending message attempt tracking" {
   reset_pending_state()
-  let msg = Message::new(
-    id="msg1",
-    kind="test",
-    source_id="src",
-    target_id="dst",
-  )
+  let msg = Message(id="msg1", kind="test", source_id="src", target_id="dst")
   add_pending_message(msg)
   let peer = "dst"
 
@@ -32,12 +27,7 @@ test "pending message attempt tracking" {
 ///|
 test "remove pending message by id" {
   reset_pending_state()
-  let msg = Message::new(
-    id="msg2",
-    kind="test",
-    source_id="src",
-    target_id="dst",
-  )
+  let msg = Message(id="msg2", kind="test", source_id="src", target_id="dst")
   add_pending_message(msg)
   let removed = remove_pending_message_by_id("msg2")
   assert_eq(removed, true)
@@ -48,7 +38,7 @@ test "remove pending message by id" {
 ///|
 test "add pending broadcast message" {
   reset_pending_state()
-  let msg = Message::new(id="msg3", kind="test", source_id="src")
+  let msg = Message(id="msg3", kind="test", source_id="src")
   add_pending_message(msg)
   let pending = take_pending_messages(fn(_) { true })
   assert_eq(pending.length(), 1)

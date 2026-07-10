@@ -60,7 +60,7 @@ async test "handle_text_message replies via sender addr" {
     hot_reload: None,
   })
   let transport = MockReplyTransport::{ sent: Ref([]) }
-  let msg = Message::new(
+  let msg = Message(
     kind="text",
     source_id="node-a",
     target_id="node-b",

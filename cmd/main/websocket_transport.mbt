@@ -17,7 +17,9 @@ struct WebSocketTransport {
 }
 
 ///|
-async fn WebSocketTransport::WebSocketTransport(addr_str : String) -> WebSocketTransport {
+async fn WebSocketTransport::WebSocketTransport(
+  addr_str : String,
+) -> WebSocketTransport {
   let addr = @socket.Addr::parse(addr_str) catch {
     e => abort("Invalid address: " + e.to_string())
   }
@@ -59,9 +61,7 @@ fn WebSocketTransport::dispatch_ws_frame(
         if sep < 1 || sep + 5 > bytes.length() {
           return
         }
-        let connection_id = try {
-          @utf8.decode(slice_bytes(bytes, 1, sep))
-        } catch {
+        let connection_id = @utf8.decode(slice_bytes(bytes, 1, sep)) catch {
           _ => return
         }
         let seq = (bytes[sep + 1].to_int() << 24) |

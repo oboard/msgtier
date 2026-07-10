@@ -272,7 +272,7 @@ fn handle_response_message(ctx : MessageContext) -> Unit {
 
 ///|
 fn handle_ping_message(ctx : MessageContext) -> Unit {
-  let reply = Message::new(
+  let reply = Message(
     kind="pong",
     source_id=ctx.my_id,
     source_addr=ctx.local_addr,
@@ -337,19 +337,11 @@ fn handle_ack_message(ctx : MessageContext) -> Unit {
 ///|
 fn parse_local_ports_from_json(json_str : String) -> Array[LocalPortEntry] {
   let ports : Array[LocalPortEntry] = []
-  let parsed = try {
-    @json.parse(json_str)
-  } catch {
-    _ => return ports
-  }
+  let parsed = @json.parse(json_str) catch { _ => return ports }
   match parsed {
     Array(entries) =>
       for entry in entries {
-        let p : LocalPortEntry = try {
-          @json.from_json(entry)
-        } catch {
-          _ => continue
-        }
+        let p : LocalPortEntry = @json.from_json(entry) catch { _ => continue }
         ports.push(p)
       }
     _ => ()

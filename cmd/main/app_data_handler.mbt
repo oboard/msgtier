@@ -807,7 +807,7 @@ async fn send_one_helper(
 ) -> Bool {
   let response_msg = match attachment {
     Some(a) =>
-      Message::new(
+      Message(
         kind="response",
         source_id~,
         source_addr~,
@@ -819,7 +819,7 @@ async fn send_one_helper(
         attachment=a,
       )
     None =>
-      Message::new(
+      Message(
         kind="response",
         source_id~,
         source_addr~,

@@ -24,7 +24,7 @@ fn Message::is_broadcast(self : Message) -> Bool {
 }
 
 ///|
-fn Message::new(
+fn Message::Message(
   id? : String,
   kind~ : String,
   source_id~ : String,

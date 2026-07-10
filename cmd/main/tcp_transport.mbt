@@ -66,9 +66,7 @@ fn TcpTransport::dispatch_raw_frame(
       if sep < 0 || sep + 5 > payload.length() {
         return
       }
-      let connection_id = try {
-        @utf8.decode(slice_bytes(payload, 0, sep))
-      } catch {
+      let connection_id = @utf8.decode(slice_bytes(payload, 0, sep)) catch {
         _ => return
       }
       let seq = (payload[sep + 1].to_int() << 24) |
@@ -99,11 +97,7 @@ async fn TcpTransport::read_one_frame(
   let h3 = header_buf[3].to_int()
   let header_word = (h0 << 24) | (h1 << 16) | (h2 << 8) | h3
   let is_raw = (h0 & 0x80) != 0
-  let len = if is_raw {
-    header_word & 0x7FFFFFFF
-  } else {
-    header_word
-  }
+  let len = if is_raw { header_word & 0x7FFFFFFF } else { header_word }
   if len <= 0 || len > tcp_transport_state.max_frame_size {
     return false
   }

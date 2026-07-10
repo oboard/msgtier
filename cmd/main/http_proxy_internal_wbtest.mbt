@@ -99,7 +99,7 @@ async test "send_message_now_with_route falls back to relay route" {
   let transport = MockRouteTransport::{ sent: Ref([]) }
   register_transport(transport)
 
-  let msg = Message::new(
+  let msg = Message(
     kind="http_proxy",
     source_id="node-a",
     target_id="node-b",

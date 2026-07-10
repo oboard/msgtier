@@ -119,7 +119,7 @@ async fn proxy_http_request(
   body_map["body"] = @msgpack.binary(body)
   let config = get_config()
   let is_encrypted = config.is_encrypt()
-  let msg = Message::new(
+  let msg = Message(
     kind="http_proxy",
     source_id=get_config().id,
     relay=1,
