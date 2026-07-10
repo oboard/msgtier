@@ -70,6 +70,28 @@ async fn handle_incoming_message(
   }
   let msg = decrypt_message_body(id, msg)
   guard msg is Some(msg) else { return }
+  // Fast path: port_forward_data skips connection tracking, dedup, WS emit, and
+  // logging — all designed for control messages, not high-frequency data chunks.
+  // Relay nodes still forward correctly; TCP seq numbers handle any duplicates.
+  if msg.kind == "port_forward_data" {
+    if msg.target_id == Some(id) {
+      dispatch_message(
+        dispatcher,
+        MessageContext::{
+          root,
+          transport,
+          local_addr,
+          sender_addr,
+          my_id: id,
+          msg,
+          should_skip_hello_callback: false,
+        },
+      )
+    } else if msg.target_id is Some(target_peer_id) {
+      ignore(relay_message(transport, id, msg, target_peer_id, allow_queueing=true))
+    }
+    return
+  }
   let is_broadcast = msg.is_broadcast()
   let is_unicast_to_me = match msg.target_id {
     Some(tid) => tid == id

@@ -1,5 +1,5 @@
 ///|
-let port_forward_tcp_chunk_size : Int = 512 * 1024
+let port_forward_tcp_chunk_size : Int = 4 * 1024 * 1024
 
 ///|
 fn close_port_forward_tcp_socket(socket : @socket.Tcp) -> Unit {
@@ -168,6 +168,32 @@ fn ensure_port_forward_tcp_writer(
 }
 
 ///|
+// Try to send port-forward data via the raw transport fast path.
+// Falls back to the message path if no matching transport supports raw frames.
+async fn send_raw_port_forward_via(
+  route_protocol : String,
+  route_addr : String,
+  connection_id : String,
+  seq : Int,
+  data : Bytes,
+) -> Bool {
+  if route_protocol == "" || route_addr == "" {
+    return false
+  }
+  for transport in get_registered_transports() {
+    if transport.protocol() == route_protocol {
+      return transport.send_raw_port_forward(
+        route_addr,
+        connection_id,
+        seq,
+        data,
+      )
+    }
+  }
+  false
+}
+
+///|
 async fn send_port_forward_tcp_chunks(
   endpoint : PortForwardTcpEndpoint,
   data : Bytes,
@@ -181,19 +207,31 @@ async fn send_port_forward_tcp_chunks(
     }
     let chunk = slice_bytes(data, offset, next_offset)
     let seq = next_port_forward_tcp_seq(endpoint)
-    let ok = send_port_forward_message_via(
-      endpoint.peer_id,
-      "port_forward_data",
-      make_port_forward_data_body(
-        endpoint.rule_id,
-        endpoint.protocol,
-        endpoint.connection_id,
-        seq,
-      ),
-      Some(chunk),
-      route_protocol=endpoint.route_protocol,
-      route_addr=endpoint.route_addr,
-    )
+    // Try the raw fast path first (bypasses msgpack encode/decode entirely).
+    // Fall back to the message path for transports without raw support (UDP).
+    let ok = if send_raw_port_forward_via(
+      endpoint.route_protocol,
+      endpoint.route_addr,
+      endpoint.connection_id,
+      seq,
+      chunk,
+    ) {
+      true
+    } else {
+      send_port_forward_message_via(
+        endpoint.peer_id,
+        "port_forward_data",
+        make_port_forward_data_body(
+          endpoint.rule_id,
+          endpoint.protocol,
+          endpoint.connection_id,
+          seq,
+        ),
+        Some(chunk),
+        route_protocol=endpoint.route_protocol,
+        route_addr=endpoint.route_addr,
+      )
+    }
     if !ok {
       return false
     }
@@ -253,7 +291,10 @@ fn remove_port_forward_udp_expose_session(session_id : String) -> Unit {
 }
 
 ///|
-async fn run_port_forward_tcp_reader(endpoint : PortForwardTcpEndpoint) -> Unit {
+async fn run_port_forward_tcp_reader(
+  endpoint : PortForwardTcpEndpoint,
+  root : @async.TaskGroup[Unit],
+) -> Unit {
   let buf = FixedArray::make(port_forward_tcp_chunk_size, b'\x00')
   try {
     for ;; {
@@ -263,7 +304,17 @@ async fn run_port_forward_tcp_reader(endpoint : PortForwardTcpEndpoint) -> Unit 
       }
       let chunk = slice_bytes(buf.unsafe_reinterpret_as_bytes(), 0, n)
       endpoint.audit.bytes_out = endpoint.audit.bytes_out + chunk.length()
-      if !send_port_forward_tcp_chunks(endpoint, chunk) {
+      // Spawn the send as a background task so the reader can immediately
+      // issue the next socket.read while the previous chunk is in-flight.
+      // The TCP transport serialises concurrent writes; endpoint.closed is
+      // checked below so a send failure terminates the loop promptly.
+      let ep = endpoint
+      root.spawn_bg(async fn() {
+        if !send_port_forward_tcp_chunks(ep, chunk) {
+          stop_port_forward_tcp_endpoint(ep)
+        }
+      })
+      if endpoint.closed.val {
         break
       }
     }
@@ -290,6 +341,7 @@ async fn run_port_forward_tcp_reader(endpoint : PortForwardTcpEndpoint) -> Unit 
 async fn accept_port_forward_tcp_connection(
   rule : PortForwardForwardRule,
   conn : @socket.Tcp,
+  root : @async.TaskGroup[Unit],
 ) -> Unit {
   let connection_id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
   let audit = record_port_forward_audit_open(
@@ -368,7 +420,7 @@ async fn accept_port_forward_tcp_connection(
   })
   match opened {
     Some(true) => {
-      run_port_forward_tcp_reader(endpoint)
+      run_port_forward_tcp_reader(endpoint, root)
       match remove_port_forward_tcp_forward_connection(connection_id) {
         Some(value) => {
           record_port_forward_audit_close(value.audit, "closed")
@@ -414,7 +466,7 @@ fn start_port_forward_tcp_listener(
     port_forward_registry_state.tcp_forward_started[rule_key] = true
     port_forward_registry_state.tcp_forward_servers[rule_key] = server
     server.run_forever(async fn(conn, _remote_addr) {
-      accept_port_forward_tcp_connection(rule, conn)
+      accept_port_forward_tcp_connection(rule, conn, root)
     })
   })
 }

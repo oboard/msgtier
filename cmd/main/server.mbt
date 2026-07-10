@@ -139,6 +139,12 @@ async fn start_listener_service(
   // Start periodic connection update task
   root.spawn_bg(() => handle_periodic_updates(my_id, local_addr))
 
+  // Register raw port-forward data handler — bypasses the message layer entirely
+  // for high-frequency data frames, avoiding msgpack encode/decode and dispatch overhead.
+  transport.set_raw_data_handler(fn(connection_id, seq, data) {
+    dispatch_raw_port_forward_data(root, connection_id, seq, data)
+  })
+
   // Listen loop
   transport.listen(
     root,

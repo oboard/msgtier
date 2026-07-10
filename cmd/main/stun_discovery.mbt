@@ -35,7 +35,7 @@ fn get_stun_public_addresses(listener : String) -> Array[String] {
 
 ///|
 async fn probe_listener_stun(listener : String, host : String) -> Unit {
-  let probe_transport = UdpTransport::new(host) catch {
+  let probe_transport = UdpTransport(host) catch {
     e => {
       log_warn("STUN probe bind failed for \{listener}: \{e}")
       stun_discovery_state[listener] = StunDiscoveryInfo::{

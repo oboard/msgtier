@@ -59,9 +59,7 @@ fn slice_bytes(b : Bytes, start : Int, end : Int) -> Bytes {
     return b""
   }
   let arr = FixedArray::make(len, b'\x00')
-  for i = 0; i < len; i = i + 1 {
-    arr[i] = b[start + i]
-  }
+  arr.blit_from_bytes(0, b, start, len)
   Bytes::from_array(arr)
 }
 

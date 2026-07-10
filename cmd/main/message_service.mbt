@@ -106,6 +106,7 @@ fn get_local_node_metadata() -> Map[String, String] {
       metadata["scripts"] = script_names.to_json().stringify()
       metadata["channels"] = "[]"
       metadata["port_forwards"] = get_port_forward_metadata_json()
+      metadata["local_ports"] = port_scanner_state.last_scan.to_json().stringify()
       metadata
     }
     None => {
@@ -113,6 +114,7 @@ fn get_local_node_metadata() -> Map[String, String] {
       metadata["scripts"] = "[]"
       metadata["channels"] = "[]"
       metadata["port_forwards"] = "[]"
+      metadata["local_ports"] = "[]"
       metadata
     }
   }
@@ -199,16 +201,11 @@ async fn send_message(
     payload_arr[3] = msgpack_len.to_byte()
 
     // Copy MsgPack Bytes
-    for i = 0; i < msgpack_len; i = i + 1 {
-      payload_arr[4 + i] = msgpack_bytes[i]
-    }
+    payload_arr.blit_from_bytes(4, msgpack_bytes, 0, msgpack_len)
 
     // Copy Attachment Bytes
     match msg.attachment {
-      Some(a) =>
-        for i = 0; i < attachment_len; i = i + 1 {
-          payload_arr[4 + msgpack_len + i] = a[i]
-        }
+      Some(a) => payload_arr.blit_from_bytes(4 + msgpack_len, a, 0, attachment_len)
       None => ()
     }
 

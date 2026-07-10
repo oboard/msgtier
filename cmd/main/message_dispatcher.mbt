@@ -335,6 +335,29 @@ fn handle_ack_message(ctx : MessageContext) -> Unit {
 }
 
 ///|
+fn parse_local_ports_from_json(json_str : String) -> Array[LocalPortEntry] {
+  let ports : Array[LocalPortEntry] = []
+  let parsed = try {
+    @json.parse(json_str)
+  } catch {
+    _ => return ports
+  }
+  match parsed {
+    Array(entries) =>
+      for entry in entries {
+        let p : LocalPortEntry = try {
+          @json.from_json(entry)
+        } catch {
+          _ => continue
+        }
+        ports.push(p)
+      }
+    _ => ()
+  }
+  ports
+}
+
+///|
 fn handle_sync_message(ctx : MessageContext) -> Unit {
   let msg = ctx.msg
   match msg.body {
@@ -413,6 +436,18 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
           }
           None => ()
         }
+      }
+      match sender_metadata.val {
+        Some(metadata) =>
+          match metadata.get("local_ports") {
+            Some(json_str) =>
+              set_remote_ports_for_peer(
+                msg.source_id,
+                parse_local_ports_from_json(json_str),
+              )
+            None => ()
+          }
+        None => ()
       }
       match get_global_peer_manager().get_peer(msg.source_id) {
         Some(_) =>

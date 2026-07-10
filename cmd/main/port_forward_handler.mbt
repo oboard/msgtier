@@ -603,3 +603,48 @@ fn handle_port_forward_close_message(ctx : MessageContext) -> Unit {
 fn handle_port_forward_error_message(ctx : MessageContext) -> Unit {
   handle_port_forward_close_message(ctx)
 }
+
+///|
+// Fast path for raw port-forward data frames received via transport layer,
+// bypassing msgpack decode, message dispatch, and all control-message overhead.
+// Only handles TCP connections (forward and expose); UDP uses the message path.
+fn dispatch_raw_port_forward_data(
+  root : @async.TaskGroup[Unit],
+  connection_id : String,
+  seq : Int,
+  data : Bytes,
+) -> Unit {
+  if connection_id == "" || data.length() == 0 {
+    return
+  }
+  match get_port_forward_tcp_forward_connection(connection_id) {
+    Some(endpoint) =>
+      if !queue_port_forward_tcp_recv_chunk(endpoint, seq, data) {
+        match remove_port_forward_tcp_forward_connection(connection_id) {
+          Some(value) => {
+            record_port_forward_audit_close(value.audit, "write_failed")
+            close_port_forward_tcp_endpoint(value)
+          }
+          None => ()
+        }
+      } else {
+        ensure_port_forward_tcp_writer(root, endpoint)
+      }
+    None =>
+      match get_port_forward_tcp_expose_connection(connection_id) {
+        Some(endpoint) =>
+          if !queue_port_forward_tcp_recv_chunk(endpoint, seq, data) {
+            match remove_port_forward_tcp_expose_connection(connection_id) {
+              Some(value) => {
+                record_port_forward_audit_close(value.audit, "write_failed")
+                close_port_forward_tcp_endpoint(value)
+              }
+              None => ()
+            }
+          } else {
+            ensure_port_forward_tcp_writer(root, endpoint)
+          }
+        None => ()
+      }
+  }
+}

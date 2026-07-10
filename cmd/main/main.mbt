@@ -71,7 +71,7 @@ fn start_listener(
     Some(url) => {
       let host = url.get_host()
       let scheme = url.scheme
-      let _ : @async.Task[Unit] = root.spawn(async fn() {
+      let _ : @async.Task[Unit] = root.spawn(() => {
         for ;; {
           try {
             log_info("Attempting to listen on \{listener}")
@@ -98,10 +98,10 @@ fn start_listener(
 ///|
 async fn create_transport(scheme : String, host : String) -> &Transport {
   match scheme {
-    "tcp" => (TcpTransport::new(host) : &Transport)
-    "udp" => (UdpTransport::new(host) : &Transport)
-    "ws" => (WebSocketTransport::new(host) : &Transport)
-    "quic" => (QuicTransport::new(host) : &Transport)
+    "tcp" => (TcpTransport(host) : &Transport)
+    "udp" => (UdpTransport(host) : &Transport)
+    "ws" => (WebSocketTransport(host) : &Transport)
+    "quic" => (QuicTransport(host) : &Transport)
     _ => abort("Unknown protocol: \{scheme}")
   }
 }
