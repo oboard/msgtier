@@ -6,7 +6,6 @@ import {
   "moonbitlang/x@0.4.40",
   "oboard/jsonx@0.1.0",
   "moonbitlang/async@0.20.1",
-  "tonyfettes/unicode@0.3.2",
   "gmlewis/flate@0.36.9",
   "gmlewis/io@0.23.12",
   "oboard/mocket@0.7.6",

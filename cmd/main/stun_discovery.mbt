@@ -14,6 +14,13 @@ struct StunDiscoveryInfo {
 let stun_default_servers : ReadOnlyArray[String] = [
   "stun.l.google.com:19302", "stun1.l.google.com:19302", "stun2.l.google.com:19302",
   "stun3.l.google.com:19302", "stun4.l.google.com:19302", "stun.cloudflare.com:3478",
+  "stun.miwifi.com:3478", "stun.chat.bilibili.com:3478", "stun.qq.com:3478", "turn.cloudflare.com:3478",
+  // Additional community-recommended STUN servers
+   "stunserver.org:3478", "stun.xten.com:3478", "stun.voipbuster.com:3478", "stun.ekiga.net:3478",
+  "stun.sipgate.net:3478", "stun.ideasip.com:3478", "stun.schlund.de:3478", "stun.voiparound.com:3478",
+  "stun.voipstunt.com:3478", "stun.counterpath.com:3478", "stun.1und1.de:3478", "stun.gmx.net:3478",
+  "stun.callwithus.com:3478", "stun.internetcalls.com:3478", "numb.viagenie.ca:3478",
+  "stun.freeswitch.org:3478",
 ]
 
 ///|
