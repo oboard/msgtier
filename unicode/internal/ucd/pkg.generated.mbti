@@ -1,0 +1,38 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/unicode/internal/ucd"
+
+// Values
+pub fn get_canonical_decomposition(Char) -> Array[Char]?
+
+pub fn get_compat_decomposition(Char) -> Array[Char]?
+
+pub fn is_composition_excluded(Char) -> Bool
+
+pub fn is_mark(Char) -> Bool
+
+pub fn lookup_ccc(Char) -> Int
+
+pub fn lookup_composition(Char, Char) -> Char?
+
+pub fn lookup_full_lowercase(Char) -> Array[Char]?
+
+pub fn lookup_full_titlecase(Char) -> Array[Char]?
+
+pub fn lookup_full_uppercase(Char) -> Array[Char]?
+
+pub fn lookup_general_category(Char) -> Int
+
+pub fn lookup_simple_lowercase(Char) -> Char
+
+pub fn lookup_simple_titlecase(Char) -> Char
+
+pub fn lookup_simple_uppercase(Char) -> Char
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits
+

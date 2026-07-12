@@ -1,0 +1,48 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/unicode/internal/fuzz"
+
+import {
+  "moonbitlang/core/random",
+}
+
+// Values
+pub fn random_any_codepoint(@random.Rand) -> Char
+
+pub fn random_codepoint(@random.Rand, CodePointCategory) -> Char
+
+pub fn random_combining_sequence(@random.Rand, base_count? : Int, mark_count? : Int) -> String
+
+pub fn random_deep_decomposition_string(@random.Rand, max_len? : Int) -> String
+
+pub fn random_hangul_string(@random.Rand, max_len? : Int) -> String
+
+pub fn random_non_ascii_codepoint(@random.Rand) -> Char
+
+pub fn random_unicode_string(@random.Rand, max_len? : Int) -> String
+
+// Errors
+
+// Types and methods
+pub(all) enum CodePointCategory {
+  Ascii
+  LatinExtended
+  CombiningMark
+  HangulJamoL
+  HangulJamoV
+  HangulJamoT
+  HangulSyllable
+  Supplementary
+  Decomposable
+  ArabicRTL
+  HebrewRTL
+  ArabicNumber
+  IdnaIgnored
+  IdnaDisallowed
+  IdnaDeviation
+  IdnaMapped
+}
+
+// Type aliases
+
+// Traits
+

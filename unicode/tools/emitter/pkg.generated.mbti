@@ -1,0 +1,19 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/unicode-tools/emitter"
+
+// Values
+
+// Errors
+
+// Types and methods
+type Emitter
+pub fn Emitter::finish(Self) -> String
+pub fn Emitter::new() -> Self
+pub fn Emitter::write(Self, String) -> Unit
+pub fn Emitter::write_file_header(Self, String, String) -> Unit
+pub fn Emitter::write_int_array(Self, String, String, Array[Int], hex~ : Bool) -> Unit
+
+// Type aliases
+
+// Traits
+

@@ -174,6 +174,7 @@ pub impl @json.FromJson for Protocol
 pub struct QuicTransport {
   endpoint : @quic.Endpoint
   connections : Map[String, @quic.Connection]
+  mut raw_data_handler : ((String, Int, Bytes) -> Unit)?
 }
 
 type RelayState
@@ -226,5 +227,7 @@ pub trait Transport {
   fn protocol(Self) -> String
   fn protocol_type(Self) -> Protocol
   fn local_address(Self) -> Address
+  async fn send_raw_port_forward(Self, String, String, Int, Bytes) -> Bool
+  fn set_raw_data_handler(Self, (String, Int, Bytes) -> Unit) -> Unit
 }
 

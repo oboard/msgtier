@@ -1,0 +1,51 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/unicode/bidi"
+
+// Values
+pub fn bidi_class(Char) -> @oboard/msgtier/unicode/internal/bidi.BidiClass
+
+pub fn detect_direction(String) -> Direction
+
+pub fn direction_from_level(Int) -> Direction
+
+pub fn get_mirrored(Char, Int) -> Char
+
+pub fn process(String) -> BidiParagraph
+
+pub fn process_with_base_level(String, Int) -> BidiParagraph
+
+pub fn process_with_direction(String, Direction) -> BidiParagraph
+
+pub fn reorder(BidiParagraph) -> Array[Int]
+
+pub fn reorder_string(BidiParagraph) -> String
+
+pub fn requires_bidi(String) -> Bool
+
+// Errors
+pub(all) suberror BidiError {
+  InvalidIsolate(String)
+  StackOverflow
+}
+
+// Types and methods
+pub(all) struct BidiParagraph {
+  chars : Array[Char]
+  original_classes : Array[@oboard/msgtier/unicode/internal/bidi.BidiClass]
+  resolved_classes : Array[@oboard/msgtier/unicode/internal/bidi.BidiClass]
+  levels : Array[Int]
+  base_level : Int
+}
+
+pub(all) enum Direction {
+  LTR
+  RTL
+} derive(Eq)
+pub fn Direction::level(Self) -> Int
+pub impl Show for Direction
+
+// Type aliases
+pub using @oboard/msgtier/unicode/internal/bidi {type BidiClass}
+
+// Traits
+

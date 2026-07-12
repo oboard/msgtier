@@ -1,0 +1,34 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/unicode/idna"
+
+import {
+  "oboard/msgtier/unicode/punycode",
+}
+
+// Values
+pub fn to_ascii(String, use_std3_ascii_rules? : Bool, check_hyphens? : Bool, check_bidi? : Bool, check_joiners? : Bool, verify_dns_length? : Bool) -> String raise IdnaError
+
+pub fn to_unicode(String, use_std3_ascii_rules? : Bool, check_hyphens? : Bool, check_bidi? : Bool, check_joiners? : Bool) -> String raise IdnaError
+
+// Errors
+pub(all) suberror IdnaError {
+  PunycodeError(@punycode.PunycodeError)
+  DisallowedCodePoint(cp~ : Int)
+  InvalidLabel(String)
+  InvalidHyphen
+  LabelTooLong
+  DomainTooLong
+  EmptyLabel
+  InvalidBidi
+  InvalidJoiner
+  InvalidAcePrefix
+  LeadingCombiningMark
+}
+pub impl Show for IdnaError
+
+// Types and methods
+
+// Type aliases
+
+// Traits
+

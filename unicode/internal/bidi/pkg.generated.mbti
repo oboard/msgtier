@@ -1,0 +1,77 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/unicode/internal/bidi"
+
+// Values
+pub fn bidi_mirroring_glyph(Char) -> Char
+
+pub fn bracket_type(Char) -> BracketType
+
+pub fn is_bidi_mirrored(Char) -> Bool
+
+pub fn is_bracket_pair(Char, Char) -> Bool
+
+pub fn is_close_bracket(Char) -> Bool
+
+pub fn is_explicit_formatting(Char) -> Bool
+
+pub fn is_isolate_initiator(Char) -> Bool
+
+pub fn is_open_bracket(Char) -> Bool
+
+pub fn is_strong(Char) -> Bool
+
+pub fn is_strong_rtl(Char) -> Bool
+
+pub fn lookup_bidi_class(Char) -> BidiClass
+
+pub fn paired_bracket(Char) -> Char?
+
+// Errors
+
+// Types and methods
+pub(all) enum BidiClass {
+  L
+  R
+  AL
+  EN
+  ES
+  ET
+  AN
+  CS
+  NSM
+  BN
+  B
+  S
+  WS
+  ON
+  LRE
+  LRO
+  RLE
+  RLO
+  PDF
+  LRI
+  RLI
+  FSI
+  PDI
+} derive(Eq)
+pub fn BidiClass::is_explicit(Self) -> Bool
+pub fn BidiClass::is_isolate_initiator(Self) -> Bool
+pub fn BidiClass::is_neutral(Self) -> Bool
+pub fn BidiClass::is_neutral_or_isolate(Self) -> Bool
+pub fn BidiClass::is_strong(Self) -> Bool
+pub fn BidiClass::is_strong_rtl(Self) -> Bool
+pub fn BidiClass::is_weak(Self) -> Bool
+pub fn BidiClass::is_x9_removed(Self) -> Bool
+pub impl Show for BidiClass
+
+pub(all) enum BracketType {
+  Open
+  Close
+  None
+} derive(Eq)
+pub impl Show for BracketType
+
+// Type aliases
+
+// Traits
+

@@ -1,0 +1,4 @@
+import {
+  "oboard/msgtier/unicode/internal/fuzz" @base_fuzz,
+  "moonbitlang/core/random",
+}

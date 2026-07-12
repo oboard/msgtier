@@ -1,0 +1,31 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/unicode/normalization"
+
+// Values
+pub fn is_normalized(String, NormalizationForm) -> Bool
+
+pub fn nfc(String) -> String
+
+pub fn nfd(String) -> String
+
+pub fn nfkc(String) -> String
+
+pub fn nfkd(String) -> String
+
+pub fn normalize(String, NormalizationForm) -> String
+
+// Errors
+
+// Types and methods
+pub(all) enum NormalizationForm {
+  NFD
+  NFC
+  NFKD
+  NFKC
+} derive(Eq)
+pub impl Show for NormalizationForm
+
+// Type aliases
+
+// Traits
+

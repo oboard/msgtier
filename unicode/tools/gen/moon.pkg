@@ -1,0 +1,13 @@
+supported_targets = "native"
+
+import {
+  "oboard/msgtier/unicode-tools/ucd",
+  "moonbitlang/core/argparse",
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/process",
+}
+
+options(
+  "is-main": true,
+)

@@ -1,0 +1,71 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "oboard/msgtier/unicode"
+
+// Values
+pub fn general_category(Char) -> GeneralCategory
+
+pub fn to_lowercase(Char) -> String
+
+pub fn to_simple_lowercase(Char) -> Char
+
+pub fn to_simple_titlecase(Char) -> Char
+
+pub fn to_simple_uppercase(Char) -> Char
+
+pub fn to_titlecase(Char) -> String
+
+pub fn to_uppercase(Char) -> String
+
+// Errors
+
+// Types and methods
+pub(all) enum GeneralCategory {
+  Lu
+  Ll
+  Lt
+  Lm
+  Lo
+  Mn
+  Mc
+  Me
+  Nd
+  Nl
+  No
+  Zs
+  Zl
+  Zp
+  Pc
+  Pd
+  Ps
+  Pe
+  Pi
+  Pf
+  Po
+  Sm
+  Sc
+  Sk
+  So
+  Cc
+  Cf
+  Cs
+  Co
+  Cn
+} derive(Eq)
+pub fn GeneralCategory::group(Self) -> GeneralCategoryGroup
+pub impl Show for GeneralCategory
+
+pub(all) enum GeneralCategoryGroup {
+  L
+  M
+  N
+  Z
+  P
+  S
+  C
+} derive(Eq)
+pub impl Show for GeneralCategoryGroup
+
+// Type aliases
+
+// Traits
+
