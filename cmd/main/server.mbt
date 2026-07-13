@@ -118,6 +118,7 @@ fn learn_route_from_relayed_message(
 ///|
 async fn start_listener_service(
   root : @async.TaskGroup[Unit],
+  child : @async.TaskGroup[Unit],
   transport : &Transport,
   my_id : String,
 ) -> Unit {
@@ -128,16 +129,13 @@ async fn start_listener_service(
     "DEBUG: start_listener_service protocol=\{transport.protocol()} local=\{local_addr} id=\{my_id}",
   )
 
-  // Start reconnection background task
-  root.spawn_bg(() => handle_reconnects(transport, local_addr, my_id))
-  // Start heartbeat/health check background task
-  root.spawn_bg(() => handle_heartbeat(transport, local_addr, my_id))
-  // Start pending message sender background task
-  root.spawn_bg(() => {
+  // Transport-tied tasks: cancelled when transport closes
+  child.spawn_bg(() => handle_reconnects(transport, local_addr, my_id))
+  child.spawn_bg(() => handle_heartbeat(transport, local_addr, my_id))
+  child.spawn_bg(() => {
     handle_pending_messages(root, transport, my_id, dispatcher)
   })
-  // Start periodic connection update task
-  root.spawn_bg(() => handle_periodic_updates(my_id, local_addr))
+  child.spawn_bg(() => handle_periodic_updates(my_id, local_addr))
 
   // Register raw port-forward data handler — bypasses the message layer entirely
   // for high-frequency data frames, avoiding msgpack encode/decode and dispatch overhead.

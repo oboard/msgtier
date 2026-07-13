@@ -81,7 +81,7 @@ fn start_listener(
             let transport = create_transport(scheme, host)
             log_info("Successfully bound to \{listener}")
             @async.with_task_group(async fn(child) {
-              start_listener_service(child, transport, id)
+              start_listener_service(root, child, transport, id)
             })
           } catch {
             e =>
