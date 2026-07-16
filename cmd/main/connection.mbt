@@ -100,10 +100,10 @@ fn Connection::new(my_id : String, peer_id : String) -> Connection {
     last_ping_time: None,
     last_pong_time: None,
     ports: [],
-    ports_last_seen: {},
+    ports_last_seen: Map([]),
     version: "",
     nat_type: Unknown,
-    address_stats: {},
+    address_stats: Map([]),
   }
 }
 
@@ -378,7 +378,7 @@ fn Connection::prune_ports(
   timeout_ms : UInt64,
 ) -> Connection {
   let new_ports : Array[PortMapping] = []
-  let new_ports_last_seen : Map[String, UInt64] = {}
+  let new_ports_last_seen : Map[String, UInt64] = Map([])
   for p in self.ports {
     let key = make_port_key(p.src, p.protocol, p.dst)
     match self.ports_last_seen.get(key) {
@@ -421,7 +421,7 @@ fn Connection::to_msgpack(self : Connection) -> @msgpack.Value {
     @msgpack.int(self.quality),
     match self.metadata {
       Some(m) => {
-        let map_val = {}
+        let map_val = Map([])
         for k, v in m {
           map_val[k] = @msgpack.string(v)
         }
@@ -441,7 +441,7 @@ fn Connection::to_msgpack(self : Connection) -> @msgpack.Value {
     @msgpack.string(self.version),
     @msgpack.string(self.nat_type.to_string()),
     {
-      let m = {}
+      let m = Map([])
       for k, v in self.address_stats {
         m[k] = @msgpack.array([
           match v.last_ping_time {
@@ -514,7 +514,7 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
       }
       let metadata = match metadata_val {
         Map(m) => {
-          let map = {}
+          let map = Map([])
           for k, v in m {
             match v {
               String(vs) => map[k] = vs
@@ -537,7 +537,7 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
       }
       let address_stats = match address_stats_val {
         Map(m) => {
-          let stats = {}
+          let stats = Map([])
           for k, v in m {
             match v {
               Array(arr) =>
@@ -587,7 +587,7 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
           }
           stats
         }
-        _ => {}
+        _ => Map([])
       }
       let ports = match protocol_val {
         Array(port_entries) => {
@@ -659,7 +659,7 @@ fn Connection::from_msgpack(msgpack : @msgpack.Value) -> Connection? {
         last_ping_time,
         last_pong_time: None,
         ports,
-        ports_last_seen: {},
+        ports_last_seen: Map([]),
         version,
         nat_type,
         address_stats,

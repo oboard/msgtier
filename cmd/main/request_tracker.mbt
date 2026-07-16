@@ -17,7 +17,9 @@ struct RequestTrackerState {
 }
 
 ///|
-let request_tracker_state : RequestTrackerState = { tracker: { pending: {} } }
+let request_tracker_state : RequestTrackerState = {
+  tracker: { pending: Map([]) },
+}
 
 ///|
 fn add_pending_request(id : String) -> Unit {
@@ -37,7 +39,7 @@ fn add_pending_request(id : String) -> Unit {
   }
   request_tracker_state.tracker.pending[id] = {
     cond: @cond_var.Cond(),
-    headers: {},
+    headers: Map([]),
     response: None,
     created_at: @env.now(),
   }

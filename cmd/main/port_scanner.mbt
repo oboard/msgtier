@@ -56,10 +56,10 @@ struct PortScannerState {
 let port_scanner_state : PortScannerState = {
   last_scan: [],
   initialized: false,
-  broadcast_set: {},
-  remote_ports_by_peer: {},
-  remote_last_updated: {},
-  snapshot_sent_at: {},
+  broadcast_set: Map([]),
+  remote_ports_by_peer: Map([]),
+  remote_last_updated: Map([]),
+  snapshot_sent_at: Map([]),
   refresh_pending: false,
 }
 
@@ -180,11 +180,11 @@ fn diff_local_ports(
   prev : Array[LocalPortEntry],
   curr : Array[LocalPortEntry],
 ) -> (Array[LocalPortEntry], Array[LocalPortEntry]) {
-  let prev_set : Map[String, LocalPortEntry] = {}
+  let prev_set : Map[String, LocalPortEntry] = Map([])
   for e in prev {
     prev_set[local_port_entry_key(e)] = e
   }
-  let curr_set : Map[String, LocalPortEntry] = {}
+  let curr_set : Map[String, LocalPortEntry] = Map([])
   for e in curr {
     curr_set[local_port_entry_key(e)] = e
   }
@@ -556,7 +556,7 @@ fn compress_ipv6_groups(groups : Array[String]) -> String {
 fn filter_self_and_forward_ports(
   entries : Array[LocalPortEntry],
 ) -> Array[LocalPortEntry] {
-  let self_ports : Map[Int, Bool] = {}
+  let self_ports : Map[Int, Bool] = Map([])
   for listener in get_config().listeners {
     match @url.Url::parse(listener) {
       Some(url) => {
@@ -612,11 +612,11 @@ fn apply_remote_ports_delta(
   removed : Array[LocalPortEntry],
 ) -> Unit {
   let prev = port_scanner_state.remote_ports_by_peer.get(peer_id).unwrap_or([])
-  let removed_keys : Map[String, Bool] = {}
+  let removed_keys : Map[String, Bool] = Map([])
   for e in removed {
     removed_keys[local_port_entry_key(e)] = true
   }
-  let merged_keys : Map[String, LocalPortEntry] = {}
+  let merged_keys : Map[String, LocalPortEntry] = Map([])
   for e in prev {
     let key = local_port_entry_key(e)
     if !removed_keys.contains(key) {

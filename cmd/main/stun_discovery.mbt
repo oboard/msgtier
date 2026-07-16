@@ -24,7 +24,7 @@ let stun_default_servers : ReadOnlyArray[String] = [
 ]
 
 ///|
-let stun_discovery_state : Map[String, StunDiscoveryInfo] = {}
+let stun_discovery_state : Map[String, StunDiscoveryInfo] = Map([])
 
 ///|
 fn get_stun_public_addresses(listener : String) -> Array[String] {

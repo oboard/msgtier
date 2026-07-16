@@ -21,7 +21,7 @@ struct MessagePlugin {
 
 ///|
 fn MessageDispatcher::new() -> MessageDispatcher {
-  { handlers: {} }
+  { handlers: Map([]) }
 }
 
 ///|
@@ -126,7 +126,7 @@ fn handle_hello_message(ctx : MessageContext) -> Unit {
         id=msg.source_id,
         version=app_state.version,
         addresses=if msg.source_addr is Some(addr) { [addr] } else { [] },
-        metadata={},
+        metadata=Map([]),
       )
       global_state.peer_manager = global_state.peer_manager.add_peer(peer_node)
     }
@@ -184,7 +184,7 @@ fn handle_hello_message(ctx : MessageContext) -> Unit {
   if should_rebroadcast_hello(msg.source_id) {
     record_hello_time(msg.source_id)
     let known_peers = get_all_known_peers()
-    let targets : Map[String, String] = {}
+    let targets : Map[String, String] = Map([])
     for peer_url in known_peers {
       if peer_url != ctx.sender_addr && !is_bind_all_address(peer_url) {
         let peer_id_opt = get_global_peer_manager().get_peer_id_by_address(
@@ -416,7 +416,7 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
                     id=peer_id,
                     version=conn.version,
                     addresses=[],
-                    metadata={},
+                    metadata=Map([]),
                   )
                   global_state.peer_manager = global_state.peer_manager.add_peer(
                     peer_node,
@@ -456,7 +456,7 @@ fn handle_sync_message(ctx : MessageContext) -> Unit {
             id=msg.source_id,
             version=msg.version.unwrap_or(app_state.version),
             addresses=if msg.source_addr is Some(addr) { [addr] } else { [] },
-            metadata=sender_metadata.val.unwrap_or({}),
+            metadata=sender_metadata.val.unwrap_or(Map([])),
           )
           global_state.peer_manager = global_state.peer_manager.add_peer(
             peer_node,

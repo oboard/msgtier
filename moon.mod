@@ -9,6 +9,7 @@ import {
   "gmlewis/flate@0.36.9",
   "gmlewis/io@0.23.12",
   "oboard/mocket@0.7.6",
+  "tonyfettes/unicode@0.3.6",
 }
 
 readme = "README.mbt.md"

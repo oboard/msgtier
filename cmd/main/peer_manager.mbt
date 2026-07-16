@@ -8,7 +8,7 @@ struct PeerManager {
 
 ///|
 fn PeerManager::new() -> PeerManager {
-  { peers: {}, routes: {} }
+  { peers: Map([]), routes: Map([]) }
 }
 
 ///|

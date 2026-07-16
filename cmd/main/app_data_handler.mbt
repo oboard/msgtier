@@ -11,8 +11,8 @@ struct AppDataHandlerState {
 
 ///|
 let app_data_handler_state : AppDataHandlerState = {
-  processed_messages_cache: {},
-  pending_response_chunks: {},
+  processed_messages_cache: Map([]),
+  pending_response_chunks: Map([]),
   response_chunk_size: 1048576,
   http_proxy_no_encrypt_threshold: 1048576,
   stream_priority_chunks: 4,
@@ -89,7 +89,7 @@ fn encode_stream_frame(
   let corr_bytes = @utf8.encode(correlation_id)
   let header_pairs = match headers {
     Some(h) => h
-    None => {}
+    None => Map([])
   }
   let key_bytes : Array[Bytes] = []
   let value_bytes : Array[Bytes] = []
@@ -154,7 +154,7 @@ fn merge_stream_headers(
 ) -> Map[String, String]? {
   let merged = match headers {
     Some(h) => h
-    None => {}
+    None => Map([])
   }
   match status {
     Some(s) => merged["status"] = s
@@ -180,7 +180,7 @@ fn collect_stream_routes(
   resolved_addr : String,
 ) -> Array[StreamRoute] {
   let routes : Array[StreamRoute] = []
-  let seen : Map[String, Bool] = {}
+  let seen : Map[String, Bool] = Map([])
   if !resolved_addr.is_empty() {
     let key = default_transport.protocol() + "|" + resolved_addr
     routes.push({ transport: default_transport, target_addr: resolved_addr })
@@ -358,7 +358,7 @@ fn parse_response_chunk_array(
   let headers = if arr.length() > 4 {
     match arr[4] {
       Map(m) => {
-        let wrapper : Map[String, @msgpack.Value] = {}
+        let wrapper : Map[String, @msgpack.Value] = Map([])
         wrapper["headers"] = @msgpack.map(m)
         parse_headers_map(wrapper)
       }
@@ -462,7 +462,7 @@ fn store_response_chunk(
 fn parse_headers_map(m : Map[String, @msgpack.Value]) -> Map[String, String]? {
   match m.get("headers") {
     Some(Map(headers_map)) => {
-      let headers : Map[String, String] = {}
+      let headers : Map[String, String] = Map([])
       for k, v in headers_map {
         match v {
           String(s) => headers[k] = s
@@ -491,7 +491,7 @@ fn ensure_status_header(
 ) -> Map[String, String] {
   let merged = match headers {
     Some(h) => h
-    None => {}
+    None => Map([])
   }
   merged["status"] = status
   merged
@@ -704,7 +704,7 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
       }
       let headers = match m.get("headers") {
         Some(Map(hm)) => {
-          let h : Map[String, String] = {}
+          let h : Map[String, String] = Map([])
           for k, v in hm {
             match v {
               String(s) => h[k] = s
@@ -713,7 +713,7 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
           }
           h
         }
-        _ => {}
+        _ => Map([])
       }
       let body = match m.get("body") {
         Some(Binary(b)) => b
@@ -725,7 +725,7 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
       }
       (http_method, path, headers, body, prefer_stream_frame)
     }
-    _ => ("GET", "/", {}, b"", false)
+    _ => ("GET", "/", Map([]), b"", false)
   }
   log_bench(
     "http_proxy_recv",
@@ -1043,7 +1043,7 @@ async fn send_file_stream_helper(
       log_error("File stream error: " + e.to_string())
       let resp_map : Map[String, @msgpack.Value] = Map([], capacity=0)
       resp_map["status"] = @msgpack.string("500")
-      resp_map["headers"] = headers_to_msgpack(headers.unwrap_or({}))
+      resp_map["headers"] = headers_to_msgpack(headers.unwrap_or(Map([])))
       resp_map["data"] = @msgpack.binary(
         @utf8.encode("Internal Server Error: " + e.to_string()),
       )
@@ -1457,7 +1457,7 @@ fn handle_data_response(
     "DataResponse: resolve correlation=\{correlation_id} from=\{source_id}",
   )
   match response_data {
-    Binary(b) => resolve_request(correlation_id, {}, b)
+    Binary(b) => resolve_request(correlation_id, Map([]), b)
     Array(arr) =>
       match parse_response_chunk_array(arr) {
         Some((index, total, data, status, headers)) => {
@@ -1475,7 +1475,7 @@ fn handle_data_response(
                 None =>
                   match headers {
                     Some(h) => h
-                    None => {}
+                    None => Map([])
                   }
               }
               resolve_request(correlation_id, merged_headers, full_data)
@@ -1492,7 +1492,7 @@ fn handle_data_response(
           }
           resolve_request(
             correlation_id,
-            {},
+            Map([]),
             @utf8.encode(strings.to_json().stringify()),
           )
         }
@@ -1510,7 +1510,7 @@ fn handle_data_response(
                 None =>
                   match headers {
                     Some(h) => h
-                    None => {}
+                    None => Map([])
                   }
               }
               resolve_request(correlation_id, merged_headers, full_data)
@@ -1537,7 +1537,7 @@ fn handle_data_response(
                 Some(String(s)) => s
                 _ => response_data.to_string().unwrap_or("error")
               }
-              resolve_request(correlation_id, {}, @utf8.encode(output))
+              resolve_request(correlation_id, Map([]), @utf8.encode(output))
             }
           }
         }
@@ -1545,7 +1545,7 @@ fn handle_data_response(
     _ =>
       resolve_request(
         correlation_id,
-        {},
+        Map([]),
         @utf8.encode(response_data.to_string().unwrap_or("error")),
       )
   }

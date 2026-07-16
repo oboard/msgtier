@@ -10,7 +10,7 @@ pub async fn Endpoint::new(addr_str : String) -> Endpoint {
     e => abort("Invalid address: " + e.to_string())
   }
   let socket = @socket.UdpServer(addr)
-  { socket, connections: {} }
+  { socket, connections: Map([]) }
 }
 
 ///|

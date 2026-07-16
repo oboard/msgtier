@@ -47,7 +47,7 @@ fn handle_port_scan_local() -> Json {
 
 ///|
 fn handle_port_scan_peers() -> Json {
-  let peers_obj : Map[String, Json] = {}
+  let peers_obj : Map[String, Json] = Map([])
   for peer_id, entries in port_scanner_state.remote_ports_by_peer {
     let items : Array[Json] = []
     for e in entries {

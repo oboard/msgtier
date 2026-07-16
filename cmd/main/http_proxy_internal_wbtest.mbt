@@ -87,10 +87,20 @@ async test "send_message_now_with_route falls back to relay route" {
   )
 
   global_state.peer_manager = global_state.peer_manager.add_peer(
-    PeerNode::new(id="node-b", version="", addresses=[direct_addr], metadata={}),
+    PeerNode::new(
+      id="node-b",
+      version="",
+      addresses=[direct_addr],
+      metadata=Map([]),
+    ),
   )
   global_state.peer_manager = global_state.peer_manager.add_peer(
-    PeerNode::new(id="node-c", version="", addresses=[relay_addr], metadata={}),
+    PeerNode::new(
+      id="node-c",
+      version="",
+      addresses=[relay_addr],
+      metadata=Map([]),
+    ),
   )
   global_state.peer_manager = global_state.peer_manager.update_route(
     "node-b", "node-c", 2,
@@ -145,10 +155,20 @@ async test "send_one_helper falls back to relay route for response" {
     relay_conn,
   )
   global_state.peer_manager = global_state.peer_manager.add_peer(
-    PeerNode::new(id="node-b", version="", addresses=[direct_addr], metadata={}),
+    PeerNode::new(
+      id="node-b",
+      version="",
+      addresses=[direct_addr],
+      metadata=Map([]),
+    ),
   )
   global_state.peer_manager = global_state.peer_manager.add_peer(
-    PeerNode::new(id="node-c", version="", addresses=[relay_addr], metadata={}),
+    PeerNode::new(
+      id="node-c",
+      version="",
+      addresses=[relay_addr],
+      metadata=Map([]),
+    ),
   )
   global_state.peer_manager = global_state.peer_manager.update_route(
     "node-b", "node-c", 2,

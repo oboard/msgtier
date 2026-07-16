@@ -25,12 +25,12 @@ async fn WebSocketTransport::WebSocketTransport(
   }
   {
     server: @http.Server(addr, reuse_addr=true),
-    connections: {},
+    connections: Map([]),
     handler: None,
     raw_data_handler: None,
     on_disconnect: None,
     root: None,
-    reader_started: {},
+    reader_started: Map([]),
   }
 }
 

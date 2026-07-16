@@ -9,7 +9,7 @@ struct ServerState {
 let server_state : ServerState = {
   connection_timeout_ms: 60000,
   last_sync_broadcast_time: 0,
-  received_message_cache: {},
+  received_message_cache: Map([]),
 }
 
 ///|

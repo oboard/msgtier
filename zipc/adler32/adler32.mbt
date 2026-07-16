@@ -2,7 +2,7 @@
 // Adler-32 is defined as: a = 1 + sum of bytes, b = sum of a values, result = b * 65536 + a
 
 ///|
-pub(all) struct Adler32(Int64) derive(Eq)
+pub(all) struct Adler32(Int64) derive(Eq, Debug)
 
 ///|
 let adler32_base : Int64 = 65521L // Largest prime smaller than 65536

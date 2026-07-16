@@ -12,7 +12,7 @@ struct ObjectStoreState {
 
 ///|
 let object_store_state : ObjectStoreState = {
-  store: { objects: {} },
+  store: { objects: Map([]) },
   default_upload_dir: "",
 }
 

@@ -14,10 +14,10 @@ struct GlobalState {
 let global_state : GlobalState = {
   peer_manager: PeerManager::new(),
   connection_manager: ConnectionManager::new(),
-  known_peers: {},
-  transports: {},
-  hello_times: {},
-  hello_callback_times: {},
+  known_peers: Map([]),
+  transports: Map([]),
+  hello_times: Map([]),
+  hello_callback_times: Map([]),
   bench_trace_lines: [],
   bench_trace_generation: 0,
 }
@@ -181,7 +181,7 @@ fn get_all_known_peers() -> Array[String] {
 fn pick_peer_address(peer_id : String, protocol : String) -> String? {
   // Try to find best address from connection stats first
   let conns = get_global_connection_manager().get_peer_connections(peer_id)
-  let combined_stats : Map[String, AddressStats] = {}
+  let combined_stats : Map[String, AddressStats] = Map([])
 
   for conn in conns {
     if conn.relay == 1 {

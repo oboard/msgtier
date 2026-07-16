@@ -353,7 +353,7 @@ async fn accept_port_forward_tcp_connection(
     send_seq: Ref(0),
     recv_next_seq: Ref(0),
     remote_close_seq: Ref(None),
-    recv_buffer: Ref({}),
+    recv_buffer: Ref(Map([])),
     pending_writes: Ref([]),
     draining: Ref(false),
     closed: Ref(false),
@@ -620,8 +620,8 @@ fn refresh_port_forward_registry(root : @async.TaskGroup[Unit]) -> Unit {
     })
   }
 
-  let desired_tcp : Map[String, PortForwardForwardRule] = {}
-  let desired_udp : Map[String, PortForwardForwardRule] = {}
+  let desired_tcp : Map[String, PortForwardForwardRule] = Map([])
+  let desired_udp : Map[String, PortForwardForwardRule] = Map([])
   for rule in get_port_forward_active_forward_rules() {
     if !is_port_forward_rule_enabled(rule.enabled) {
       continue

@@ -20,7 +20,7 @@ let pending_state : PendingState = {
   messages: [],
   cond: @cond_var.Cond(),
   generation: 0,
-  send_times: {},
+  send_times: Map([]),
 }
 
 ///|
@@ -87,10 +87,10 @@ fn add_pending_message(msg : Message) -> Unit {
   }
   messages.push({
     msg,
-    sent_targets: {},
+    sent_targets: Map([]),
     retry_count: 0,
     last_attempt: 0UL,
-    acked_peers: {},
+    acked_peers: Map([]),
   })
   notify_pending_changed()
 }
@@ -154,7 +154,7 @@ fn mark_pending_message_attempted(
       let target_protocols = match entry.sent_targets.get(peer_id) {
         Some(m) => m
         None => {
-          let m = {}
+          let m = Map([])
           entry.sent_targets[peer_id] = m
           m
         }

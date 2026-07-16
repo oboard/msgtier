@@ -62,14 +62,14 @@ struct PortForwardRegistryState {
 ///|
 let port_forward_registry_state : PortForwardRegistryState = {
   initialized: false,
-  tcp_forward_started: {},
-  tcp_forward_servers: {},
-  tcp_forward_connections: {},
-  tcp_expose_connections: {},
-  udp_forward_runtimes: {},
-  udp_forward_session_by_id: {},
-  udp_forward_session_by_source: {},
-  udp_expose_sessions: {},
+  tcp_forward_started: Map([]),
+  tcp_forward_servers: Map([]),
+  tcp_forward_connections: Map([]),
+  tcp_expose_connections: Map([]),
+  udp_forward_runtimes: Map([]),
+  udp_forward_session_by_id: Map([]),
+  udp_forward_session_by_source: Map([]),
+  udp_expose_sessions: Map([]),
 }
 
 ///|

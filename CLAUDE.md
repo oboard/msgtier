@@ -131,22 +131,6 @@ The `url/` package is a complete WHATWG URL Standard implementation:
 
 **Note:** The URL library is self-contained and can be used independently from the main messaging application.
 
-## Key Dependencies
-
-**Module-level** (`moon.mod.json`):
-- `moonbitlang/async` (0.16.4) - Async runtime and task groups
-- `oboard/msgtier/unicode` (0.3.0) - Unicode/IDNA support for domain parsing
-
-**Main package** (`cmd/main/moon.pkg.json`):
-- `moonbitlang/core/json` - JSON serialization
-- `moonbitlang/core/env` - Environment variables
-- `moonbitlang/async/socket` - UDP socket operations
-- `moonbitlang/async/fs` - Async file I/O
-- `oboard/msgtier/url` - Local URL parser package
-
-**Build Target:**
-- Prefers native compilation over WebAssembly (see `moon.mod.json` "preferred-target": "native")
-
 ## Testing Strategy
 
 **Test File Naming:**

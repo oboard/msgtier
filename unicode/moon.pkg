@@ -1,4 +1,0 @@
-import {
-  "oboard/msgtier/unicode/internal/ucd" @ucd/data,
-  "oboard/msgtier/unicode/internal/ucd" @ucd_data,
-}

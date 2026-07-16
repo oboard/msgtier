@@ -1,5 +1,5 @@
 ///|
-pub let dist : Map[StringView, Bytes] = {}
+pub let dist : Map[StringView, Bytes] = Map([])
 
 ///|
 let dist_loaded : Ref[Bool] = Ref(false)

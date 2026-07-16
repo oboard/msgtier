@@ -37,12 +37,12 @@ async fn TcpTransport::TcpTransport(addr_str : String) -> TcpTransport {
   }
   {
     server: @socket.TcpServer(addr, reuse_addr=true),
-    connections: {},
+    connections: Map([]),
     handler: None,
     raw_data_handler: None,
     on_disconnect: None,
     root: None,
-    reader_started: {},
+    reader_started: Map([]),
   }
 }
 

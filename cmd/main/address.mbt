@@ -79,8 +79,8 @@ pub fn Address::new(
 ///|
 /// Parse an address from a URL string like "tcp://127.0.0.1:9000"
 pub fn Address::parse(input : String) -> Address raise {
-  let protocol_str = lexmatch input[:] with longest {
-    (("[^:]+" as protocol) "://", _) => protocol.to_owned()
+  let protocol_str = match input.split("://").head() {
+    Some(p) if !p.is_empty() && p != input[:] => p.to_owned()
     _ => raise AddressParseError::MissingProtocol
   }
   guard Protocol::parse(protocol_str[:]) is Some(protocol) else {
@@ -141,11 +141,6 @@ pub fn Address::socket_addr(self : Address) -> @socket.Addr raise {
 /// Parse port number from string
 fn parse_port(s : String) -> UInt16 raise {
   guard s != "" else { fail("empty port") }
-  let is_decimal = lexmatch s[:] with longest {
-    "[0-9]+" => true
-    _ => false
-  }
-  guard is_decimal else { fail("invalid digit") }
   let port = @string.parse_int(s) catch { _ => fail("invalid digit") }
   guard port <= 65535 else { fail("port out of range") }
   port.to_uint16()

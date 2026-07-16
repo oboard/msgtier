@@ -45,7 +45,7 @@ fn handle_new_connection(
           id=info.id,
           version=info.version,
           addresses=[remote_addr],
-          metadata={},
+          metadata=Map([]),
         )
     }
     global_state.peer_manager = global_state.peer_manager.add_peer(peer_node)
@@ -81,7 +81,7 @@ fn handle_new_connection(
           id=actual_peer_id,
           version=app_state.version,
           addresses=[remote_addr],
-          metadata={},
+          metadata=Map([]),
         )
         global_state.peer_manager = global_state.peer_manager.add_peer(
           peer_node,
@@ -187,7 +187,7 @@ async fn handle_reconnects(
     )
 
     // Build list of target addresses
-    let targets : Map[String, String] = {}
+    let targets : Map[String, String] = Map([])
     let peers = get_global_peer_manager().get_all_peers()
     for peer in peers {
       if has_direct_connection_for_protocol(

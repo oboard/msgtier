@@ -4,7 +4,7 @@ fn message_route_candidates(
   protocol : String,
 ) -> Array[String] {
   let candidates : Array[String] = []
-  let seen : Map[String, Bool] = {}
+  let seen : Map[String, Bool] = Map([])
   let connections = get_global_connection_manager().get_peer_connections(
     peer_id,
   )
@@ -197,7 +197,7 @@ async fn handle_internal_http_request(
             (status_code, resp_headers, ResponseBody::Bytes(body))
           }
           None => {
-            let resp_headers : Map[String, String] = {}
+            let resp_headers : Map[String, String] = Map([])
             (
               404,
               resp_headers,
@@ -209,7 +209,7 @@ async fn handle_internal_http_request(
   } else if http_method == "POST" && path == "/api/object" {
     let id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
     save_object(id, body)
-    let m : Map[String, Json] = {}
+    let m : Map[String, Json] = Map([])
     m["id"] = id.to_json()
     let json_str = m.to_json().stringify()
     let resp_headers : Map[String, String] = {
@@ -220,7 +220,7 @@ async fn handle_internal_http_request(
     let json_str = @utf8.decode(body)
     let json_val = @json.parse(json_str) catch {
       _ => {
-        let resp_headers : Map[String, String] = {}
+        let resp_headers : Map[String, String] = Map([])
         return (
           400,
           resp_headers,
@@ -233,7 +233,7 @@ async fn handle_internal_http_request(
       _ => ""
     }
     if path == "" {
-      let resp_headers : Map[String, String] = {}
+      let resp_headers : Map[String, String] = Map([])
       return (
         400,
         resp_headers,
@@ -241,7 +241,7 @@ async fn handle_internal_http_request(
       )
     }
     let id = register_object(path)
-    let m : Map[String, Json] = {}
+    let m : Map[String, Json] = Map([])
     m["id"] = id.to_json()
     let resp_json = m.to_json().stringify()
     let resp_headers : Map[String, String] = {
@@ -251,7 +251,7 @@ async fn handle_internal_http_request(
   } else if http_method == "POST" && path == "/object" {
     let body_str = @utf8.decode(body).trim().to_owned()
     if body_str == "" {
-      let resp_headers : Map[String, String] = {}
+      let resp_headers : Map[String, String] = Map([])
       (
         400,
         resp_headers,
@@ -259,7 +259,7 @@ async fn handle_internal_http_request(
       )
     } else {
       let id = register_object(body_str)
-      let m : Map[String, Json] = {}
+      let m : Map[String, Json] = Map([])
       m["id"] = id.to_json()
       let resp_json = m.to_json().stringify()
       let resp_headers : Map[String, String] = {
@@ -345,7 +345,7 @@ async fn handle_internal_http_request(
         )
     }
   } else {
-    let resp_headers : Map[String, String] = {}
+    let resp_headers : Map[String, String] = Map([])
     (404, resp_headers, ResponseBody::Bytes(@utf8.encode("Not Found")))
   }
 }

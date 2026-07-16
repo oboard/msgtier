@@ -106,7 +106,7 @@ fn merge_sorted_messages(
   groups : Array[FixedArray[@db.Message]],
 ) -> Array[@db.Message] {
   let out : Array[@db.Message] = []
-  let seen : Map[String, Bool] = {}
+  let seen : Map[String, Bool] = Map([])
   for group in groups {
     for msg in group {
       if seen.contains(msg.id) {

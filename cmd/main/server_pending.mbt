@@ -179,7 +179,7 @@ async fn process_pending_message(
     }
     // Collect candidate addresses from both active connections and PeerManager
     let candidates : Array[String] = []
-    let seen_candidates : Map[String, Bool] = {}
+    let seen_candidates : Map[String, Bool] = Map([])
 
     // 1. Add addresses from active connections (prioritized)
     for conn in target_connections {

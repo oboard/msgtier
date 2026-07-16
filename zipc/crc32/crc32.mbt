@@ -2,7 +2,7 @@
 /// CRC-32 checksum implementation for ZIP files
 /// 
 /// Uses polynomial 0xedb88320 (reversed 0x04c11db7)
-pub(all) struct Crc32(Int64) derive(Eq)
+pub(all) struct Crc32(Int64) derive(Eq, Debug)
 
 ///|
 /// CRC-32 lookup table (precomputed for performance)

@@ -1,4 +1,0 @@
-import {
-  "oboard/msgtier/unicode-tools/emitter",
-  "moonbitlang/core/string",
-}

@@ -40,7 +40,7 @@ fn port_forward_int_field(body : @msgpack.Value, key : String) -> Int? {
 fn port_forward_map(
   entries : Array[(String, @msgpack.Value)],
 ) -> @msgpack.Value {
-  let m : Map[String, @msgpack.Value] = {}
+  let m : Map[String, @msgpack.Value] = Map([])
   for entry in entries {
     m[entry.0] = entry.1
   }

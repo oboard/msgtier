@@ -1,13 +1,17 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "oboard/msgtier/zipc/crc32"
 
+import {
+  "moonbitlang/core/debug",
+}
+
 // Values
 pub fn bytes(Bytes) -> Crc32
 
 // Errors
 
 // Types and methods
-pub(all) struct Crc32(Int64) derive(Eq)
+pub(all) struct Crc32(Int64) derive(Eq, @debug.Debug)
 pub impl Show for Crc32
 
 // Type aliases

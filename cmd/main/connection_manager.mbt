@@ -7,7 +7,7 @@ struct ConnectionManager {
 
 ///|
 fn ConnectionManager::new() -> ConnectionManager {
-  { connections: {}, peer_connections: {} }
+  { connections: Map([]), peer_connections: Map([]) }
 }
 
 ///|

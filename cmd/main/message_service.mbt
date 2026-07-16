@@ -94,7 +94,7 @@ fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
 fn get_local_node_metadata() -> Map[String, String] {
   match app_state.config {
     Some(config) => {
-      let metadata = config.metadata.unwrap_or({})
+      let metadata = config.metadata.unwrap_or(Map([]))
       let script_names : Array[String] = []
       match config.scripts {
         Some(scripts) =>
@@ -112,7 +112,7 @@ fn get_local_node_metadata() -> Map[String, String] {
       metadata
     }
     None => {
-      let metadata : Map[String, String] = {}
+      let metadata : Map[String, String] = Map([])
       metadata["scripts"] = "[]"
       metadata["channels"] = "[]"
       metadata["port_forwards"] = "[]"

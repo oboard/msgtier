@@ -23,7 +23,7 @@ struct PeerConnectionInfo {
 fn peer_conn_metadata_to_json_map(
   metadata : Map[String, String],
 ) -> Map[String, Json] {
-  let result : Map[String, Json] = {}
+  let result : Map[String, Json] = Map([])
   for key, value in metadata {
     if key == "scripts" {
       result[key] = @json.parse(value) catch { _ => value.to_json() }

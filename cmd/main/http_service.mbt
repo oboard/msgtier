@@ -16,7 +16,7 @@ struct HttpServiceState {
 
 ///|
 let http_state : HttpServiceState = {
-  last_emitted_ids: {},
+  last_emitted_ids: Map([]),
   last_emitted_order: [],
   page_404: b"<html><head></head><body>Page Not Found</body></html>",
   chat_engine: None,
@@ -133,7 +133,7 @@ async fn handle_ws_incoming(text : String) -> String? {
 fn view_map_from_string_map(
   m : Map[String, String],
 ) -> Map[StringView, StringView] {
-  let out : Map[StringView, StringView] = {}
+  let out : Map[StringView, StringView] = Map([])
   for k, v in m {
     out[k[:]] = v[:]
   }
@@ -142,7 +142,7 @@ fn view_map_from_string_map(
 
 ///|
 fn owned_headers(headers : Map[StringView, StringView]) -> Map[String, String] {
-  let out : Map[String, String] = {}
+  let out : Map[String, String] = Map([])
   for k, v in headers {
     out[k.to_owned()] = v.to_owned()
   }
@@ -170,7 +170,7 @@ fn split_once(raw : String, sep : String) -> (String, String)? {
 
 ///|
 fn parse_query_map(raw : String?) -> Map[String, String] {
-  let out : Map[String, String] = {}
+  let out : Map[String, String] = Map([])
   match raw {
     Some(q) if q != "" =>
       for pair in q.split("&") {
@@ -392,7 +392,7 @@ async fn proxy_handler(
         None => 60000
       }
       let timeout_ms = if timeout_ms_int < 0 { 60000 } else { timeout_ms_int }
-      let forward_headers : Map[String, String] = {}
+      let forward_headers : Map[String, String] = Map([])
       for k, v in headers {
         let key = k.to_owned()
         if !(key is ("target" | "path" | "peer")) {

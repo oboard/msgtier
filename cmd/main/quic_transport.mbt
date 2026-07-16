@@ -8,7 +8,7 @@ pub struct QuicTransport {
 ///|
 async fn QuicTransport::QuicTransport(addr_str : String) -> QuicTransport {
   let endpoint = @quic.Endpoint::new(addr_str)
-  { endpoint, connections: {}, raw_data_handler: None }
+  { endpoint, connections: Map([]), raw_data_handler: None }
 }
 
 ///|

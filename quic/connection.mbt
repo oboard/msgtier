@@ -4,7 +4,7 @@ pub fn Connection::new(
   conn_id : String,
   is_server : Bool,
 ) -> Connection {
-  { addr, conn_id, is_server, next_packet_number: 0L, streams: {} }
+  { addr, conn_id, is_server, next_packet_number: 0L, streams: Map([]) }
 }
 
 ///|

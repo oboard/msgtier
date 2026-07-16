@@ -18,7 +18,12 @@ test "learn_route_from_relayed_message records next hop from sender addr" {
   })
   global_state.peer_manager = PeerManager::new()
   global_state.peer_manager = global_state.peer_manager.add_peer(
-    PeerNode::new(id="node-c", version="", addresses=["tcp://relay-hop:2000"], metadata={}),
+    PeerNode::new(
+      id="node-c",
+      version="",
+      addresses=["tcp://relay-hop:2000"],
+      metadata=Map([]),
+    ),
   )
   learn_route_from_relayed_message(
     "node-b", "node-a", "tcp://relay-hop:2000", 2,

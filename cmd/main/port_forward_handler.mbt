@@ -264,7 +264,7 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
         send_seq: Ref(0),
         recv_next_seq: Ref(0),
         remote_close_seq: Ref(None),
-        recv_buffer: Ref({}),
+        recv_buffer: Ref(Map([])),
         pending_writes: Ref([]),
         draining: Ref(false),
         closed: Ref(false),

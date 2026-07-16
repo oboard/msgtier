@@ -1,4 +1,0 @@
-import {
-  "oboard/msgtier/unicode/internal/fuzz",
-  "moonbitlang/core/random",
-} for "test"
