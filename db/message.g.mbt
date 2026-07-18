@@ -22,7 +22,7 @@ pub fn Message::table() -> @morm.Table {
         charset: None,
         collation: None,
         default_value: None,
-        engine_options: {},
+        engine_options: Map([]),
       },
       {
         name: "source_id",
@@ -36,7 +36,7 @@ pub fn Message::table() -> @morm.Table {
         charset: None,
         collation: None,
         default_value: None,
-        engine_options: {},
+        engine_options: Map([]),
       },
       {
         name: "target_id",
@@ -50,7 +50,7 @@ pub fn Message::table() -> @morm.Table {
         charset: None,
         collation: None,
         default_value: None,
-        engine_options: {},
+        engine_options: Map([]),
       },
       {
         name: "kind",
@@ -64,7 +64,7 @@ pub fn Message::table() -> @morm.Table {
         charset: None,
         collation: None,
         default_value: None,
-        engine_options: {},
+        engine_options: Map([]),
       },
       {
         name: "content",
@@ -78,7 +78,7 @@ pub fn Message::table() -> @morm.Table {
         charset: None,
         collation: None,
         default_value: None,
-        engine_options: {},
+        engine_options: Map([]),
       },
       {
         name: "timestamp",
@@ -92,7 +92,7 @@ pub fn Message::table() -> @morm.Table {
         charset: None,
         collation: None,
         default_value: None,
-        engine_options: {},
+        engine_options: Map([]),
       },
     ],
     indexes: [],
@@ -105,7 +105,7 @@ pub fn Message::table() -> @morm.Table {
     tablespace: None,
     comment: "",
     auto_increment: None,
-    engine_options: {},
+    engine_options: Map([]),
   }
 }
 
