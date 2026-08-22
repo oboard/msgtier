@@ -209,7 +209,7 @@ fn build_runtime_seed() -> Bytes {
     state = absorb_seed_string(state, cwd)
   }
 
-  if state == UInt64::default() {
+  if state == 0UL {
     state = Int::to_uint64(1)
   }
 

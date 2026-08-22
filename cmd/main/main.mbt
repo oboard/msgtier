@@ -37,7 +37,7 @@ async fn run_with_config(
   set_config(config)
   reset_bench_trace()
   start_bench_trace_flusher(root)
-  log_debug(config.to_json().stringify(indent=2))
+  log_debug(ToJson::to_json(config).stringify(indent=2))
   let id = config.id
   for peer_url in config.peers {
     add_known_peer(peer_url)

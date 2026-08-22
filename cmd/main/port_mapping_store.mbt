@@ -64,7 +64,7 @@ fn resolve_port_mapping_store_path() -> String {
             dir + "/port_mappings.json"
           }
         _ =>
-          match @sys.get_env_var("HOME") {
+          match @env.get_env_var("HOME") {
             Some(home) if home != "" =>
               (if home.has_suffix("/") {
                 home + ".msgtier/"
@@ -194,7 +194,7 @@ async fn save_port_mapping_store() -> Unit {
     version: 1,
     mappings: port_mapping_store_state.mappings,
   }
-  let payload = file.to_json().stringify(indent=2)
+  let payload = ToJson::to_json(file).stringify(indent=2)
   let tmp_path = path + ".tmp"
   @fs.write_file(
     tmp_path,

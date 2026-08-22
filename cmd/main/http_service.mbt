@@ -276,7 +276,7 @@ fn status_handler() -> Json {
     routes: routes_info,
     stun: stun_discovery_state.values().to_array(),
   }
-  status_info.to_json()
+  ToJson::to_json(status_info)
 }
 
 ///|

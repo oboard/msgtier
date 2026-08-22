@@ -114,7 +114,7 @@ test "Address::parse invalid port" {
 ///|
 test "Address ToJson/FromJson roundtrip" {
   let addr = Address::new(Tcp, "10.0.0.1", 8888)
-  let json = addr.to_json()
+  let json = ToJson::to_json(addr)
   debug_inspect(json, content="String(\"tcp://10.0.0.1:8888\")")
   let parsed : Address = @json.from_json(json)
   inspect(parsed == addr, content="true")

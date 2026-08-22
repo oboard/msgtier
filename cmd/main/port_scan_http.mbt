@@ -40,7 +40,7 @@ fn json_error(
 fn handle_port_scan_local() -> Json {
   let items : Array[Json] = []
   for e in port_scanner_state.last_scan {
-    items.push(e.to_json())
+    items.push(ToJson::to_json(e))
   }
   { "ports": items.to_json() }
 }
@@ -51,7 +51,7 @@ fn handle_port_scan_peers() -> Json {
   for peer_id, entries in port_scanner_state.remote_ports_by_peer {
     let items : Array[Json] = []
     for e in entries {
-      items.push(e.to_json())
+      items.push(ToJson::to_json(e))
     }
     let last_updated = port_scanner_state.remote_last_updated
       .get(peer_id)
@@ -74,7 +74,7 @@ async fn handle_port_scan_refresh() -> Json {
 fn handle_port_mappings_list() -> Json {
   let items : Array[Json] = []
   for m in list_port_mapping_rules() {
-    items.push(m.to_json())
+    items.push(ToJson::to_json(m))
   }
   { "mappings": items.to_json() }
 }
@@ -133,7 +133,7 @@ async fn handle_port_mappings_create(
     _ =>
       return json_error(InternalServerError, "internal_error", "create failed")
   }
-  @mocket.HttpResponse::new(OK).body(rule.to_json())
+  @mocket.HttpResponse::new(OK).body(ToJson::to_json(rule))
 }
 
 ///|
@@ -166,5 +166,5 @@ async fn handle_port_mappings_patch(
     _ =>
       return json_error(InternalServerError, "internal_error", "update failed")
   }
-  @mocket.HttpResponse::new(OK).body(rule.to_json())
+  @mocket.HttpResponse::new(OK).body(ToJson::to_json(rule))
 }

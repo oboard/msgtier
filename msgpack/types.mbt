@@ -32,7 +32,7 @@ pub enum Value {
 ///|
 pub impl ToJson for Value with fn to_json(self) {
   match self {
-    Map(m) => Json::object(m.map((_, value) => value.to_json()))
+    Map(m) => Json::object(m.map((_, value) => ToJson::to_json(value)))
     Bool(b) => Json::boolean(b)
     Int(i) => Json::number(i.to_double())
     Float32(i) => Json::number(i.to_double())
@@ -41,8 +41,8 @@ pub impl ToJson for Value with fn to_json(self) {
     UInt32(i) => Json::number(i.to_double())
     UInt64(i) => Json::number(i.to_double())
     String(s) => Json::string(s)
-    Array(arr) => Json::array(arr.map(fn(x) { x.to_json() }))
-    Binary(b) => Json::array(b.to_array().map(fn(x) { x.to_json() }))
+    Array(arr) => Json::array(arr.map(fn(x) { ToJson::to_json(x) }))
+    Binary(b) => Json::array(b.to_array().map(fn(x) { ToJson::to_json(x) }))
     Nil => Json::null()
   }
 }

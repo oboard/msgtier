@@ -80,4 +80,3 @@ pub impl @json.FromJson for Url
 // Type aliases
 
 // Traits
-
