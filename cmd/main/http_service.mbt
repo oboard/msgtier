@@ -128,28 +128,6 @@ async fn handle_ws_incoming(text : String) -> String? {
 }
 
 ///|
-
-///|
-fn view_map_from_string_map(
-  m : Map[String, String],
-) -> Map[StringView, StringView] {
-  let out : Map[StringView, StringView] = Map([])
-  for k, v in m {
-    out[k[:]] = v[:]
-  }
-  out
-}
-
-///|
-fn owned_headers(headers : Map[StringView, StringView]) -> Map[String, String] {
-  let out : Map[String, String] = Map([])
-  for k, v in headers {
-    out[k.to_owned()] = v.to_owned()
-  }
-  out
-}
-
-///|
 /// Split `raw` at the first occurrence of `sep`.  Returns `None` if `sep` is
 /// absent.  Used for parsing "k=v" query params without needing a real find.
 fn split_once(raw : String, sep : String) -> (String, String)? {
@@ -303,8 +281,31 @@ async fn download_handler() -> @mocket.HttpResponse {
 }
 
 ///|
+fn owned_headers(
+  headers : Map[@moonbitlang/async/http.CaseInsensitiveString, StringView],
+) -> Map[String, String] {
+  let result : Map[String, String] = Map([])
+  for key, value in headers {
+    result[key.to_string()] = value.to_owned()
+  }
+  result
+}
+
+///|
+fn view_map_from_string_map(
+  headers : Map[String, String],
+) -> Map[@moonbitlang/async/http.CaseInsensitiveString, StringView] {
+  let result : Map[@moonbitlang/async/http.CaseInsensitiveString, StringView] = Map([],
+  )
+  for key, value in headers {
+    result[key] = value
+  }
+  result
+}
+
+///|
 async fn send_message_handler(
-  headers : Map[StringView, StringView],
+  headers : Map[@moonbitlang/async/http.CaseInsensitiveString, StringView],
   body_str : String,
 ) -> @mocket.HttpResponse {
   let target_id = match headers.get("target") {
@@ -372,7 +373,7 @@ async fn send_message_handler(
 ///|
 async fn proxy_handler(
   method_ : String,
-  headers : Map[StringView, StringView],
+  headers : Map[@moonbitlang/async/http.CaseInsensitiveString, StringView],
   query : String?,
   body : Bytes,
 ) -> @mocket.HttpResponse {
@@ -394,7 +395,7 @@ async fn proxy_handler(
       let timeout_ms = if timeout_ms_int < 0 { 60000 } else { timeout_ms_int }
       let forward_headers : Map[String, String] = Map([])
       for k, v in headers {
-        let key = k.to_owned()
+        let key = k.to_string()
         if !(key is ("target" | "path" | "peer")) {
           forward_headers[key] = v.to_owned()
         }

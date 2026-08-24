@@ -3,7 +3,7 @@ name = "oboard/msgtier"
 version = "0.1.0"
 
 import {
-  "oboard/mocket@0.8.0",
+  "oboard/mocket@0.9.1",
   "oboard/jsonx@0.1.0",
   "moonbitlang/x@0.5.1",
   "moonbitlang/async@0.21.0",
