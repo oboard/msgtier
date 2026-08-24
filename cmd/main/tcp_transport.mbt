@@ -186,17 +186,13 @@ impl Transport for TcpTransport with fn send(self, target, data) {
         @async.sleep(1)
       }
       sending.val = true
-      try {
-        conn.write(header_bytes)
-        conn.write(data)
+      errdefer {
         sending.val = false
-        return true
-      } catch {
-        e => {
-          sending.val = false
-          raise e
-        }
       }
+      conn.write(header_bytes)
+      conn.write(data)
+      sending.val = false
+      return true
     } catch {
       _ => {
         self.connections.remove(target)
@@ -295,18 +291,14 @@ impl Transport for TcpTransport with fn send_raw_port_forward(
         @async.sleep(1)
       }
       sending.val = true
-      try {
-        conn.write(header_bytes)
-        conn.write(inline_bytes)
-        conn.write(data)
+      errdefer {
         sending.val = false
-        return true
-      } catch {
-        e => {
-          sending.val = false
-          raise e
-        }
       }
+      conn.write(header_bytes)
+      conn.write(inline_bytes)
+      conn.write(data)
+      sending.val = false
+      return true
     } catch {
       _ => {
         self.connections.remove(target)

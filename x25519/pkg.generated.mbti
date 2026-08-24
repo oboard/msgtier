@@ -13,4 +13,3 @@ pub fn encrypt(Bytes, Bytes) -> Bytes
 // Type aliases
 
 // Traits
-

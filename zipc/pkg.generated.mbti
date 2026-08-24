@@ -196,4 +196,3 @@ pub type Mode = Int
 pub type Ptime = Int
 
 // Traits
-

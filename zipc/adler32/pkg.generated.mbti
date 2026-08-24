@@ -17,4 +17,3 @@ pub impl Show for Adler32
 // Type aliases
 
 // Traits
-

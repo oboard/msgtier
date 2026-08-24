@@ -100,4 +100,3 @@ pub struct NatProbeResult {
 // Type aliases
 
 // Traits
-

@@ -439,7 +439,7 @@ fn Connection::to_msgpack(self : Connection) -> @msgpack.Value {
       None => @msgpack.nil()
     },
     @msgpack.string(self.version),
-    @msgpack.string(self.nat_type.to_string()),
+    @msgpack.string(Show::to_string(self.nat_type)),
     {
       let m = Map([])
       for k, v in self.address_stats {

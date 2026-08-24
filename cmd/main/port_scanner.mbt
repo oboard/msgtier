@@ -212,7 +212,9 @@ fn diff_local_ports(
 /// backend can then fall back to an alternative (e.g. netstat when lsof is
 /// missing).
 async fn run_scanner_command(program : String, args : Array[String]) -> String? {
-  let (stdout_r, stdout_w) = @pipe.pipe() catch { _ => return None }
+  let (stdout_r, stdout_w) = @process.read_from_process() catch {
+    _ => return None
+  }
   let exit_code = @process.run(program, args, stdout=stdout_w) catch {
     _ => {
       stdout_w.close()

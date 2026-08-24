@@ -27,22 +27,18 @@ async fn execute_script_with_output(
   args : Array[String],
   input_data : String,
 ) -> ScriptOutput {
-  // Create a pipe for stdin if we have input data
-  let (stdin_r, stdin_w) = @pipe.pipe()
-  let (stdout_r, stdout_w) = @pipe.pipe()
+  // Create stdin/stdout pipes managed by the process module.
+  let (stdin_r, stdin_w) = @process.write_to_process()
+  let (stdout_r, stdout_w) = @process.read_from_process()
 
-  // Write input data to stdin pipe in a background task
+  // Write input data to stdin pipe and close write end
   if input_data.length() > 0 {
-    // Write input and close write end
     stdin_w.write(@utf8.encode(input_data)) |> ignore
   }
   stdin_w.close()
-  defer stdout_r.close()
-  defer stdin_r.close()
 
   // Execute and capture output directly
   let exit_code = @process.run(program, args, stdin=stdin_r, stdout=stdout_w)
-  stdout_w.close()
   { exit_code, output: stdout_r.read_all().text() }
 }
 

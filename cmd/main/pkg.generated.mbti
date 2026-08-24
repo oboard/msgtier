@@ -230,4 +230,3 @@ pub trait Transport {
   async fn send_raw_port_forward(Self, String, String, Int, Bytes) -> Bool
   fn set_raw_data_handler(Self, (String, Int, Bytes) -> Unit) -> Unit
 }
-

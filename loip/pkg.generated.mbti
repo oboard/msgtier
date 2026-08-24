@@ -28,4 +28,3 @@ pub enum InterfaceKind {
 // Type aliases
 
 // Traits
-

@@ -50,4 +50,3 @@ pub enum LZ77Token {
 // Type aliases
 
 // Traits
-
