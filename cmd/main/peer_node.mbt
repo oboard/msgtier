@@ -50,7 +50,7 @@ fn PeerNode::new(
   addresses~ : Array[String],
   metadata~ : Map[String, String],
 ) -> PeerNode {
-  { id, version, metadata, addresses, connections: [] }
+  { id, version, metadata, addresses, connections: [], }
 }
 
 // ///|

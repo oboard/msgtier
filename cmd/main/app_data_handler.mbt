@@ -183,7 +183,7 @@ fn collect_stream_routes(
   let seen : Map[String, Bool] = Map([])
   if !resolved_addr.is_empty() {
     let key = default_transport.protocol() + "|" + resolved_addr
-    routes.push({ transport: default_transport, target_addr: resolved_addr })
+    routes.push({ transport: default_transport, target_addr: resolved_addr, })
     seen[key] = true
   }
   let connections = get_global_connection_manager().get_peer_connections(
@@ -211,7 +211,7 @@ fn collect_stream_routes(
       Some(addr) => {
         let key = protocol + "|" + addr
         if !seen.contains(key) {
-          routes.push({ transport, target_addr: addr })
+          routes.push({ transport, target_addr: addr, })
           seen[key] = true
         }
       }
@@ -586,12 +586,12 @@ fn handle_script_message(
 
 ///|
 fn script_message_plugin() -> MessagePlugin {
-  { register: register_script_handlers }
+  { register: register_script_handlers, }
 }
 
 ///|
 fn object_message_plugin() -> MessagePlugin {
-  { register: register_object_handlers }
+  { register: register_object_handlers, }
 }
 
 ///|

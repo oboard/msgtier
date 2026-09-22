@@ -98,8 +98,8 @@ impl Transport for WebSocketTransport with fn send(self, target, data) {
           let ws = @websocket.connect(url)
           let wrapper = WebSocketConnWrapper::{
             conn: ws,
-            sending: { val: false },
-            broken: { val: false },
+            sending: { val: false, },
+            broken: { val: false, },
           }
           self.connections[target_key] = wrapper
           wrapper_opt = Some(wrapper)
@@ -223,8 +223,8 @@ impl Transport for WebSocketTransport with fn send_raw_port_forward(
           let ws = @websocket.connect(url)
           let wrapper = WebSocketConnWrapper::{
             conn: ws,
-            sending: { val: false },
-            broken: { val: false },
+            sending: { val: false, },
+            broken: { val: false, },
           }
           self.connections[target_key] = wrapper
           wrapper_opt = Some(wrapper)
@@ -333,8 +333,8 @@ impl Transport for WebSocketTransport with fn listen(
       let ws = @websocket.from_http_server(request, conn)
       let wrapper = WebSocketConnWrapper::{
         conn: ws,
-        sending: { val: false },
-        broken: { val: false },
+        sending: { val: false, },
+        broken: { val: false, },
       }
       self.connections[client_addr] = wrapper
       self.reader_started[client_addr] = true

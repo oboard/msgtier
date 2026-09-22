@@ -7,7 +7,7 @@ struct ConnectionManager {
 
 ///|
 fn ConnectionManager::new() -> ConnectionManager {
-  { connections: Map([]), peer_connections: Map([]) }
+  { connections: Map([]), peer_connections: Map([]), }
 }
 
 ///|
@@ -44,7 +44,7 @@ fn ConnectionManager::add_connection(
       }
     None => peer_connections[conn.peer_id] = [conn.id]
   }
-  { connections, peer_connections }
+  { connections, peer_connections, }
 }
 
 ///|
@@ -99,7 +99,7 @@ fn ConnectionManager::remove_connection(
         }
         None => ()
       }
-      { connections, peer_connections }
+      { connections, peer_connections, }
     }
     None => self
   }
@@ -121,7 +121,7 @@ fn ConnectionManager::update_connection_ports(
         local_port, protocol, remote_port, timestamp,
       )
       connections[conn_id] = updated_conn
-      { connections, peer_connections: self.peer_connections }
+      { connections, peer_connections: self.peer_connections, }
     }
     None => self
   }
@@ -139,7 +139,7 @@ fn ConnectionManager::update_connection_address_ping(
     Some(conn) => {
       let updated_conn = conn.update_address_ping(addr, time)
       connections[conn_id] = updated_conn
-      { connections, peer_connections: self.peer_connections }
+      { connections, peer_connections: self.peer_connections, }
     }
     None => self
   }
@@ -157,7 +157,7 @@ fn ConnectionManager::update_connection_address_pong(
     Some(conn) => {
       let updated_conn = conn.update_address_pong(addr, time)
       connections[conn_id] = updated_conn
-      { connections, peer_connections: self.peer_connections }
+      { connections, peer_connections: self.peer_connections, }
     }
     None => self
   }
@@ -174,7 +174,7 @@ fn ConnectionManager::mark_connection_address_packet_lost(
     Some(conn) => {
       let updated_conn = conn.mark_address_packet_lost(addr)
       connections[conn_id] = updated_conn
-      { connections, peer_connections: self.peer_connections }
+      { connections, peer_connections: self.peer_connections, }
     }
     None => self
   }
@@ -192,7 +192,7 @@ fn ConnectionManager::prune_connection_ports(
     Some(conn) => {
       let updated_conn = conn.prune_ports(now, timeout_ms)
       connections[conn_id] = updated_conn
-      { connections, peer_connections: self.peer_connections }
+      { connections, peer_connections: self.peer_connections, }
     }
     None => self
   }
@@ -208,7 +208,7 @@ fn ConnectionManager::update_connection_relay(
   match connections.get(conn_id) {
     Some(conn) => {
       connections[conn_id] = conn.update_relay(relay_depth)
-      { connections, peer_connections: self.peer_connections }
+      { connections, peer_connections: self.peer_connections, }
     }
     None => self
   }
@@ -224,7 +224,7 @@ fn ConnectionManager::update_connection_last_seen(
   match connections.get(conn_id) {
     Some(conn) => {
       connections[conn_id] = conn.update_last_seen(timestamp)
-      { connections, peer_connections: self.peer_connections }
+      { connections, peer_connections: self.peer_connections, }
     }
     None => self
   }
@@ -256,7 +256,7 @@ fn ConnectionManager::update_connection_latency(
         latency_history: history,
       }
       connections[conn_id] = updated_conn
-      { connections, peer_connections: self.peer_connections }
+      { connections, peer_connections: self.peer_connections, }
     }
     None => self
   }
@@ -278,7 +278,7 @@ fn ConnectionManager::update_connection_bytes(
         bytes_received: conn.bytes_received + bytes_received,
       }
       connections[conn_id] = updated_conn
-      { connections, peer_connections: self.peer_connections }
+      { connections, peer_connections: self.peer_connections, }
     }
     None => self
   }
@@ -300,7 +300,7 @@ fn ConnectionManager::update_connection_packet_loss(
         packets_lost: conn.packets_lost + packets_lost,
       }
       connections[conn_id] = updated_conn
-      { connections, peer_connections: self.peer_connections }
+      { connections, peer_connections: self.peer_connections, }
     }
     None => self
   }
@@ -317,7 +317,7 @@ fn ConnectionManager::update_connection_ping_time(
     Some(conn) => {
       let updated_conn = conn.update_last_ping_time(ping_time)
       connections[conn_id] = updated_conn
-      { connections, peer_connections: self.peer_connections }
+      { connections, peer_connections: self.peer_connections, }
     }
     None => self
   }
@@ -334,7 +334,7 @@ fn ConnectionManager::update_connection_pong_time(
     Some(conn) => {
       let updated_conn = conn.update_last_pong_time(pong_time)
       connections[conn_id] = updated_conn
-      { connections, peer_connections: self.peer_connections }
+      { connections, peer_connections: self.peer_connections, }
     }
     None => self
   }

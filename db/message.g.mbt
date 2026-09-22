@@ -146,7 +146,7 @@ pub fn Message::_from(row : Map[String, @morm/engine.Param]) -> Message {
   }
   let timestamp : String = (
     try! @morm/engine.from_param(timestamp_param) : String)
-  return { id, source_id, target_id, kind, content, timestamp }
+  return { id, source_id, target_id, kind, content, timestamp, }
 }
 
 ///|

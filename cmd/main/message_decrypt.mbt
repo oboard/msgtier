@@ -14,14 +14,14 @@ fn decrypt_message_body(my_id : String, msg : Message) -> Message? noraise {
             let decoded = @msgpack.decode(decrypted) catch {
               _ => @msgpack.binary(decrypted)
             }
-            Some(Message::{ ..msg, body: decoded, encrypted: false })
+            Some(Message::{ ..msg, body: decoded, encrypted: false, })
           } else {
             if raw.length() > 0 {
               log_warn(
                 "DEBUG: Decryption failed for non-empty payload, returning nil",
               )
             }
-            Some(Message::{ ..msg, body: @msgpack.nil(), encrypted: false })
+            Some(Message::{ ..msg, body: @msgpack.nil(), encrypted: false, })
           }
         None => {
           log_error(

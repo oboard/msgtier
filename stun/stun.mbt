@@ -378,7 +378,7 @@ pub async fn probe_nat_behavior(
     filter_test2 is Some(_),
     filter_test3 is Some(_),
   )
-  Some(NatProbeResult::{ binding, mapping_behavior, filtering_behavior })
+  Some(NatProbeResult::{ binding, mapping_behavior, filtering_behavior, })
 }
 
 ///|

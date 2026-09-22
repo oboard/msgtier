@@ -70,7 +70,7 @@ async fn send_port_forward_message_select_route(
 
 ///|
 fn port_forward_message_plugin() -> MessagePlugin {
-  { register: register_port_forward_handlers }
+  { register: register_port_forward_handlers, }
 }
 
 ///|

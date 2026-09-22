@@ -30,7 +30,7 @@ struct AppState {
 }
 
 ///|
-let app_state : AppState = { version: "0.1.0", config: None, root: None }
+let app_state : AppState = { version: "0.1.0", config: None, root: None, }
 
 ///|
 async fn Config::from_file(path : String) -> Config {
@@ -171,47 +171,47 @@ fn apply_hot_reload_patch(
     match key {
       "scripts" =>
         match parse_hot_field(value, key) {
-          Ok(v) => next = { ..next, scripts: v }
+          Ok(v) => next = { ..next, scripts: v, }
           Err(e) => return Err(e)
         }
       "metadata" =>
         match parse_hot_field(value, key) {
-          Ok(v) => next = { ..next, metadata: v }
+          Ok(v) => next = { ..next, metadata: v, }
           Err(e) => return Err(e)
         }
       "log" =>
         match parse_hot_field(value, key) {
-          Ok(v) => next = { ..next, log: v }
+          Ok(v) => next = { ..next, log: v, }
           Err(e) => return Err(e)
         }
       "relay_network_whitelist" =>
         match parse_hot_field(value, key) {
-          Ok(v) => next = { ..next, relay_network_whitelist: v }
+          Ok(v) => next = { ..next, relay_network_whitelist: v, }
           Err(e) => return Err(e)
         }
       "relay_all_peer_rpc" =>
         match parse_hot_field(value, key) {
-          Ok(v) => next = { ..next, relay_all_peer_rpc: v }
+          Ok(v) => next = { ..next, relay_all_peer_rpc: v, }
           Err(e) => return Err(e)
         }
       "foreign_relay_bps_limit" =>
         match parse_hot_field(value, key) {
-          Ok(v) => next = { ..next, foreign_relay_bps_limit: v }
+          Ok(v) => next = { ..next, foreign_relay_bps_limit: v, }
           Err(e) => return Err(e)
         }
       "upload_dir" =>
         match parse_hot_field(value, key) {
-          Ok(v) => next = { ..next, upload_dir: v }
+          Ok(v) => next = { ..next, upload_dir: v, }
           Err(e) => return Err(e)
         }
       "disable_encryption" =>
         match parse_hot_field(value, key) {
-          Ok(v) => next = { ..next, disable_encryption: v }
+          Ok(v) => next = { ..next, disable_encryption: v, }
           Err(e) => return Err(e)
         }
       "hot_reload" =>
         match parse_hot_field(value, key) {
-          Ok(v) => next = { ..next, hot_reload: v }
+          Ok(v) => next = { ..next, hot_reload: v, }
           Err(e) => return Err(e)
         }
       _ => return Err("unsupported hot reload field `\{key}`")

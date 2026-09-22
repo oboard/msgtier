@@ -155,7 +155,7 @@ fn decode_local_port_entry(value : @msgpack.Value) -> LocalPortEntry? {
   }
   guard port_forward_int_field(value, "port") is Some(port) else { return None }
   let process_name = port_forward_string_field(value, "process_name")
-  Some({ protocol, bind_addr, port, process_name })
+  Some({ protocol, bind_addr, port, process_name, })
 }
 
 ///|

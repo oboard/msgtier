@@ -8,7 +8,7 @@ async fn UdpTransport::UdpTransport(addr_str : String) -> UdpTransport {
   let addr = @socket.Addr::parse(addr_str) catch {
     e => abort("Invalid address: " + e.to_string())
   }
-  { server: @socket.UdpServer(addr) }
+  { server: @socket.UdpServer(addr), }
 }
 
 ///|

@@ -12,7 +12,7 @@ struct ForeignNetworkManager {
 
 ///|
 fn ForeignNetworkManager::new(relay_bps_limit? : Int) -> ForeignNetworkManager {
-  { relay_bps_limit: relay_bps_limit.unwrap_or(0) }
+  { relay_bps_limit: relay_bps_limit.unwrap_or(0), }
 }
 
 ///|

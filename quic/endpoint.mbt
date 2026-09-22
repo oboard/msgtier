@@ -10,7 +10,7 @@ pub async fn Endpoint::new(addr_str : String) -> Endpoint {
     e => abort("Invalid address: " + e.to_string())
   }
   let socket = @socket.UdpServer(addr)
-  { socket, connections: Map([]) }
+  { socket, connections: Map([]), }
 }
 
 ///|
@@ -117,7 +117,7 @@ pub async fn Endpoint::send_stream_data(
   stream_id : Int64,
   data : Bytes,
 ) -> Unit {
-  let frame = Frame::Stream({ stream_id, offset: 0L, fin: true, data })
+  let frame = Frame::Stream({ stream_id, offset: 0L, fin: true, data, })
   let encoded_frame = encode_frame(frame)
   let header : Header = {
     first_byte: b'\x40',

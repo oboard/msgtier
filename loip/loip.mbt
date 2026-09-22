@@ -87,7 +87,7 @@ pub fn list_interfaces() -> Array[Interface] {
       } else {
         ipv4_list.push(ip)
       }
-      results.push({ name, ipv4: ipv4_list, ipv6: ipv6_list, is_up, kind })
+      results.push({ name, ipv4: ipv4_list, ipv6: ipv6_list, is_up, kind, })
     }
   }
   results

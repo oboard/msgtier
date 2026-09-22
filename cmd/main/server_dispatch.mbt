@@ -62,7 +62,7 @@ async fn handle_incoming_message(
       return
     }
   }
-  let msg = { ..msg_temp, attachment: attachment_bytes }
+  let msg = { ..msg_temp, attachment: attachment_bytes, }
 
   // Skip messages from self, unless target is self
   if msg.source_id == id && msg.target_id != Some(id) {
@@ -199,7 +199,7 @@ async fn handle_incoming_message(
       let add_if_valid = (addr : String) => {
         if !my_listeners.contains(addr) &&
           !addrs.iter().any(a => a.address == addr) {
-          addrs.push(NetworkAddress::{ address: addr })
+          addrs.push(NetworkAddress::{ address: addr, })
         }
       }
       add_if_valid(sender_addr)

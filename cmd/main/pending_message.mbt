@@ -236,7 +236,7 @@ fn update_pending_message_state(
   for i = 0; i < messages.length(); i = i + 1 {
     if messages[i].msg.id == msg_id {
       let old = messages[i]
-      messages[i] = { ..old, retry_count, last_attempt }
+      messages[i] = { ..old, retry_count, last_attempt, }
       break
     }
   }

@@ -8,7 +8,7 @@ struct PeerManager {
 
 ///|
 fn PeerManager::new() -> PeerManager {
-  { peers: Map([]), routes: Map([]) }
+  { peers: Map([]), routes: Map([]), }
 }
 
 ///|
@@ -30,7 +30,7 @@ fn PeerManager::add_peer_address(
       if !peer.addresses.contains(address) {
         let updated_addrs = peer.addresses
         updated_addrs.push(address)
-        let updated_peer = { ..peer, addresses: updated_addrs }
+        let updated_peer = { ..peer, addresses: updated_addrs, }
         let peers = self.peers
         peers[peer_id] = updated_peer
         { ..self, peers, }
@@ -132,7 +132,7 @@ fn PeerManager::update_route(
   }
   if should_update {
     let routes = self.routes
-    routes[target_peer_id] = Route::{ next_hop, hops, timestamp: @env.now() }
+    routes[target_peer_id] = Route::{ next_hop, hops, timestamp: @env.now(), }
     { ..self, routes, }
   } else {
     self

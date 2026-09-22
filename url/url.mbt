@@ -534,7 +534,7 @@ priv struct StringPointer {
 
 ///|
 fn StringPointer::new(input : StringView) -> StringPointer {
-  StringPointer::{ input, pointer: input.start_offset() }
+  StringPointer::{ input, pointer: input.start_offset(), }
 }
 
 ///|

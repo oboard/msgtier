@@ -60,8 +60,8 @@ test "message with optional fields subset 1" {
 test "message with peers" {
   // Test peers separately since that's where the error likely is
   let peers_list : Array[NetworkAddress] = [
-    NetworkAddress::{ address: "127.0.0.1:8001" },
-    NetworkAddress::{ address: "127.0.0.1:8002" },
+    NetworkAddress::{ address: "127.0.0.1:8001", },
+    NetworkAddress::{ address: "127.0.0.1:8002", },
   ]
   let original : Message = Message(
     id="test-msg-3",

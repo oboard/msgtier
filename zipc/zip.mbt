@@ -68,7 +68,7 @@ pub let max_path_length : Int = 65535
 
 ///|
 pub fn empty() -> Archive {
-  { members: Map([], capacity=0) }
+  { members: Map([], capacity=0), }
 }
 
 ///|
@@ -85,7 +85,7 @@ pub fn member_count(archive : Archive) -> Int {
 pub fn add(mem : Member, archive : Archive) -> Archive {
   let new_members = archive.members
   new_members[mem.path] = mem
-  { members: new_members }
+  { members: new_members, }
 }
 
 ///|
@@ -102,7 +102,7 @@ pub fn mem(path : Fpath, archive : Archive) -> Bool {
 pub fn remove(path : Fpath, archive : Archive) -> Archive {
   let new_members = archive.members
   new_members.remove(path)
-  { members: new_members }
+  { members: new_members, }
 }
 
 // File operations

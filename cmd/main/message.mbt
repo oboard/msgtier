@@ -232,7 +232,7 @@ fn Message::from_msgpack(msgpack : @msgpack.Value) -> Message raise {
             for peer_value in peers_arr {
               match peer_value {
                 String(peer_addr) =>
-                  peers_array.push(NetworkAddress::{ address: peer_addr })
+                  peers_array.push(NetworkAddress::{ address: peer_addr, })
                 _ => fail("Invalid peer address in peers array")
               }
             }

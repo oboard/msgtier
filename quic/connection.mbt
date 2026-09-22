@@ -4,13 +4,13 @@ pub fn Connection::new(
   conn_id : String,
   is_server : Bool,
 ) -> Connection {
-  { addr, conn_id, is_server, next_packet_number: 0L, streams: Map([]) }
+  { addr, conn_id, is_server, next_packet_number: 0L, streams: Map([]), }
 }
 
 ///|
 pub fn Connection::open_stream(self : Connection) -> Stream {
   let id = self.streams.length().to_int64()
-  let stream = { id, offset: 0L, fin: false, incoming_data: b"" }
+  let stream = { id, offset: 0L, fin: false, incoming_data: b"", }
   self.streams[id] = stream
   stream
 }

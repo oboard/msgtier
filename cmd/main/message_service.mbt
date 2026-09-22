@@ -41,7 +41,7 @@ fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
       for listener_url in config.listeners {
         for stun_addr in get_stun_public_addresses(listener_url) {
           if !addrs.iter().any(fn(a) { a.address == stun_addr }) {
-            addrs.push(NetworkAddress::{ address: stun_addr })
+            addrs.push(NetworkAddress::{ address: stun_addr, })
           }
         }
         let mut parsed : Address? = None
@@ -59,23 +59,23 @@ fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
                   new="127.0.0.1",
                 )
                 if !addrs.iter().any(fn(a) { a.address == addr_str }) {
-                  addrs.push(NetworkAddress::{ address: addr_str })
+                  addrs.push(NetworkAddress::{ address: addr_str, })
                 }
               } else {
                 for ip in local_ips {
                   let addr_str = Address::new(addr.protocol, ip, addr.port).to_url_string()
                   if !addrs.iter().any(fn(a) { a.address == addr_str }) {
-                    addrs.push(NetworkAddress::{ address: addr_str })
+                    addrs.push(NetworkAddress::{ address: addr_str, })
                   }
                 }
               }
             } else if !addrs.iter().any(fn(a) { a.address == listener_url }) {
-              addrs.push(NetworkAddress::{ address: listener_url })
+              addrs.push(NetworkAddress::{ address: listener_url, })
             }
           None => {
             let addr_str = listener_url.replace(old="0.0.0.0", new="127.0.0.1")
             if !addrs.iter().any(fn(a) { a.address == addr_str }) {
-              addrs.push(NetworkAddress::{ address: addr_str })
+              addrs.push(NetworkAddress::{ address: addr_str, })
             }
           }
         }
@@ -84,7 +84,7 @@ fn get_our_addresses(local_addr : String) -> Array[NetworkAddress] {
     }
     None => {
       let addrs : Array[NetworkAddress] = []
-      addrs.push(NetworkAddress::{ address: local_addr })
+      addrs.push(NetworkAddress::{ address: local_addr, })
       addrs
     }
   }
@@ -179,10 +179,10 @@ async fn send_message(
       let encoded = @msgpack.encode(msg.body)
       let encrypted = encrypt_with_message_key(msg.id, encoded)
       if encrypted.length() > 0 {
-        Message::{ ..msg, body: @msgpack.binary(encrypted), encrypted: true }
+        Message::{ ..msg, body: @msgpack.binary(encrypted), encrypted: true, }
       } else {
         log_warn("Encryption failed for \{msg.id}, sending unencrypted")
-        Message::{ ..msg, encrypted: false }
+        Message::{ ..msg, encrypted: false, }
       }
     } else {
       msg

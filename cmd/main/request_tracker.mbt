@@ -18,7 +18,7 @@ struct RequestTrackerState {
 
 ///|
 let request_tracker_state : RequestTrackerState = {
-  tracker: { pending: Map([]) },
+  tracker: { pending: Map([]), },
 }
 
 ///|

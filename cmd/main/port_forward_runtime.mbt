@@ -556,7 +556,7 @@ fn start_port_forward_udp_listener(
       }
     }
     let rule_key = make_port_forward_forward_rule_key(rule)
-    let runtime = { rule, server }
+    let runtime = { rule, server, }
     port_forward_registry_state.udp_forward_runtimes[rule_key] = runtime
     run_port_forward_udp_forward_listener(rule_key, runtime)
   })

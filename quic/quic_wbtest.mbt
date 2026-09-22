@@ -16,7 +16,7 @@ async test "quic_integration" {
 
   // Construct a Stream Frame with data "Hello QUIC"
   let data = b"Hello QUIC"
-  let frame = Frame::Stream({ stream_id, offset: 0L, fin: false, data })
+  let frame = Frame::Stream({ stream_id, offset: 0L, fin: false, data, })
   let encoded_frame = encode_frame(frame)
 
   // Construct Ack Frame
@@ -72,19 +72,19 @@ async test "quic_integration" {
   endpoint.handle_packet(_reset_packet, "127.0.0.1:1234", fn(_c, _s) { () })
 
   // StopSending
-  let stop_frame = Frame::StopSending({ stream_id: 10L, error_code: 5L })
+  let stop_frame = Frame::StopSending({ stream_id: 10L, error_code: 5L, })
   let encoded_stop = encode_frame(stop_frame)
   let _stop_packet = encode_packet(header, encoded_stop)
   endpoint.handle_packet(_stop_packet, "127.0.0.1:1234", fn(_c, _s) { () })
 
   // Crypto
-  let crypto_frame = Frame::Crypto({ offset: 0L, data: b"Client Hello" })
+  let crypto_frame = Frame::Crypto({ offset: 0L, data: b"Client Hello", })
   let encoded_crypto = encode_frame(crypto_frame)
   let _crypto_packet = encode_packet(header, encoded_crypto)
   endpoint.handle_packet(_crypto_packet, "127.0.0.1:1234", fn(_c, _s) { () })
 
   // NewToken
-  let token_frame = Frame::NewToken({ token: b"token" })
+  let token_frame = Frame::NewToken({ token: b"token", })
   let encoded_token = encode_frame(token_frame)
   let _token_packet = encode_packet(header, encoded_token)
   endpoint.handle_packet(_token_packet, "127.0.0.1:1234", fn(_c, _s) { () })

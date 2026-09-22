@@ -132,7 +132,7 @@ fn Connection::update_address_ping(
       }
   }
   stats[addr] = entry
-  { ..self, address_stats: stats }
+  { ..self, address_stats: stats, }
 }
 
 ///|
@@ -171,7 +171,7 @@ fn Connection::update_address_pong(
       }
   }
   stats[addr] = entry
-  { ..self, address_stats: stats }
+  { ..self, address_stats: stats, }
 }
 
 ///|
@@ -182,9 +182,9 @@ fn Connection::mark_address_packet_lost(
   let stats = self.address_stats
   match stats.get(addr) {
     Some(s) => {
-      let entry = AddressStats::{ ..s, packets_lost: s.packets_lost + 1 }
+      let entry = AddressStats::{ ..s, packets_lost: s.packets_lost + 1, }
       stats[addr] = entry
-      { ..self, address_stats: stats }
+      { ..self, address_stats: stats, }
     }
     None => self
   }
@@ -281,7 +281,7 @@ fn parse_int_simple(s : String) -> Int? {
 
 ///|
 fn Connection::update_relay(self : Connection, relay_depth : Int) -> Connection {
-  { ..self, relay: relay_depth }
+  { ..self, relay: relay_depth, }
 }
 
 ///|
@@ -290,7 +290,7 @@ fn Connection::update_last_seen(
   self : Connection,
   timestamp : UInt64,
 ) -> Connection {
-  { ..self, last_seen: timestamp }
+  { ..self, last_seen: timestamp, }
 }
 
 ///|
@@ -322,7 +322,7 @@ fn Connection::update_last_ping_time(
   self : Connection,
   time : UInt64?,
 ) -> Connection {
-  { ..self, last_ping_time: time }
+  { ..self, last_ping_time: time, }
 }
 
 ///|
@@ -330,7 +330,7 @@ fn Connection::update_last_pong_time(
   self : Connection,
   time : UInt64?,
 ) -> Connection {
-  { ..self, last_pong_time: time }
+  { ..self, last_pong_time: time, }
 }
 
 ///|
@@ -363,12 +363,12 @@ fn Connection::touch_port(
     }
   }
   if !exists {
-    ports.push(PortMapping::{ src: local_port, protocol, dst: remote_port })
+    ports.push(PortMapping::{ src: local_port, protocol, dst: remote_port, })
   }
   let ports_last_seen = self.ports_last_seen
   let key = make_port_key(local_port, protocol, remote_port)
   ports_last_seen[key] = time
-  { ..self, ports, ports_last_seen }
+  { ..self, ports, ports_last_seen, }
 }
 
 ///|
@@ -390,7 +390,7 @@ fn Connection::prune_ports(
       None => new_ports.push(p)
     }
   }
-  { ..self, ports: new_ports, ports_last_seen: new_ports_last_seen }
+  { ..self, ports: new_ports, ports_last_seen: new_ports_last_seen, }
 }
 
 ///|

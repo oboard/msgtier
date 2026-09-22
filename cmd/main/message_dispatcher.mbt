@@ -21,7 +21,7 @@ struct MessagePlugin {
 
 ///|
 fn MessageDispatcher::new() -> MessageDispatcher {
-  { handlers: Map([]) }
+  { handlers: Map([]), }
 }
 
 ///|
@@ -73,7 +73,7 @@ fn get_default_plugins() -> Array[MessagePlugin] {
 
 ///|
 fn core_message_plugin() -> MessagePlugin {
-  { register: register_core_handlers }
+  { register: register_core_handlers, }
 }
 
 ///|

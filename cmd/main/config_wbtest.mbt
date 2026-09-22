@@ -14,7 +14,7 @@ fn make_config_hot_reload_test_config() -> Config {
     foreign_relay_bps_limit: None,
     upload_dir: None,
     disable_encryption: None,
-    hot_reload: Some({ enable: Some(true), secret: Some("reload-secret") }),
+    hot_reload: Some({ enable: Some(true), secret: Some("reload-secret"), }),
   }
 }
 

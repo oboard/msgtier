@@ -118,7 +118,7 @@ fn parse_lsof_output(raw : String, protocol : String) -> Array[LocalPortEntry] {
     } else if tag == 'n' {
       match parse_lsof_name_field(value) {
         Some((bind_addr, port)) =>
-          out.push({ protocol, bind_addr, port, process_name: current_command })
+          out.push({ protocol, bind_addr, port, process_name: current_command, })
         None => ()
       }
     }
@@ -338,7 +338,7 @@ fn parse_proc_net(
     }
     match parse_proc_net_line(line, is_v6~, listen_only~) {
       Some((bind_addr, port)) =>
-        out.push({ protocol, bind_addr, port, process_name: None })
+        out.push({ protocol, bind_addr, port, process_name: None, })
       None => ()
     }
   }

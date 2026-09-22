@@ -4,7 +4,7 @@ struct RelayState {
 }
 
 ///|
-let relay_state : RelayState = { default_timeout_ms: 30000 }
+let relay_state : RelayState = { default_timeout_ms: 30000, }
 
 ///|
 fn prepare_relay_message(

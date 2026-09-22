@@ -231,7 +231,7 @@ fn status_handler() -> Json {
     addresses=my_addrs,
     metadata=get_local_node_metadata(),
   )
-  let me_with_conns = { ..me, connections: my_connections }
+  let me_with_conns = { ..me, connections: my_connections, }
   all_peers.push(me_with_conns)
   let all_routes = get_global_peer_manager().get_all_routes()
   let routes_info : Array[RouteInfo] = []
@@ -338,7 +338,7 @@ async fn send_message_handler(
     encrypted=is_encrypted,
     timeout_ms=timeout_ms_uint,
   )
-  let msg = { ..msg, payload: Some(msg.id) }
+  let msg = { ..msg, payload: Some(msg.id), }
   log_info("HTTP /send: Queuing message id=\{msg.id} to \{target_id}")
   let target_peer = get_global_peer_manager().get_peer(target_id)
   match (target_peer, is_self) {

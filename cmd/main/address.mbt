@@ -73,7 +73,7 @@ pub fn Address::new(
   host : String,
   port : UInt16,
 ) -> Address {
-  { protocol, host, port }
+  { protocol, host, port, }
 }
 
 ///|
@@ -110,7 +110,7 @@ pub fn Address::parse(input : String) -> Address raise {
   let port = parse_port(port_str) catch {
     _ => raise AddressParseError::InvalidPort(port_str)
   }
-  { protocol, host, port }
+  { protocol, host, port, }
 }
 
 ///|

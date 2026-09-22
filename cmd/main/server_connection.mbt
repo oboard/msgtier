@@ -39,7 +39,7 @@ fn handle_new_connection(
   // Add or update peer with provided info
   if peer_info is Some(info) {
     let peer_node = match get_global_peer_manager().get_peer(info.id) {
-      Some(existing) => { ..existing, version: info.version }
+      Some(existing) => { ..existing, version: info.version, }
       None =>
         PeerNode::new(
           id=info.id,

@@ -140,7 +140,7 @@ impl Transport for TcpTransport with fn send(self, target, data) {
         try {
           let target_addr = @socket.Addr::parse(target)
           let c = @socket.Tcp::connect(target_addr)
-          let wrapper = TcpConnection::{ socket: c, sending: Ref(false) }
+          let wrapper = TcpConnection::{ socket: c, sending: Ref(false), }
           self.connections[target] = wrapper
           conn_opt = Some(wrapper)
           created = true
@@ -148,7 +148,7 @@ impl Transport for TcpTransport with fn send(self, target, data) {
           _ => ()
         }
       }
-      guard conn_opt is Some({ socket: conn, sending }) else {
+      guard conn_opt is Some({ socket: conn, sending, }) else {
         if i == 1 {
           return false
         }
@@ -246,7 +246,7 @@ impl Transport for TcpTransport with fn send_raw_port_forward(
         try {
           let target_addr = @socket.Addr::parse(target)
           let c = @socket.Tcp::connect(target_addr)
-          let wrapper = TcpConnection::{ socket: c, sending: Ref(false) }
+          let wrapper = TcpConnection::{ socket: c, sending: Ref(false), }
           self.connections[target] = wrapper
           conn_opt = Some(wrapper)
           created = true
@@ -254,7 +254,7 @@ impl Transport for TcpTransport with fn send_raw_port_forward(
           _ => ()
         }
       }
-      guard conn_opt is Some({ socket: conn, sending }) else {
+      guard conn_opt is Some({ socket: conn, sending, }) else {
         if i == 1 {
           return false
         }
@@ -381,7 +381,7 @@ struct BufferedReader {
 
 ///|
 fn BufferedReader::new(conn : @socket.Tcp) -> BufferedReader {
-  { conn, buffer: Bytes::make(0, b'\x00'), offset: 0 }
+  { conn, buffer: Bytes::make(0, b'\x00'), offset: 0, }
 }
 
 ///|

@@ -37,8 +37,12 @@ test "parse_lsof_output skips established connections and invalid rows" {
 test "diff_local_ports flags additions and removals by (protocol,port,addr)" {
   let prev = [
     (
-      { protocol: "tcp", bind_addr: "*", port: 80, process_name: Some("nginx") } :
-      LocalPortEntry),
+      {
+        protocol: "tcp",
+        bind_addr: "*",
+        port: 80,
+        process_name: Some("nginx"),
+      } : LocalPortEntry),
     {
       protocol: "tcp",
       bind_addr: "127.0.0.1",
@@ -54,7 +58,7 @@ test "diff_local_ports flags additions and removals by (protocol,port,addr)" {
         port: 5432,
         process_name: Some("postgres"),
       } : LocalPortEntry),
-    { protocol: "tcp", bind_addr: "*", port: 8080, process_name: Some("app") },
+    { protocol: "tcp", bind_addr: "*", port: 8080, process_name: Some("app"), },
   ]
   let (added, removed) = diff_local_ports(prev, curr)
   inspect(added.length(), content="1")
@@ -91,8 +95,8 @@ test "diff_local_ports treats process_name change as no-op" {
 ///|
 test "is_local_port_broadcast reflects update_local_broadcast_set" {
   update_local_broadcast_set([
-    { protocol: "tcp", bind_addr: "*", port: 8080, process_name: None },
-    { protocol: "udp", bind_addr: "*", port: 53, process_name: None },
+    { protocol: "tcp", bind_addr: "*", port: 8080, process_name: None, },
+    { protocol: "udp", bind_addr: "*", port: 53, process_name: None, },
   ])
   inspect(is_local_port_broadcast("tcp", 8080), content="true")
   inspect(is_local_port_broadcast("udp", 53), content="true")

@@ -128,7 +128,7 @@ async fn proxy_http_request(
     encrypted=is_encrypted,
     timeout_ms=timeout_ms_uint,
   )
-  let msg = { ..msg, target_id: Some(peer_id), payload: Some(req_id) }
+  let msg = { ..msg, target_id: Some(peer_id), payload: Some(req_id), }
   if !send_message_now(peer_id, msg) {
     add_pending_message(msg)
   }

@@ -59,7 +59,7 @@ async test "handle_text_message replies via sender addr" {
     disable_encryption: Some(true),
     hot_reload: None,
   })
-  let transport = MockReplyTransport::{ sent: Ref([]) }
+  let transport = MockReplyTransport::{ sent: Ref([]), }
   let msg = Message(
     kind="text",
     source_id="node-a",

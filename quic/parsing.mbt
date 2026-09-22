@@ -30,7 +30,7 @@ pub fn parse_frames(payload : Bytes) -> Array[Frame] {
       let largest_acknowledged = read_int64_be(payload, 1)
       let delay = read_int64_be(payload, 9)
       let first_ack_range = read_int64_be(payload, 17)
-      frames.push(Frame::Ack({ largest_acknowledged, delay, first_ack_range }))
+      frames.push(Frame::Ack({ largest_acknowledged, delay, first_ack_range, }))
     }
   } else if type_byte == b'\x1c' {
     // ConnectionClose Frame
@@ -50,7 +50,7 @@ pub fn parse_frames(payload : Bytes) -> Array[Frame] {
         // For now, empty string if we can't easily convert
         // Or implement bytes_to_string
         frames.push(
-          Frame::ConnectionClose({ error_code, frame_type, reason_phrase: "" }, // Placeholder
+          Frame::ConnectionClose({ error_code, frame_type, reason_phrase: "", }, // Placeholder
           ),
         )
       }
@@ -61,14 +61,14 @@ pub fn parse_frames(payload : Bytes) -> Array[Frame] {
       let stream_id = read_int64_be(payload, 1)
       let error_code = read_int64_be(payload, 9)
       let final_size = read_int64_be(payload, 17)
-      frames.push(Frame::ResetStream({ stream_id, error_code, final_size }))
+      frames.push(Frame::ResetStream({ stream_id, error_code, final_size, }))
     }
   } else if type_byte == b'\x05' {
     // StopSending
     if payload.length() >= 17 {
       let stream_id = read_int64_be(payload, 1)
       let error_code = read_int64_be(payload, 9)
-      frames.push(Frame::StopSending({ stream_id, error_code }))
+      frames.push(Frame::StopSending({ stream_id, error_code, }))
     }
   } else if type_byte == b'\x06' {
     // Crypto
@@ -77,7 +77,7 @@ pub fn parse_frames(payload : Bytes) -> Array[Frame] {
       let length = read_int64_be(payload, 9)
       if payload.length().to_int64() >= 17L + length {
         let data = slice(payload, 17, length.to_int())
-        frames.push(Frame::Crypto({ offset, data }))
+        frames.push(Frame::Crypto({ offset, data, }))
       }
     }
   } else if type_byte == b'\x07' {
