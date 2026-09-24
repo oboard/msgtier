@@ -1,0 +1,16 @@
+docs/get-started.md
+  h_c7606fb8f0c97c 7,10-18,20-25,71,79,136-137,153,159,165,181-182,188-189,219,231,243,253,263,273
+README.mbt.md
+  h_c7606fb8f0c97c 25-34,157,179,221,235,319,378
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "89d77c47bcec72e18c80c1eabd4bf179af2254e3",
+  "prompts": {},
+  "humans": {
+    "h_c7606fb8f0c97c": {
+      "author": "oboard <oboard@outlook.com>"
+    }
+  }
+}
