@@ -5,12 +5,11 @@ version = "0.1.0"
 import {
   "oboard/jsonx@0.1.0",
   "tonyfettes/unicode@0.4.0",
-  "gmlewis/flate@0.36.11",
-  "gmlewis/io@0.23.14",
-  "oboard/morm@0.4.2",
+  "oboard/morm@0.4.3",
   "moonbitlang/x@0.5.5",
   "oboard/mocket@0.10.1",
-  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.2",
+  "moonbit-community/zipc@0.2.2",
 }
 
 readme = "README.mbt.md"

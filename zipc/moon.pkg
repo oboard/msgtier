@@ -1,5 +1,0 @@
-import {
-  "oboard/msgtier/zipc/deflate",
-  "oboard/msgtier/zipc/crc32",
-  "moonbitlang/core/encoding/utf8",
-}
