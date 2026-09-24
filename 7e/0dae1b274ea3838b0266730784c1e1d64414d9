@@ -1,0 +1,12 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "7e0dae1b274ea3838b0266730784c1e1d64414d9",
+  "prompts": {},
+  "humans": {
+    "h_c7606fb8f0c97c": {
+      "author": "oboard <oboard@outlook.com>"
+    }
+  }
+}
