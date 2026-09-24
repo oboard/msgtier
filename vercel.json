@@ -1,0 +1,6 @@
+{
+  "buildCommand": "pnpm docs:build",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "outputDirectory": "docs/.vitepress/dist",
+  "cleanUrls": true
+}

@@ -4,12 +4,25 @@ MsgTier is a decentralized P2P messaging network that enables nodes to discover 
 
 ## Installation
 
-Build MsgTier from source:
+Install the latest release on Linux x64/arm64 or macOS arm64:
 
 ```bash
-git clone <repository>
+curl -fsSL https://msgtier.oboard.fun/install.sh | bash
+```
+
+The default installation directory is `~/.local/bin`. See [Download](/download) for Windows, manual downloads, checksums and custom installation paths.
+
+To build from source instead:
+
+```bash
+git clone --recurse-submodules https://github.com/oboard/msgtier.git
 cd msgtier
-moon build
+cd web/msgtier-web && pnpm install --frozen-lockfile && pnpm build
+cd dist && zip -qr ../../dist.zip .
+cd ../../..
+moon update && moon install
+moon build cmd/main --release --target native
+# Executable: _build/native/release/build/cmd/main/main.exe
 ```
 
 ## Configuration
@@ -40,7 +53,7 @@ Create a `node.json` configuration file for each node:
 ### Configuration Fields
 
 | Field | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `id` | String | Unique identifier for this node |
 | `secret` | String | Shared secret key (reserved for future use) |
 | `listeners` | Array | Addresses to listen on. Supported protocols: `udp://`, `tcp://`, `ws://`. Use 0.0.0.0 to bind all interfaces |
@@ -55,6 +68,7 @@ Create a `node.json` configuration file for each node:
 | `exposes` | Object | Bastion expose rules. Key is rule id, value is `protocol://target_host:target_port` |
 
 Static fields:
+
 - `id`
 - `secret`
 - `peers`
@@ -62,6 +76,7 @@ Static fields:
 - `web_api`
 
 Hot-reloadable fields:
+
 - `scripts`
 - `forwards`
 - `exposes`
@@ -118,7 +133,8 @@ If you need UDP, the format is the same:
 ```
 
 Output:
-```
+
+```bash
 X25519 key pair generated successfully
 {
   "id": "1",
@@ -134,16 +150,19 @@ HTTP API listening on http://127.0.0.1:9000
 ### Multi-Node Network
 
 **Terminal 1 - Node 1:**
+
 ```bash
 ./msgtier node1.json
 ```
 
 **Terminal 2 - Node 2:**
+
 ```bash
 ./msgtier node2.json
 ```
 
 **Terminal 3 - Node 3:**
+
 ```bash
 ./msgtier node3.json
 ```
@@ -159,13 +178,15 @@ MsgTier automatically handles encryption using X25519 ECDH:
 5. **When receiving**: Messages are decrypted with the same shared secret
 
 You'll see log messages like:
-```
+
+```bash
 X25519 key pair generated successfully
 Computed shared secret with peer 2
 ```
 
 If a peer's shared secret is not available, messages are sent unencrypted with a warning:
-```
+
+```bash
 Warning: Sending unencrypted message to peer_id (no shared secret available)
 ```
 
@@ -195,6 +216,7 @@ When a message is received, if the message body matches a script name in the con
 ```
 
 Send via HTTP:
+
 ```bash
 curl -X POST 'http://localhost:9000/api/send' \
   -H 'target: 1' \
@@ -206,6 +228,7 @@ Node will execute: `open /Applications/Google\ Chrome.app`
 ## Checking Connection Status
 
 View connection status and peer information:
+
 ```bash
 curl http://127.0.0.1:9000/api/status
 ```
@@ -217,6 +240,7 @@ curl http://127.0.0.1:9000/api/status
 **Problem:** Nodes aren't discovering each other
 
 **Solution:**
+
 - Ensure firewall allows UDP on configured ports
 - Verify peer addresses are correct and reachable
 - Check logs for "Discovered new peer" messages
@@ -226,6 +250,7 @@ curl http://127.0.0.1:9000/api/status
 **Problem:** Message received but script didn't run
 
 **Solution:**
+
 - Verify script name exactly matches config
 - Check script syntax (platform-specific shells)
 - View logs for script execution status
@@ -235,6 +260,7 @@ curl http://127.0.0.1:9000/api/status
 **Problem:** "No public key available" warnings
 
 **Solution:**
+
 - Wait for peers to complete handshake (hello/welcome exchange)
 - Check that peers are running compatible versions
 - Verify network connectivity
@@ -244,6 +270,7 @@ curl http://127.0.0.1:9000/api/status
 **Problem:** Messages taking long time to deliver
 
 **Solution:**
+
 - Check connection status: `curl http://localhost:9000/api/status`
 - Verify heartbeat/pong responses working
 - Consider network topology - use nodes as relays

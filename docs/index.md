@@ -34,5 +34,5 @@ features:
   - title: Multi-Transport
     details: Support for UDP, TCP, and WebSocket protocols for flexible connectivity.
   - title: Cross-Platform
-    details: Runs on Windows, macOS, and Linux with zero external dependencies.
+    details: Release binaries for Windows x64, macOS arm64, and Linux x64/arm64.
 ---

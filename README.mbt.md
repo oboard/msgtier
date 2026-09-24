@@ -22,6 +22,16 @@ MsgTier is a decentralized P2P messaging network written in **MoonBit**. Nodes d
 
 ## Quick Start
 
+### Install
+
+On Linux x64/arm64 or macOS arm64:
+
+```bash
+curl -fsSL https://msgtier.oboard.fun/install.sh | bash
+```
+
+The script installs to `~/.local/bin` and verifies the GitHub Release checksum. Set `INSTALL_DIR=/your/path` to choose another directory. On Windows x64, run `irm https://msgtier.oboard.fun/install.ps1 | iex` in PowerShell. See the [download guide](https://msgtier.oboard.fun/download) for manual downloads and build instructions.
+
 ### 1. Configuration
 
 MsgTier reads a JSON5 config file (comments and trailing commas are OK). A minimal `node.json` looks like:
@@ -66,7 +76,7 @@ MsgTier reads a JSON5 config file (comments and trailing commas are OK). A minim
 **Config fields:**
 
 | Field | Type | Purpose |
-|-------|------|---------|
+| ------- | ------ | --------- |
 | `id` | `String` | Node identifier (must be unique in the network). |
 | `secret` | `String` | Shared network secret; peers with different secrets are rejected. |
 | `listeners` | `String[]` | URLs to bind (`udp://`, `tcp://`, `ws://`, `quic://`). |
@@ -116,7 +126,7 @@ Message types are registered against a central dispatcher in
 `port_forward_handler.mbt`:
 
 | Kind | Purpose |
-|------|---------|
+| ------ | --------- |
 | `hello` | Initial handshake — exchanges public keys, version, and identity. |
 | `sync` | Topology snapshot (known peers, addresses). Replaces the old `welcome`. |
 | `ack` | Acknowledgement / receipt for `sync` and other RPCs. |
@@ -144,7 +154,7 @@ config skips this (see `Config::is_encrypt`). If the shared secret is not
 yet negotiated, the sender falls back to unencrypted transmission with a
 warning.
 
-```
+```bash
 Sender                          Receiver
    │  hello (pubkey exchange)      │
    ├──────────────────────────────►│
@@ -166,7 +176,7 @@ Discovery is gossip-based:
 4. Receiving a `sync` merges unknown peers into the local set, then greets them with `hello`.
 5. Topology expands organically without central coordination.
 
-```
+```bash
 node1 → peers: [node2]
 node2 → peers: [node1, node3]
 node3 → peers: [node2]
@@ -208,6 +218,7 @@ embedded SPA is served for anything unmatched.
 - `GET /api/status` — Active/inactive connections, peer IDs, versions, addresses.
 - `GET /api/config` — Full config (with `static_config` and `hot_config` splits).
 - `POST /api/config/hot-reload` — Patch the runtime layer:
+
   ```bash
   curl -X POST http://127.0.0.1:9000/api/config/hot-reload \
     -H 'Content-Type: application/json' \
@@ -221,6 +232,7 @@ embedded SPA is served for anything unmatched.
       }
     }'
   ```
+
   Static fields (`id`, `secret`, `listeners`, `peers`, `web_api`, `port`) are rejected.
 - `POST /api/send` — Send a message.
   Headers: `target` (required), `kind` (default `script`; also `text`, `binary`, or any registered kind), `timeout` (ms, default 10000).
@@ -304,7 +316,7 @@ macOS is unaffected — `lsof` on Darwin uses `proc_pidinfo(2)`, which is not ui
 
 ## Project Layout
 
-```
+```bash
 msgtier/
 ├── moon.mod                  # module manifest
 ├── cmd/main/                 # entry point + service code
@@ -362,6 +374,8 @@ Before committing:
 1. `moon test` — ensure everything is green.
 2. `moon info` — regenerate `pkg.generated.mbti` files; review diffs.
 3. `moon fmt` — normalize formatting.
+
+To publish a release, update the version in `moon.mod` and `cmd/main/config.mbt`, merge to `main`, then push an annotated `vX.Y.Z` tag. The tag workflow verifies both versions, builds the platform binaries, and publishes them with `SHA256SUMS` to GitHub Releases. Deploy this repository as a Vercel project and assign `msgtier.oboard.fun` to serve the documentation and installation scripts.
 
 ## Example: Three-Node Mesh
 
