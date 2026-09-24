@@ -92,3 +92,18 @@ pub fn list_interfaces() -> Array[Interface] {
   }
   results
 }
+
+// Trait methods promoted to regular methods: the implicit promotion of `impl`
+// methods is deprecated, so the promotions are declared explicitly here.
+
+///|
+pub extend Interface with @debug.Debug::{to_repr}
+
+///|
+pub extend Interface with Eq::{not_equal, equal}
+
+///|
+pub extend InterfaceKind with @debug.Debug::{to_repr}
+
+///|
+pub extend InterfaceKind with Eq::{not_equal, equal}

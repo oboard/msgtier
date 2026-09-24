@@ -6,15 +6,16 @@ let dist_loaded : Ref[Bool] = Ref(false)
 
 ///|
 fn load_dist_archive() -> Unit {
-  match @zipc.of_bytes(resource) {
-    Ok(archive) =>
-      for entity in archive.members {
-        let (path, m) = entity
-        if m.kind is File(file) {
-          dist[path] = @zipc.file_to_bytes(file) catch { _ => continue }
-        }
+  try {
+    let archive = @zipc.Archive::from_bytes(resource)
+    for entry in archive.to_array() {
+      if entry.kind() is File(file) {
+        let data = file.to_bytes() catch { _ => continue }
+        dist[entry.path()] = data
       }
-    Err(e) => println("Error extracting zip: \{e}")
+    }
+  } catch {
+    err => println("Error extracting zip: \{err}")
   }
 }
 

@@ -391,7 +391,7 @@ fn utf8_percent_encode(
   percent_encode_set : (Char) -> Bool,
   space_as_plus? : Bool = false,
 ) -> String {
-  let output = StringBuilder::new()
+  let output = StringBuilder()
   let encode_output = @utf8.encode(input)
   for byte in encode_output {
     if space_as_plus && byte is b' ' {

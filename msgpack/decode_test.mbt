@@ -6,8 +6,8 @@
 ///|
 test "decode positive fixint" {
   for i = 0; i <= 127; i = i + 1 {
-    let data = bytes([i])
-    let result = decode(data)
+    let data = @msgpack.bytes([i])
+    let result = @msgpack.decode(data)
     match result {
       Int(v) => assert_eq(v, i)
       _ => fail("Expected int")
@@ -20,24 +20,24 @@ test "decode positive fixint" {
 ///|
 test "decode basic values" {
   // Test nil
-  let nil_data = bytes([0xc0])
-  let nil_result = decode(nil_data)
+  let nil_data = @msgpack.bytes([0xc0])
+  let nil_result = @msgpack.decode(nil_data)
   match nil_result {
     Nil => ()
     _ => fail("Expected nil")
   }
 
   // Test false
-  let false_data = bytes([0xc2])
-  let false_result = decode(false_data)
+  let false_data = @msgpack.bytes([0xc2])
+  let false_result = @msgpack.decode(false_data)
   match false_result {
     Bool(false) => ()
     _ => fail("Expected bool false")
   }
 
   // Test true
-  let true_data = bytes([0xc3])
-  let true_result = decode(true_data)
+  let true_data = @msgpack.bytes([0xc3])
+  let true_result = @msgpack.decode(true_data)
   match true_result {
     Bool(true) => ()
     _ => fail("Expected bool true")
@@ -50,7 +50,9 @@ test "decode basic values" {
 test "error cases" {
   // Test empty data
   let empty_data = Bytes::from_array([])
-  let result : Result[Value, MsgPackError] = Ok(decode(empty_data)) catch {
+  let result : Result[@msgpack.Value, @msgpack.MsgPackError] = Ok(
+    @msgpack.decode(empty_data),
+  ) catch {
     e => Err(e)
   }
   match result {

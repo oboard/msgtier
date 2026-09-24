@@ -1,7 +1,7 @@
 ///|
 pub fn bytes_to_hex(bytes : Bytes) -> String {
   let len = bytes.length()
-  let sb = StringBuilder::new(size_hint=len * 2)
+  let sb = StringBuilder(size_hint=len * 2)
   let hex_chars = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
   ]

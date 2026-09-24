@@ -525,7 +525,7 @@ fn handle_script_message(
     }
     let content_str = if data_content is String(content) { content } else { "" }
     // Trim whitespace and remove null bytes from content string
-    let cleaned = StringBuilder::new()
+    let cleaned = StringBuilder()
     for c in content_str {
       if c != '\u0000' {
         cleaned.write_char(c)

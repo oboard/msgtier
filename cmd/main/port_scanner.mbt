@@ -356,7 +356,7 @@ fn parse_proc_net_line(
   listen_only~ : Bool,
 ) -> (String, Int)? {
   let cols : Array[String] = []
-  let mut cur = StringBuilder::new()
+  let mut cur = StringBuilder()
   let space = ' '.to_int()
   let tab = '\t'.to_int()
   for i = 0; i < line.length(); i = i + 1 {
@@ -366,7 +366,7 @@ fn parse_proc_net_line(
       if piece != "" {
         cols.push(piece)
       }
-      cur = StringBuilder::new()
+      cur = StringBuilder()
     } else {
       cur.write_char(ch.unsafe_to_char())
     }
@@ -490,7 +490,7 @@ fn int_to_hex_lowercase(v : Int) -> String {
   let digits = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
   ]
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   let buf : Array[Char] = []
   let mut n = v
   while n > 0 {
@@ -532,7 +532,7 @@ fn compress_ipv6_groups(groups : Array[String]) -> String {
   if best_len < 2 {
     return groups.join(":")
   }
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   for i = 0; i < best_start; i = i + 1 {
     if i > 0 {
       sb.write_char(':')

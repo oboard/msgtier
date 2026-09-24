@@ -45,7 +45,7 @@ async fn execute_script_with_output(
 ///|
 fn parse_command_args(command : String) -> Array[String] {
   let args = []
-  let mut current_arg = StringBuilder::new()
+  let mut current_arg = StringBuilder()
   let mut in_single_quote = false
   let mut in_double_quote = false
   let mut escaped = false
@@ -74,7 +74,7 @@ fn parse_command_args(command : String) -> Array[String] {
             current_arg.write_char(c)
           } else if current_arg.to_string().length() > 0 {
             args.push(current_arg.to_string())
-            current_arg = StringBuilder::new()
+            current_arg = StringBuilder()
           }
         _ => current_arg.write_char(c)
       }

@@ -54,7 +54,7 @@ pub fn Url::parse(input : String, base? : Url) -> Url? {
 ///|
 /// Serialize URL to string per WHATWG URL spec
 pub fn Url::to_string(self : Url) -> String {
-  let result = StringBuilder::new()
+  let result = StringBuilder()
   // Scheme
   result.write_string(self.scheme)
   result.write_char(':')
@@ -416,7 +416,7 @@ pub impl Show for Url with fn output(self : Url, logger : &Logger) -> Unit {
 ///|
 /// Remove all ASCII tab (0x09), LF (0x0A), and CR (0x0D) from the entire input
 fn remove_ascii_tab_or_newline(input : StringView) -> String {
-  let output = StringBuilder::new()
+  let output = StringBuilder()
   for c in input {
     if !(c is ('\t' | '\n' | '\r')) {
       output.write_char(c)
@@ -436,7 +436,7 @@ fn encode_last_trailing_space(s : String) -> String {
   match s.get_char(len - 1) {
     Some(' ') => {
       // Replace only the last space with %20
-      let result = StringBuilder::new()
+      let result = StringBuilder()
       for i, c in s {
         if i == len - 1 {
           result.write_string("%20")
@@ -601,7 +601,7 @@ fn Url::parse_basic(
   validation_errors? : Array[ValidationError] = [],
 ) -> Url? {
   let mut state : State = SchemeStart
-  let buffer : StringBuilder = StringBuilder::new()
+  let buffer : StringBuilder = StringBuilder()
   let mut at_sign_seen : Bool = false
   let mut inside_brackets : Bool = false
   let mut password_token_seen : Bool = false
@@ -1305,8 +1305,8 @@ fn Url::parse_basic(
             let last_colon = port_separator
             if last_colon > 0 {
               // Extract host and port using character iteration
-              let host_builder = StringBuilder::new()
-              let port_builder = StringBuilder::new()
+              let host_builder = StringBuilder()
+              let port_builder = StringBuilder()
               let mut past_colon = false
               let mut char_idx = 0
               for c in buffer_str {

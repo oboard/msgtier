@@ -89,96 +89,89 @@ impl Transport for WebSocketTransport with fn send(self, target, data) {
   let target_key = target_clean.to_owned()
 
   for i = 0; i < 2; i = i + 1 {
-    try {
-      let mut wrapper_opt = self.connections.get(target_key)
-      let mut created = false
-      if wrapper_opt is None {
-        try {
-          let url = "ws://" + target_key
-          let ws = @websocket.connect(url)
-          let wrapper = WebSocketConnWrapper::{
-            conn: ws,
-            sending: { val: false, },
-            broken: { val: false, },
-          }
-          self.connections[target_key] = wrapper
-          wrapper_opt = Some(wrapper)
-          created = true
-        } catch {
-          _ => ()
+    let mut wrapper_opt = self.connections.get(target_key)
+    let mut created = false
+    if wrapper_opt is None {
+      try {
+        let url = "ws://" + target_key
+        let ws = @websocket.connect(url)
+        let wrapper = WebSocketConnWrapper::{
+          conn: ws,
+          sending: { val: false, },
+          broken: { val: false, },
         }
+        self.connections[target_key] = wrapper
+        wrapper_opt = Some(wrapper)
+        created = true
+      } catch {
+        _ => ()
       }
-      match wrapper_opt {
-        Some(wrapper) => {
-          if created {
-            if self.reader_started.get(target_key) is None {
-              match (self.root, self.on_disconnect) {
-                (Some(root), Some(on_disconnect)) => {
-                  self.reader_started[target_key] = true
-                  let transport = self
-                  root.spawn_bg(async fn() {
-                    try {
-                      for ;; {
-                        let msg = wrapper.conn.recv()
-                        match msg.kind {
-                          Text => {
-                            let text = msg.read_all().text()
-                            transport.dispatch_ws_frame(
-                              @utf8.encode(text),
-                              target_key,
-                            )
-                          }
-                          Binary => {
-                            let bytes = msg.read_all().binary()
-                            transport.dispatch_ws_frame(bytes, target_key)
-                          }
+    }
+    match wrapper_opt {
+      Some(wrapper) => {
+        if created {
+          if self.reader_started.get(target_key) is None {
+            match (self.root, self.on_disconnect) {
+              (Some(root), Some(on_disconnect)) => {
+                self.reader_started[target_key] = true
+                let transport = self
+                root.spawn_bg(async fn() {
+                  try {
+                    for ;; {
+                      let msg = wrapper.conn.recv()
+                      match msg.kind {
+                        Text => {
+                          let text = msg.read_all().text()
+                          transport.dispatch_ws_frame(
+                            @utf8.encode(text),
+                            target_key,
+                          )
+                        }
+                        Binary => {
+                          let bytes = msg.read_all().binary()
+                          transport.dispatch_ws_frame(bytes, target_key)
                         }
                       }
-                    } catch {
-                      _ => {
-                        wrapper.broken.val = true
-                        transport.connections.remove(target_key)
-                        transport.reader_started.remove(target_key)
-                        on_disconnect(target_key)
-                      }
                     }
-                  })
-                }
-                _ => ()
+                  } catch {
+                    _ => {
+                      wrapper.broken.val = true
+                      transport.connections.remove(target_key)
+                      transport.reader_started.remove(target_key)
+                      on_disconnect(target_key)
+                    }
+                  }
+                })
               }
-            }
-          }
-
-          while wrapper.sending.val {
-            @async.sleep(5)
-          }
-
-          if wrapper.broken.val {
-            self.connections.remove(target_key)
-            self.reader_started.remove(target_key)
-            continue
-          }
-          wrapper.sending.val = true
-          try {
-            wrapper.conn.send_binary(data)
-            wrapper.sending.val = false
-            return true
-          } catch {
-            _ => {
-              wrapper.sending.val = false
-              wrapper.broken.val = true
-              self.connections.remove(target_key)
-              self.reader_started.remove(target_key)
+              _ => ()
             }
           }
         }
-        None => if i == 1 { return false }
+
+        while wrapper.sending.val {
+          @async.sleep(5)
+        }
+
+        if wrapper.broken.val {
+          self.connections.remove(target_key)
+          self.reader_started.remove(target_key)
+          continue
+        }
+        wrapper.sending.val = true
+        try {
+          wrapper.conn.send_binary(data)
+          wrapper.sending.val = false
+          return true
+        } catch {
+          _ => {
+            wrapper.sending.val = false
+            wrapper.broken.val = true
+            self.connections.remove(target_key)
+            self.reader_started.remove(target_key)
+          }
+        }
       }
-    } catch {
-      _ => {
-        self.connections.remove(target_key)
-        self.reader_started.remove(target_key)
-      }
+      None => if i == 1 { return false }
     }
   }
   false
@@ -214,96 +207,89 @@ impl Transport for WebSocketTransport with fn send_raw_port_forward(
   let frame_bytes = frame.unsafe_reinterpret_as_bytes()
 
   for i = 0; i < 2; i = i + 1 {
-    try {
-      let mut wrapper_opt = self.connections.get(target_key)
-      let mut created = false
-      if wrapper_opt is None {
-        try {
-          let url = "ws://" + target_key
-          let ws = @websocket.connect(url)
-          let wrapper = WebSocketConnWrapper::{
-            conn: ws,
-            sending: { val: false, },
-            broken: { val: false, },
-          }
-          self.connections[target_key] = wrapper
-          wrapper_opt = Some(wrapper)
-          created = true
-        } catch {
-          _ => ()
+    let mut wrapper_opt = self.connections.get(target_key)
+    let mut created = false
+    if wrapper_opt is None {
+      try {
+        let url = "ws://" + target_key
+        let ws = @websocket.connect(url)
+        let wrapper = WebSocketConnWrapper::{
+          conn: ws,
+          sending: { val: false, },
+          broken: { val: false, },
         }
+        self.connections[target_key] = wrapper
+        wrapper_opt = Some(wrapper)
+        created = true
+      } catch {
+        _ => ()
       }
-      match wrapper_opt {
-        Some(wrapper) => {
-          if created {
-            if self.reader_started.get(target_key) is None {
-              match (self.root, self.on_disconnect) {
-                (Some(root), Some(on_disconnect)) => {
-                  self.reader_started[target_key] = true
-                  let transport = self
-                  root.spawn_bg(async fn() {
-                    try {
-                      for ;; {
-                        let msg = wrapper.conn.recv()
-                        match msg.kind {
-                          Text => {
-                            let text = msg.read_all().text()
-                            transport.dispatch_ws_frame(
-                              @utf8.encode(text),
-                              target_key,
-                            )
-                          }
-                          Binary => {
-                            let bytes = msg.read_all().binary()
-                            transport.dispatch_ws_frame(bytes, target_key)
-                          }
+    }
+    match wrapper_opt {
+      Some(wrapper) => {
+        if created {
+          if self.reader_started.get(target_key) is None {
+            match (self.root, self.on_disconnect) {
+              (Some(root), Some(on_disconnect)) => {
+                self.reader_started[target_key] = true
+                let transport = self
+                root.spawn_bg(async fn() {
+                  try {
+                    for ;; {
+                      let msg = wrapper.conn.recv()
+                      match msg.kind {
+                        Text => {
+                          let text = msg.read_all().text()
+                          transport.dispatch_ws_frame(
+                            @utf8.encode(text),
+                            target_key,
+                          )
+                        }
+                        Binary => {
+                          let bytes = msg.read_all().binary()
+                          transport.dispatch_ws_frame(bytes, target_key)
                         }
                       }
-                    } catch {
-                      _ => {
-                        wrapper.broken.val = true
-                        transport.connections.remove(target_key)
-                        transport.reader_started.remove(target_key)
-                        on_disconnect(target_key)
-                      }
                     }
-                  })
-                }
-                _ => ()
+                  } catch {
+                    _ => {
+                      wrapper.broken.val = true
+                      transport.connections.remove(target_key)
+                      transport.reader_started.remove(target_key)
+                      on_disconnect(target_key)
+                    }
+                  }
+                })
               }
-            }
-          }
-
-          while wrapper.sending.val {
-            @async.sleep(5)
-          }
-
-          if wrapper.broken.val {
-            self.connections.remove(target_key)
-            self.reader_started.remove(target_key)
-            continue
-          }
-          wrapper.sending.val = true
-          try {
-            wrapper.conn.send_binary(frame_bytes)
-            wrapper.sending.val = false
-            return true
-          } catch {
-            _ => {
-              wrapper.sending.val = false
-              wrapper.broken.val = true
-              self.connections.remove(target_key)
-              self.reader_started.remove(target_key)
+              _ => ()
             }
           }
         }
-        None => if i == 1 { return false }
+
+        while wrapper.sending.val {
+          @async.sleep(5)
+        }
+
+        if wrapper.broken.val {
+          self.connections.remove(target_key)
+          self.reader_started.remove(target_key)
+          continue
+        }
+        wrapper.sending.val = true
+        try {
+          wrapper.conn.send_binary(frame_bytes)
+          wrapper.sending.val = false
+          return true
+        } catch {
+          _ => {
+            wrapper.sending.val = false
+            wrapper.broken.val = true
+            self.connections.remove(target_key)
+            self.reader_started.remove(target_key)
+          }
+        }
       }
-    } catch {
-      _ => {
-        self.connections.remove(target_key)
-        self.reader_started.remove(target_key)
-      }
+      None => if i == 1 { return false }
     }
   }
   false

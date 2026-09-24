@@ -40,6 +40,7 @@ pub suberror StunError {
   InvalidMessage(String)
   EncodeError(String)
 } derive(@debug.Debug)
+pub fn StunError::to_repr(Self) -> @debug.Repr
 
 // Types and methods
 pub enum Attribute {
@@ -52,6 +53,9 @@ pub enum Attribute {
   Fingerprint(UInt)
   Unknown(Int, Bytes)
 } derive(Eq, @debug.Debug)
+pub fn Attribute::equal(Self, Self) -> Bool
+pub fn Attribute::not_equal(Self, Self) -> Bool
+pub fn Attribute::to_repr(Self) -> @debug.Repr
 
 pub struct BindingProbeResult {
   server_address : String
@@ -60,6 +64,9 @@ pub struct BindingProbeResult {
   rtt_ms : Int
   supports_rfc5780 : Bool
 } derive(Eq, @debug.Debug)
+pub fn BindingProbeResult::equal(Self, Self) -> Bool
+pub fn BindingProbeResult::not_equal(Self, Self) -> Bool
+pub fn BindingProbeResult::to_repr(Self) -> @debug.Repr
 
 pub enum FilteringBehavior {
   EndpointIndependentFiltering
@@ -68,6 +75,9 @@ pub enum FilteringBehavior {
   Unsupported
   Unknown
 } derive(Eq, @debug.Debug)
+pub fn FilteringBehavior::equal(Self, Self) -> Bool
+pub fn FilteringBehavior::not_equal(Self, Self) -> Bool
+pub fn FilteringBehavior::to_repr(Self) -> @debug.Repr
 
 pub enum MappingBehavior {
   EndpointIndependentMapping
@@ -76,6 +86,9 @@ pub enum MappingBehavior {
   Unsupported
   Unknown
 } derive(Eq, @debug.Debug)
+pub fn MappingBehavior::equal(Self, Self) -> Bool
+pub fn MappingBehavior::not_equal(Self, Self) -> Bool
+pub fn MappingBehavior::to_repr(Self) -> @debug.Repr
 
 pub struct Message {
   class_ : MessageClass
@@ -83,6 +96,9 @@ pub struct Message {
   transaction_id : Bytes
   attributes : Array[Attribute]
 } derive(Eq, @debug.Debug)
+pub fn Message::equal(Self, Self) -> Bool
+pub fn Message::not_equal(Self, Self) -> Bool
+pub fn Message::to_repr(Self) -> @debug.Repr
 
 pub enum MessageClass {
   Request
@@ -90,12 +106,18 @@ pub enum MessageClass {
   SuccessResponse
   ErrorResponse
 } derive(Eq, @debug.Debug)
+pub fn MessageClass::equal(Self, Self) -> Bool
+pub fn MessageClass::not_equal(Self, Self) -> Bool
+pub fn MessageClass::to_repr(Self) -> @debug.Repr
 
 pub struct NatProbeResult {
   binding : BindingProbeResult
   mapping_behavior : MappingBehavior
   filtering_behavior : FilteringBehavior
 } derive(Eq, @debug.Debug)
+pub fn NatProbeResult::equal(Self, Self) -> Bool
+pub fn NatProbeResult::not_equal(Self, Self) -> Bool
+pub fn NatProbeResult::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 

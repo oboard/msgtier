@@ -93,6 +93,7 @@ pub(all) suberror MsgPackError {
   TypeMismatch(String)
   InvalidData(String)
 }
+pub fn MsgPackError::output(Self, &Logger) -> Unit
 pub fn MsgPackError::to_string(Self) -> String
 pub impl Show for MsgPackError
 
@@ -111,8 +112,12 @@ pub enum Value {
   Array(Array[Value])
   Map(Map[String, Value])
 } derive(Eq, @debug.Debug)
+pub fn Value::equal(Self, Self) -> Bool
+pub fn Value::not_equal(Self, Self) -> Bool
 pub fn Value::to_bool(Self) -> Result[Bool, MsgPackError]
 pub fn Value::to_int(Self) -> Result[Int, MsgPackError]
+pub fn Value::to_json(Self) -> Json
+pub fn Value::to_repr(Self) -> @debug.Repr
 pub fn Value::to_string(Self) -> Result[String, MsgPackError]
 pub fn Value::to_uint32(Self) -> Result[UInt, MsgPackError]
 pub impl ToJson for Value

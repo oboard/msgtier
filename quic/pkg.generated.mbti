@@ -25,6 +25,9 @@ pub struct AckFrame {
   delay : Int64
   first_ack_range : Int64
 } derive(Eq, @debug.Debug)
+pub fn AckFrame::equal(Self, Self) -> Bool
+pub fn AckFrame::not_equal(Self, Self) -> Bool
+pub fn AckFrame::to_repr(Self) -> @debug.Repr
 
 pub struct Connection {
   addr : String
@@ -43,11 +46,17 @@ pub struct ConnectionCloseFrame {
   frame_type : Int64?
   reason_phrase : String
 } derive(Eq, @debug.Debug)
+pub fn ConnectionCloseFrame::equal(Self, Self) -> Bool
+pub fn ConnectionCloseFrame::not_equal(Self, Self) -> Bool
+pub fn ConnectionCloseFrame::to_repr(Self) -> @debug.Repr
 
 pub struct CryptoFrame {
   offset : Int64
   data : Bytes
 } derive(Eq, @debug.Debug)
+pub fn CryptoFrame::equal(Self, Self) -> Bool
+pub fn CryptoFrame::not_equal(Self, Self) -> Bool
+pub fn CryptoFrame::to_repr(Self) -> @debug.Repr
 
 pub struct Endpoint {
   socket : @socket.UdpServer
@@ -73,6 +82,9 @@ pub(all) enum Frame {
   ConnectionClose(ConnectionCloseFrame)
   HandshakeDone
 } derive(Eq, @debug.Debug)
+pub fn Frame::equal(Self, Self) -> Bool
+pub fn Frame::not_equal(Self, Self) -> Bool
+pub fn Frame::to_repr(Self) -> @debug.Repr
 
 pub struct Header {
   first_byte : Byte
@@ -82,10 +94,14 @@ pub struct Header {
   packet_number : Int64
   payload_length : Int?
 } derive(@debug.Debug)
+pub fn Header::to_repr(Self) -> @debug.Repr
 
 pub struct NewTokenFrame {
   token : Bytes
 } derive(Eq, @debug.Debug)
+pub fn NewTokenFrame::equal(Self, Self) -> Bool
+pub fn NewTokenFrame::not_equal(Self, Self) -> Bool
+pub fn NewTokenFrame::to_repr(Self) -> @debug.Repr
 
 pub(all) enum PacketType {
   Initial
@@ -95,17 +111,26 @@ pub(all) enum PacketType {
   Retry
   VersionNegotiation
 } derive(Eq, @debug.Debug)
+pub fn PacketType::equal(Self, Self) -> Bool
+pub fn PacketType::not_equal(Self, Self) -> Bool
+pub fn PacketType::to_repr(Self) -> @debug.Repr
 
 pub struct ResetStreamFrame {
   stream_id : Int64
   error_code : Int64
   final_size : Int64
 } derive(Eq, @debug.Debug)
+pub fn ResetStreamFrame::equal(Self, Self) -> Bool
+pub fn ResetStreamFrame::not_equal(Self, Self) -> Bool
+pub fn ResetStreamFrame::to_repr(Self) -> @debug.Repr
 
 pub struct StopSendingFrame {
   stream_id : Int64
   error_code : Int64
 } derive(Eq, @debug.Debug)
+pub fn StopSendingFrame::equal(Self, Self) -> Bool
+pub fn StopSendingFrame::not_equal(Self, Self) -> Bool
+pub fn StopSendingFrame::to_repr(Self) -> @debug.Repr
 
 pub struct Stream {
   id : Int64
@@ -113,6 +138,7 @@ pub struct Stream {
   mut fin : Bool
   mut incoming_data : Bytes
 } derive(@debug.Debug)
+pub fn Stream::to_repr(Self) -> @debug.Repr
 
 pub struct StreamFrame {
   stream_id : Int64
@@ -120,6 +146,9 @@ pub struct StreamFrame {
   fin : Bool
   data : Bytes
 } derive(Eq, @debug.Debug)
+pub fn StreamFrame::equal(Self, Self) -> Bool
+pub fn StreamFrame::not_equal(Self, Self) -> Bool
+pub fn StreamFrame::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 

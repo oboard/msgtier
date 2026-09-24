@@ -1,13 +1,9 @@
 import {
+  "moonbitlang/core/debug",
   "moonbitlang/core/encoding/utf8",
-  "moonbitlang/core/json",
-  "moonbitlang/core/buffer",
 }
 
-import {
-  "moonbitlang/core/env",
-  "moonbitlang/core/encoding/utf8",
-} for "test"
+supported_targets = "native"
 
 options(
   "max-concurrent-tests": 5,

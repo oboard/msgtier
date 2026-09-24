@@ -180,7 +180,7 @@ fn get_config_handler() -> Json {
 ///|
 fn hot_reload_config_handler(body_str : String) -> @mocket.HttpResponse {
   match apply_hot_reload_request(body_str) {
-    Ok(_) => @mocket.HttpResponse::new(OK).body(get_config_response_json())
+    Ok(_) => @mocket.HttpResponse(OK).body(get_config_response_json())
     Err(err) => json_error(BadRequest, "hot_reload_failed", err)
   }
 }
@@ -270,13 +270,13 @@ async fn download_handler() -> @mocket.HttpResponse {
         "failed to read executable: \{e}",
       )
   }
-  @mocket.HttpResponse::new(
+  @mocket.HttpResponse(
     OK,
     headers={
       "Content-Type": "application/octet-stream",
       "Content-Disposition": "attachment; filename=\"msgtier\"",
     },
-    raw_body=bytes,
+    body=bytes,
   )
 }
 
@@ -348,10 +348,10 @@ async fn send_message_handler(
       ignore(send_message_now(target_id, msg))
       match wait_for_response(msg.id, timeout_ms_uint) {
         Some((response, response_headers)) =>
-          @mocket.HttpResponse::new(
+          @mocket.HttpResponse(
             OK,
             headers=view_map_from_string_map(response_headers),
-            raw_body=response,
+            body=response,
           )
         None =>
           json_error(
@@ -406,10 +406,10 @@ async fn proxy_handler(
           if !resp_headers.contains("Content-Length") {
             resp_headers["Content-Length"] = resp_body.length().to_string()
           }
-          @mocket.HttpResponse::new(
+          @mocket.HttpResponse(
             @mocket.StatusCode::from_int(status_code),
             headers=view_map_from_string_map(resp_headers),
-            raw_body=resp_body,
+            body=resp_body,
           )
         }
         None =>
@@ -440,10 +440,10 @@ async fn handle_object_get(
       let (status_code, resp_headers, body) = build_object_download_response(
         bytes, filename, request_headers,
       )
-      @mocket.HttpResponse::new(
+      @mocket.HttpResponse(
         @mocket.StatusCode::from_int(status_code),
         headers=view_map_from_string_map(resp_headers),
-        raw_body=body,
+        body~,
       )
     }
     None =>
@@ -452,10 +452,10 @@ async fn handle_object_get(
           let (status_code, resp_headers, body) = build_object_download_response(
             data, filename, request_headers,
           )
-          @mocket.HttpResponse::new(
+          @mocket.HttpResponse(
             @mocket.StatusCode::from_int(status_code),
             headers=view_map_from_string_map(resp_headers),
-            raw_body=body,
+            body~,
           )
         }
         None =>
@@ -470,7 +470,7 @@ fn serve_static_handler(path : String) -> @mocket.HttpResponse {
   @web.ensure_dist_loaded()
   let normalized = if path == "/" { "index.html" } else { path }
   if normalized.contains("..") {
-    return @mocket.HttpResponse::new(NotFound, raw_body=http_state.page_404)
+    return @mocket.HttpResponse(NotFound, body=http_state.page_404)
   }
   let key = if normalized.has_prefix("/") {
     normalized[1:].to_owned()
@@ -481,11 +481,7 @@ fn serve_static_handler(path : String) -> @mocket.HttpResponse {
     Some(bytes) => (bytes, content_type_for(key))
     None => (@web.dist["index.html"], "text/html")
   }
-  @mocket.HttpResponse::new(
-    OK,
-    headers={ "Content-Type": content_type },
-    raw_body=bytes,
-  )
+  @mocket.HttpResponse(OK, headers={ "Content-Type": content_type }, body=bytes)
 }
 
 ///|
@@ -592,7 +588,7 @@ fn register_routes(app : @mocket.Mocket) -> Unit {
   app.get("/api/chat/messages", e => {
     try {
       let query = request_query(e.req)
-      @mocket.HttpResponse::new(OK).body(chat_messages_handler(query))
+      @mocket.HttpResponse(OK).body(chat_messages_handler(query))
     } catch {
       err => json_error(InternalServerError, "chat_history_failed", "\{err}")
     }
@@ -618,7 +614,7 @@ fn register_routes(app : @mocket.Mocket) -> Unit {
       let body : Bytes = e.req.body() catch { _ => b"" }
       let id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
       save_object(id, body)
-      @mocket.HttpResponse::new(OK).body(({ "id": id.to_json() } : Json))
+      @mocket.HttpResponse(OK).body(({ "id": id.to_json() } : Json))
     } catch {
       err => json_error(InternalServerError, "object_upload_failed", "\{err}")
     }
@@ -636,7 +632,7 @@ fn register_routes(app : @mocket.Mocket) -> Unit {
       return json_error(BadRequest, "missing_field", "path required")
     }
     let id = register_object(path)
-    @mocket.HttpResponse::new(OK).body(({ "id": id.to_json() } : Json))
+    @mocket.HttpResponse(OK).body(({ "id": id.to_json() } : Json))
   })
   app.get("/api/object/:id", e => {
     try {
@@ -652,7 +648,7 @@ fn register_routes(app : @mocket.Mocket) -> Unit {
   app.get("/api/port_scan/local", _ => handle_port_scan_local())
   app.get("/api/port_scan/peers", _ => handle_port_scan_peers())
   app.post("/api/port_scan/refresh", _ => {
-    @mocket.HttpResponse::new(OK).body(handle_port_scan_refresh()) catch {
+    @mocket.HttpResponse(OK).body(handle_port_scan_refresh()) catch {
       err => json_error(InternalServerError, "scan_failed", "\{err}")
     }
   })
@@ -701,7 +697,7 @@ async fn start_http_service(
 ) -> Unit {
   init_upload_dir()
   init_chat_store()
-  let app = @mocket.new()
+  let app = @mocket.App()
   register_routes(app)
   for ;; {
     log_info("HTTP listening on http://\{addr}")

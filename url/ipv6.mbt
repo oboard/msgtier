@@ -35,7 +35,7 @@ pub fn IPv6::to_string(self : IPv6) -> String {
     compress_len = current_len
   }
   // Build the string
-  let result = StringBuilder::new()
+  let result = StringBuilder()
   let mut i = 0
   let mut ignore = false // Track if we just wrote :: and should not add another :
   while i < 8 {

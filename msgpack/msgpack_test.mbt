@@ -6,10 +6,10 @@
 ///|
 test "complex data structures" {
   // Test nested array
-  let inner_array = array([int(1), int(2)])
-  let outer_array = array([inner_array, int(3)])
-  let encoded = encode(outer_array)
-  let decoded = decode(encoded)
+  let inner_array = @msgpack.array([@msgpack.int(1), @msgpack.int(2)])
+  let outer_array = @msgpack.array([inner_array, @msgpack.int(3)])
+  let encoded = @msgpack.encode(outer_array)
+  let decoded = @msgpack.decode(encoded)
   debug_inspect(
     decoded,
     content=(
@@ -18,9 +18,14 @@ test "complex data structures" {
   )
 
   // Test mixed array
-  let mixed_array = array([int(42), string("hello"), bool(true), nil()])
-  let encoded_mixed = encode(mixed_array)
-  let decoded_mixed = decode(encoded_mixed)
+  let mixed_array = @msgpack.array([
+    @msgpack.int(42),
+    @msgpack.string("hello"),
+    @msgpack.bool(true),
+    @msgpack.nil(),
+  ])
+  let encoded_mixed = @msgpack.encode(mixed_array)
+  let decoded_mixed = @msgpack.decode(encoded_mixed)
   debug_inspect(
     decoded_mixed,
     content=(
@@ -34,9 +39,9 @@ test "complex data structures" {
 ///|
 test "edge cases" {
   // Test empty string
-  let empty_str = string("")
-  let encoded_empty = encode(empty_str)
-  let decoded_empty = decode(encoded_empty)
+  let empty_str = @msgpack.string("")
+  let encoded_empty = @msgpack.encode(empty_str)
+  let decoded_empty = @msgpack.decode(encoded_empty)
   debug_inspect(
     decoded_empty,
     content=(
@@ -45,21 +50,21 @@ test "edge cases" {
   )
 
   // Test zero
-  let zero_int = int(0)
-  let encoded_zero = encode(zero_int)
-  let decoded_zero = decode(encoded_zero)
+  let zero_int = @msgpack.int(0)
+  let encoded_zero = @msgpack.encode(zero_int)
+  let decoded_zero = @msgpack.decode(encoded_zero)
   debug_inspect(decoded_zero, content="Int(0)")
 
   // Test maximum positive fixint
-  let max_fixint = int(127)
-  let encoded_max = encode(max_fixint)
-  let decoded_max = decode(encoded_max)
+  let max_fixint = @msgpack.int(127)
+  let encoded_max = @msgpack.encode(max_fixint)
+  let decoded_max = @msgpack.decode(encoded_max)
   debug_inspect(decoded_max, content="Int(127)")
 
   // Test minimum negative fixint
-  let min_fixint = int(-32)
-  let encoded_min = encode(min_fixint)
-  let decoded_min = decode(encoded_min)
+  let min_fixint = @msgpack.int(-32)
+  let encoded_min = @msgpack.encode(min_fixint)
+  let decoded_min = @msgpack.decode(encoded_min)
   debug_inspect(decoded_min, content="Int(-32)")
 }
 
@@ -68,13 +73,13 @@ test "edge cases" {
 ///|
 test "large data structures" {
   // Test large array - create smaller for performance
-  let values : Array[Value] = []
+  let values : Array[@msgpack.Value] = []
   for i = 0; i < 20; i = i + 1 {
-    values.push(int(i))
+    values.push(@msgpack.int(i))
   }
-  let large_array = array(values)
-  let encoded_large = encode(large_array)
-  let decoded_large = decode(encoded_large)
+  let large_array = @msgpack.array(values)
+  let encoded_large = @msgpack.encode(large_array)
+  let decoded_large = @msgpack.decode(encoded_large)
   debug_inspect(
     decoded_large,
     content=(
@@ -112,17 +117,17 @@ test "large data structures" {
 test "data type validation" {
   // Test consistent encoding/decoding for all basic types
   let test_data = [
-    nil(),
-    bool(true),
-    bool(false),
-    int(0),
-    int(42),
-    int(-1),
-    string("test"),
-    array([int(1), int(2)]),
+    @msgpack.nil(),
+    @msgpack.bool(true),
+    @msgpack.bool(false),
+    @msgpack.int(0),
+    @msgpack.int(42),
+    @msgpack.int(-1),
+    @msgpack.string("test"),
+    @msgpack.array([@msgpack.int(1), @msgpack.int(2)]),
   ]
   debug_inspect(
-    test_data.map(x => decode(encode(x))),
+    test_data.map(x => @msgpack.decode(@msgpack.encode(x))),
     content=(
       #|[
       #|  Nil,
@@ -143,17 +148,17 @@ test "data type validation" {
 ///|
 test "deno compatibility tests" {
   // Test data structure from testdata/1.json
-  let test_map : Map[String, Value] = Map([], capacity=0)
-  test_map["int0"] = int(0)
-  test_map["int1"] = int(1)
-  test_map["int1-"] = int(-1)
-  test_map["nil"] = nil()
-  test_map["true"] = bool(true)
-  test_map["false"] = bool(false)
-  test_map["string0"] = string("")
-  test_map["string1"] = string("A")
-  let encoded_complex = encode(map(test_map))
-  let decoded_complex = decode(encoded_complex)
+  let test_map : Map[String, @msgpack.Value] = Map([], capacity=0)
+  test_map["int0"] = @msgpack.int(0)
+  test_map["int1"] = @msgpack.int(1)
+  test_map["int1-"] = @msgpack.int(-1)
+  test_map["nil"] = @msgpack.nil()
+  test_map["true"] = @msgpack.bool(true)
+  test_map["false"] = @msgpack.bool(false)
+  test_map["string0"] = @msgpack.string("")
+  test_map["string1"] = @msgpack.string("A")
+  let encoded_complex = @msgpack.encode(@msgpack.map(test_map))
+  let decoded_complex = @msgpack.decode(encoded_complex)
   debug_inspect(
     decoded_complex,
     content=(
@@ -173,15 +178,15 @@ test "deno compatibility tests" {
   )
 
   // Test array with different types
-  let mixed_types_array = array([
-    int(1),
-    string("foo"),
-    bool(false),
-    nil(),
-    array([int(1), int(2)]),
+  let mixed_types_array = @msgpack.array([
+    @msgpack.int(1),
+    @msgpack.string("foo"),
+    @msgpack.bool(false),
+    @msgpack.nil(),
+    @msgpack.array([@msgpack.int(1), @msgpack.int(2)]),
   ])
-  let encoded_mixed_types = encode(mixed_types_array)
-  let decoded_mixed_types = decode(encoded_mixed_types)
+  let encoded_mixed_types = @msgpack.encode(mixed_types_array)
+  let decoded_mixed_types = @msgpack.decode(encoded_mixed_types)
   debug_inspect(
     decoded_mixed_types,
     content=(
@@ -195,16 +200,16 @@ test "deno compatibility tests" {
 ///|
 test "basic performance test" {
   // Create a reasonably sized data structure
-  let perf_map : Map[String, Value] = Map([], capacity=0)
+  let perf_map : Map[String, @msgpack.Value] = Map([], capacity=0)
   for i = 0; i < 10; i = i + 1 {
-    perf_map["key\{i}"] = int(i)
+    perf_map["key\{i}"] = @msgpack.int(i)
   }
-  let perf_data = map(perf_map)
+  let perf_data = @msgpack.map(perf_map)
 
   // Test multiple encode/decode cycles
   for i = 0; i < 5; i = i + 1 {
-    let encoded = encode(perf_data)
-    let decoded = decode(encoded)
+    let encoded = @msgpack.encode(perf_data)
+    let decoded = @msgpack.decode(encoded)
     debug_inspect(
       decoded,
       content=(

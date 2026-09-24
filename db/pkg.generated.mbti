@@ -22,7 +22,10 @@ pub(all) struct Message {
   timestamp : String
 } derive(ToJson, @json.FromJson)
 pub fn Message::_from(Map[String, @engine.Param]) -> Self
+pub fn Message::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Message::from_param(@engine.Param) -> Self raise @engine.ParamDecodeError
 pub fn Message::table() -> @table.Table
+pub fn Message::to_json(Self) -> Json
 pub impl @morm.Entity for Message
 pub impl @engine.FromParam for Message
 
@@ -30,6 +33,7 @@ pub struct MessageMapperImpl {
   engine : &@engine.Engine
 }
 pub fn MessageMapperImpl::MessageMapperImpl(&@engine.Engine) -> Self
+pub async fn MessageMapperImpl::save(Self, Message) -> Message
 pub impl MessageMapper for MessageMapperImpl
 
 // Type aliases

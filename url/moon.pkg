@@ -1,6 +1,6 @@
 import {
+  "moonbitlang/core/debug",
   "tonyfettes/unicode/idna",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/json",
-  "moonbitlang/core/buffer",
 }

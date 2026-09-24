@@ -31,7 +31,7 @@ fn json_error(
   code : String,
   message : String,
 ) -> @mocket.HttpResponse {
-  @mocket.HttpResponse::new(status).body(
+  @mocket.HttpResponse(status).body(
     ({ "error": code.to_json(), "message": message.to_json() } : Json),
   )
 }
@@ -133,7 +133,7 @@ async fn handle_port_mappings_create(
     _ =>
       return json_error(InternalServerError, "internal_error", "create failed")
   }
-  @mocket.HttpResponse::new(OK).body(ToJson::to_json(rule))
+  @mocket.HttpResponse(OK).body(ToJson::to_json(rule))
 }
 
 ///|
@@ -144,7 +144,7 @@ async fn handle_port_mappings_delete(id : String) -> @mocket.HttpResponse {
     _ =>
       return json_error(InternalServerError, "internal_error", "delete failed")
   }
-  @mocket.HttpResponse::new(OK).body(({ "removed": true } : Json))
+  @mocket.HttpResponse(OK).body(({ "removed": true } : Json))
 }
 
 ///|
@@ -166,5 +166,5 @@ async fn handle_port_mappings_patch(
     _ =>
       return json_error(InternalServerError, "internal_error", "update failed")
   }
-  @mocket.HttpResponse::new(OK).body(ToJson::to_json(rule))
+  @mocket.HttpResponse(OK).body(ToJson::to_json(rule))
 }

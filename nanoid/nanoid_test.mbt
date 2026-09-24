@@ -3,13 +3,13 @@
 ///|
 test "nanoid_basic_functionality" {
   // Test basic nanoid generation
-  let result = nanoid()
+  let result = @nanoid.nanoid()
   assert_true(result is Ok(_))
   let id = result.unwrap()
   assert_eq(id.length(), 21)
 
   // Test custom size
-  let result_10 = nanoid(size=10)
+  let result_10 = @nanoid.nanoid(size=10)
   assert_true(result_10 is Ok(_))
   let id_10 = result_10.unwrap()
   assert_eq(id_10.length(), 10)
@@ -18,18 +18,18 @@ test "nanoid_basic_functionality" {
 ///|
 test "nanoid_error_handling" {
   // Test invalid size
-  let result = nanoid(size=-1)
+  let result = @nanoid.nanoid(size=-1)
   assert_true(result is Err(_))
 
   // Test zero size
-  let result_zero = nanoid(size=0)
+  let result_zero = @nanoid.nanoid(size=0)
   assert_true(result_zero is Err(_))
 }
 
 ///|
 test "custom_alphabet_basic" {
   // Test valid custom alphabet
-  let result = custom_alphabet("ABC", size=5)
+  let result = @nanoid.custom_alphabet("ABC", size=5)
   assert_true(result is Ok(_))
   let generator = result.unwrap()
   let id_result = generator()
@@ -47,31 +47,31 @@ test "custom_alphabet_basic" {
 ///|
 test "custom_alphabet_error_handling" {
   // Test empty alphabet
-  let result = custom_alphabet("", size=5)
+  let result = @nanoid.custom_alphabet("", size=5)
   assert_true(result is Err(_))
 
   // Test invalid size
-  let result_invalid = custom_alphabet("ABC", size=-1)
+  let result_invalid = @nanoid.custom_alphabet("ABC", size=-1)
   assert_true(result_invalid is Err(_))
 }
 
 ///|
 test "backward_compatibility_functions" {
   // Test nanoid_or_empty with valid input
-  let id = nanoid_or_empty(size=10)
+  let id = @nanoid.nanoid_or_empty(size=10)
   assert_eq(id.length(), 10)
 
   // Test nanoid_or_empty with invalid input
-  let empty_id = nanoid_or_empty(size=-1)
+  let empty_id = @nanoid.nanoid_or_empty(size=-1)
   assert_eq(empty_id, "")
 
   // Test custom_alphabet_or_empty with valid input
-  let generator = custom_alphabet_or_empty("XYZ", size=3)
+  let generator = @nanoid.custom_alphabet_or_empty("XYZ", size=3)
   let custom_id = generator()
   assert_eq(custom_id.length(), 3)
 
   // Test custom_alphabet_or_empty with invalid input
-  let empty_generator = custom_alphabet_or_empty("", size=3)
+  let empty_generator = @nanoid.custom_alphabet_or_empty("", size=3)
   let empty_custom_id = empty_generator()
   assert_eq(empty_custom_id, "")
 }
@@ -79,30 +79,30 @@ test "backward_compatibility_functions" {
 ///|
 test "basic_randomness_check" {
   // Generate IDs and check they contain different characters
-  let id = nanoid().unwrap()
+  let id = @nanoid.nanoid().unwrap()
   assert_eq(id.length(), 21)
 
   // Check that the ID contains valid characters from the alphabet
   for i = 0; i < id.length(); i = i + 1 {
     let char = id.get_char(i).unwrap()
-    assert_true(url_alphabet.contains(char.to_string()))
+    assert_true(@nanoid.url_alphabet.contains(char.to_string()))
   }
 }
 
 ///|
 test "alphabet_presets" {
   // Test that alphabet presets are defined correctly
-  assert_eq(numbers, "0123456789")
-  assert_eq(lowercase, "abcdefghijklmnopqrstuvwxyz")
-  assert_eq(uppercase, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-  assert_eq(hex, "0123456789abcdef")
-  assert_eq(hex_upper, "0123456789ABCDEF")
+  assert_eq(@nanoid.numbers, "0123456789")
+  assert_eq(@nanoid.lowercase, "abcdefghijklmnopqrstuvwxyz")
+  assert_eq(@nanoid.uppercase, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+  assert_eq(@nanoid.hex, "0123456789abcdef")
+  assert_eq(@nanoid.hex_upper, "0123456789ABCDEF")
 }
 
 ///|
 test "single_character_alphabet" {
   // Test edge case: single character alphabet
-  let result = custom_alphabet("X", size=5)
+  let result = @nanoid.custom_alphabet("X", size=5)
   assert_true(result is Ok(_))
   let generator = result.unwrap()
   let id_result = generator()
@@ -189,8 +189,8 @@ test "chacha8_rng_range_correctness" {
 ///|
 test "final_fixes_verification" {
   // Test that nanoid generation works correctly
-  let id1 = nanoid(size=10).unwrap()
-  let id2 = nanoid(size=10).unwrap()
+  let id1 = @nanoid.nanoid(size=10).unwrap()
+  let id2 = @nanoid.nanoid(size=10).unwrap()
   assert_eq(id1.length(), 10)
   assert_eq(id2.length(), 10)
   assert_false(id1 == id2) // Should be different
@@ -202,14 +202,14 @@ test "performance_optimizations" {
   // but with better performance characteristics
 
   // Test with common alphabet sizes that have precomputed optimizations
-  let hex_result = custom_alphabet("0123456789abcdef", size=10)
+  let hex_result = @nanoid.custom_alphabet("0123456789abcdef", size=10)
   assert_true(hex_result is Ok(_))
   let hex_gen = hex_result.unwrap()
   let hex_id = hex_gen().unwrap()
   assert_eq(hex_id.length(), 10)
 
   // Test with base64-like alphabet
-  let base64_result = custom_alphabet(
+  let base64_result = @nanoid.custom_alphabet(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
     size=12,
   )
@@ -219,7 +219,7 @@ test "performance_optimizations" {
   assert_eq(base64_id.length(), 12)
 
   // Test with binary alphabet (highly optimized case)
-  let binary_result = custom_alphabet("01", size=20)
+  let binary_result = @nanoid.custom_alphabet("01", size=20)
   assert_true(binary_result is Ok(_))
   let binary_gen = binary_result.unwrap()
   let binary_id = binary_gen().unwrap()
@@ -236,7 +236,7 @@ test "id_randomness_quality" {
   // Generate multiple IDs and verify they are different
   let ids = Array::make(10, "")
   for i = 0; i < 10; i = i + 1 {
-    ids[i] = nanoid().unwrap()
+    ids[i] = @nanoid.nanoid().unwrap()
   }
 
   // Check that all IDs are different
@@ -255,15 +255,15 @@ test "id_randomness_quality" {
 ///|
 test "edge_cases_and_boundaries" {
   // Test maximum size limit
-  let result_max = nanoid(size=1000000)
+  let result_max = @nanoid.nanoid(size=1000000)
   assert_true(result_max is Ok(_))
 
   // Test size just over limit
-  let result_over = nanoid(size=1000001)
+  let result_over = @nanoid.nanoid(size=1000001)
   assert_true(result_over is Err(_))
 
   // Test single character ID
-  let result_single = nanoid(size=1)
+  let result_single = @nanoid.nanoid(size=1)
   assert_true(result_single is Ok(_))
   let single_id = result_single.unwrap()
   assert_eq(single_id.length(), 1)
@@ -273,14 +273,14 @@ test "edge_cases_and_boundaries" {
   for i = 0; i < 256; i = i + 1 {
     large_alphabet = large_alphabet + Int::unsafe_to_char(33 + i).to_string() // Start from '!' (33) to avoid duplicates
   }
-  let result_large = custom_alphabet(large_alphabet, size=5)
+  let result_large = @nanoid.custom_alphabet(large_alphabet, size=5)
   assert_true(result_large is Ok(_))
 
   // Test alphabet just over limit
   let oversized_alphabet = large_alphabet + "😀"
-  let result_oversized = custom_alphabet(oversized_alphabet, size=5)
+  let result_oversized = @nanoid.custom_alphabet(oversized_alphabet, size=5)
   match result_oversized {
-    Err(NanoidError::OversizedAlphabet(len)) => assert_eq(len, 257)
+    Err(@nanoid.NanoidError::OversizedAlphabet(len)) => assert_eq(len, 257)
     Err(_) => assert_true(false)
     Ok(_) => assert_true(false)
   }
@@ -289,7 +289,7 @@ test "edge_cases_and_boundaries" {
 ///|
 test "error_message_quality" {
   // Test detailed error messages
-  let empty_result = custom_alphabet("", size=5)
+  let empty_result = @nanoid.custom_alphabet("", size=5)
   match empty_result {
     Err(error) => {
       let msg = error.to_string()
@@ -297,7 +297,7 @@ test "error_message_quality" {
     }
     Ok(_) => assert_true(false) // Should not succeed
   }
-  let negative_result = nanoid(size=-5)
+  let negative_result = @nanoid.nanoid(size=-5)
   match negative_result {
     Err(error) => {
       let msg = error.to_string()
@@ -310,17 +310,19 @@ test "error_message_quality" {
 ///|
 test "custom_random_validation" {
   // Test valid custom random function
-  let valid_random = fn(size : Int) -> Result[Array[Int], NanoidError] {
+  let valid_random = fn(size : Int) -> Result[Array[Int], @nanoid.NanoidError] {
     Ok(Array::make(size, 42))
   }
-  let result = custom_random("ABC", 5, valid_random)
+  let result = @nanoid.custom_random("ABC", 5, valid_random)
   assert_true(result is Ok(_))
 
   // Test invalid custom random function (wrong array length)
-  let invalid_random = fn(_size : Int) -> Result[Array[Int], NanoidError] {
+  let invalid_random = fn(
+    _size : Int,
+  ) -> Result[Array[Int], @nanoid.NanoidError] {
     Ok(Array::make(2, 42)) // Always returns 2 elements regardless of requested size
   }
-  let result_invalid = custom_random("ABC", 5, invalid_random)
+  let result_invalid = @nanoid.custom_random("ABC", 5, invalid_random)
   assert_true(result_invalid is Err(_))
 }
 
@@ -332,7 +334,9 @@ test "custom_random_probe_does_not_consume_state" {
     full_alphabet = full_alphabet + Int::unsafe_to_char(33 + i).to_string()
   }
   let counter : Ref[Int] = { val: 0, }
-  let deterministic_random = fn(size : Int) -> Result[Array[Int], NanoidError] {
+  let deterministic_random = fn(
+    size : Int,
+  ) -> Result[Array[Int], @nanoid.NanoidError] {
     let bytes = Array::make(size, 0)
     for i = 0; i < size; i = i + 1 {
       bytes[i] = counter.val
@@ -340,7 +344,7 @@ test "custom_random_probe_does_not_consume_state" {
     }
     Ok(bytes)
   }
-  let generator = custom_random(full_alphabet, 4, deterministic_random).unwrap()
+  let generator = @nanoid.custom_random(full_alphabet, 4, deterministic_random).unwrap()
   let id = generator().unwrap()
   assert_eq(id.get_char(0).unwrap(), Int::unsafe_to_char(33))
   assert_eq(counter.val, 8)
@@ -349,14 +353,16 @@ test "custom_random_probe_does_not_consume_state" {
 ///|
 test "custom_random_runtime_length_validation" {
   // Probe call passes (size=1), runtime call fails with mismatched batch size.
-  let mismatched_random = fn(size : Int) -> Result[Array[Int], NanoidError] {
+  let mismatched_random = fn(
+    size : Int,
+  ) -> Result[Array[Int], @nanoid.NanoidError] {
     if size == 1 {
       Ok([42])
     } else {
       Ok(Array::make(size - 1, 42))
     }
   }
-  let generator_result = custom_random("ABC", 5, mismatched_random)
+  let generator_result = @nanoid.custom_random("ABC", 5, mismatched_random)
   assert_true(generator_result is Ok(_))
   let generator = generator_result.unwrap()
   match generator() {
@@ -381,7 +387,9 @@ test "small_size_non_power_two_alphabet_does_not_false_fail" {
   // The previous batch limit logic stopped at 3 batches and failed before this success.
   let scripted_bytes : Array[Int] = [200, 200, 200, 200, 200, 200, 5]
   let cursor : Ref[Int] = { val: 0, }
-  let scripted_random = fn(size : Int) -> Result[Array[Int], NanoidError] {
+  let scripted_random = fn(
+    size : Int,
+  ) -> Result[Array[Int], @nanoid.NanoidError] {
     let bytes = Array::make(size, 0)
     for i = 0; i < size; i = i + 1 {
       if cursor.val < scripted_bytes.length() {
@@ -394,7 +402,7 @@ test "small_size_non_power_two_alphabet_does_not_false_fail" {
     Ok(bytes)
   }
 
-  let generator = custom_random(alphabet, 1, scripted_random).unwrap()
+  let generator = @nanoid.custom_random(alphabet, 1, scripted_random).unwrap()
   match generator() {
     Ok(id) => assert_eq(id.get_char(0).unwrap(), Int::unsafe_to_char(1000 + 5))
     Err(_) => assert_true(false)
@@ -410,14 +418,14 @@ test "insufficient_randomness_triggers_error" {
   // For alphabet "abc" (length 3), the mask is 3 (binary 11).
   // Any byte where (byte & 3) is >= 3 will be rejected.
   // We return 3, which guarantees rejection.
-  let bad_random = fn(size : Int) -> Result[Array[Int], NanoidError] {
+  let bad_random = fn(size : Int) -> Result[Array[Int], @nanoid.NanoidError] {
     Ok(Array::make(size, 3))
   }
   let alphabet = "abc"
   let size = 10
 
   // Create a generator with the malicious random function.
-  let generator_result = custom_random(alphabet, size, bad_random)
+  let generator_result = @nanoid.custom_random(alphabet, size, bad_random)
   assert_true(generator_result is Ok(_))
   let generator = generator_result.unwrap()
 
@@ -441,7 +449,7 @@ test "insufficient_randomness_triggers_error" {
 ///|
 test "unicode_emoji_alphabet_support" {
   // Test single emoji alphabet
-  let emoji_gen = custom_alphabet("😀", size=5)
+  let emoji_gen = @nanoid.custom_alphabet("😀", size=5)
   assert_true(emoji_gen is Ok(_))
   let id_emoji = emoji_gen.unwrap()()
   assert_true(id_emoji is Ok(_))
@@ -454,7 +462,7 @@ test "unicode_emoji_alphabet_support" {
   assert_eq(emoji_count, 5)
 
   // Test mixed emoji alphabet
-  let mixed_emoji_gen = custom_alphabet("😀😁😂", size=10)
+  let mixed_emoji_gen = @nanoid.custom_alphabet("😀😁😂", size=10)
   assert_true(mixed_emoji_gen is Ok(_))
   let id_mixed = mixed_emoji_gen.unwrap()()
   assert_true(id_mixed is Ok(_))
@@ -466,7 +474,7 @@ test "unicode_emoji_alphabet_support" {
   assert_eq(mixed_count, 10)
 
   // Test Chinese characters
-  let chinese_gen = custom_alphabet("你好世界", size=8)
+  let chinese_gen = @nanoid.custom_alphabet("你好世界", size=8)
   assert_true(chinese_gen is Ok(_))
   let id_chinese = chinese_gen.unwrap()()
   assert_true(id_chinese is Ok(_))
@@ -478,7 +486,7 @@ test "unicode_emoji_alphabet_support" {
   assert_eq(chinese_count, 8)
 
   // Test mixed ASCII and Unicode
-  let mixed_gen = custom_alphabet("A😀B😁C", size=10)
+  let mixed_gen = @nanoid.custom_alphabet("A😀B😁C", size=10)
   assert_true(mixed_gen is Ok(_))
   let id_mixed_ascii = mixed_gen.unwrap()()
   assert_true(id_mixed_ascii is Ok(_))
@@ -505,7 +513,7 @@ test "unicode_emoji_alphabet_support" {
 ///|
 test "duplicate_character_in_alphabet" {
   // Test that duplicate ASCII characters are rejected
-  let result = custom_alphabet("ABCA", size=5)
+  let result = @nanoid.custom_alphabet("ABCA", size=5)
   assert_true(result is Err(_))
   match result {
     Err(error) => {
@@ -517,7 +525,7 @@ test "duplicate_character_in_alphabet" {
   }
 
   // Test that duplicate Unicode characters are rejected
-  let emoji_result = custom_alphabet("😀😁😀", size=5)
+  let emoji_result = @nanoid.custom_alphabet("😀😁😀", size=5)
   assert_true(emoji_result is Err(_))
   match emoji_result {
     Err(error) => {
@@ -528,7 +536,7 @@ test "duplicate_character_in_alphabet" {
   }
 
   // Test detailed error message
-  let result2 = custom_alphabet("XYZXY", size=5)
+  let result2 = @nanoid.custom_alphabet("XYZXY", size=5)
   match result2 {
     Err(error) => {
       let detailed = error.to_string()
@@ -541,9 +549,9 @@ test "duplicate_character_in_alphabet" {
 ///|
 test "duplicate_character_error_type" {
   // Verify the error type is DuplicateCharacter, not RandomGenerationError
-  let result = custom_alphabet("ABBA", size=5)
+  let result = @nanoid.custom_alphabet("ABBA", size=5)
   match result {
-    Err(NanoidError::DuplicateCharacter(char, first_pos, dup_pos)) => {
+    Err(@nanoid.NanoidError::DuplicateCharacter(char, first_pos, dup_pos)) => {
       assert_eq(char, 'B')
       assert_eq(first_pos, 1)
       assert_eq(dup_pos, 2)
@@ -558,7 +566,7 @@ test "error_type_coverage" {
   // Test all error types have proper string representations by triggering actual errors
 
   // EmptyAlphabet
-  match custom_alphabet("", size=5) {
+  match @nanoid.custom_alphabet("", size=5) {
     Err(error) => {
       assert_true(error.to_string().contains("empty"))
       assert_true(error.to_string().contains("at least one"))
@@ -567,7 +575,7 @@ test "error_type_coverage" {
   }
 
   // DuplicateCharacter
-  match custom_alphabet("ABCA", size=5) {
+  match @nanoid.custom_alphabet("ABCA", size=5) {
     Err(error) => {
       assert_true(error.to_string().contains("Duplicate"))
       assert_true(error.to_string().contains("unique"))
@@ -576,19 +584,19 @@ test "error_type_coverage" {
   }
 
   // SizeTooSmall (negative)
-  match nanoid(size=-5) {
+  match @nanoid.nanoid(size=-5) {
     Err(error) => assert_true(error.to_string().contains("negative"))
     Ok(_) => assert_true(false)
   }
 
   // SizeTooSmall (zero)
-  match nanoid(size=0) {
+  match @nanoid.nanoid(size=0) {
     Err(error) => assert_true(error.to_string().contains("size=1"))
     Ok(_) => assert_true(false)
   }
 
   // SizeTooLarge
-  match nanoid(size=1000001) {
+  match @nanoid.nanoid(size=1000001) {
     Err(error) => {
       assert_true(error.to_string().contains("1000001"))
       assert_true(error.to_string().contains("memory"))
@@ -617,7 +625,7 @@ test "unicode_alphabet_iteration_consistency" {
   assert_eq(chars[4], 'C')
 
   // Generate ID and verify using consistent iteration
-  let gen = custom_alphabet(alphabet, size=10)
+  let gen = @nanoid.custom_alphabet(alphabet, size=10)
   assert_true(gen is Ok(_))
   let id = gen.unwrap()().unwrap()
 
