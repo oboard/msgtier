@@ -1,0 +1,14 @@
+db/moon.pkg
+  h_c7606fb8f0c97c 10,15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "7006c43689e433fb33c13ab5fecc0f7e84719602",
+  "prompts": {},
+  "humans": {
+    "h_c7606fb8f0c97c": {
+      "author": "oboard <oboard@outlook.com>"
+    }
+  }
+}
