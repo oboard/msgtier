@@ -516,7 +516,7 @@ fn handle_script_message(
     Binary(raw_data) => decode_binary_payload(raw_data)
     _ => data_value
   }
-  root.spawn_bg(async fn() {
+  root.spawn_bg(() => {
     let make_script_result = fn(status : String, message : String) {
       @msgpack.map({
         "status": @msgpack.string(status),
@@ -638,7 +638,7 @@ fn handle_object_get_message(ctx : MessageContext) -> Unit {
     log_warn("object_get: empty id from \{msg.source_id}")
     return
   }
-  ctx.root.spawn_bg(async fn() {
+  ctx.root.spawn_bg(() => {
     let data_opt = get_object(object_id) catch { _ => None }
     let resp_map : Map[String, @msgpack.Value] = Map([], capacity=0)
     match data_opt {
@@ -731,7 +731,7 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
     "http_proxy_recv",
     details="req=\{correlation_id} from=\{msg.source_id} path=\{path} stream=\{prefer_stream_frame}",
   )
-  ctx.root.spawn_bg(async fn() {
+  ctx.root.spawn_bg(() => {
     let (status_code, resp_headers, resp_body) = handle_internal_http_request(
       http_method, path, headers, body,
     )
@@ -945,7 +945,7 @@ async fn send_chunked_helper(
     }
     if prefix_end < primary_end {
       let route = primary_route
-      root.spawn_bg(async fn() {
+      root.spawn_bg(() => {
         for i = prefix_end; i < primary_end; i = i + 1 {
           let start = i * app_data_handler_state.response_chunk_size
           let end = if start + app_data_handler_state.response_chunk_size >
@@ -985,7 +985,7 @@ async fn send_chunked_helper(
       if start_index >= end_index {
         continue
       }
-      root.spawn_bg(async fn() {
+      root.spawn_bg(() => {
         for i = start_index; i < end_index; i = i + 1 {
           let start = i * app_data_handler_state.response_chunk_size
           let end = if start + app_data_handler_state.response_chunk_size >
@@ -1199,7 +1199,7 @@ async fn send_file_stream_helper(
     }
     if prefix_end < primary_end {
       let route = primary_route
-      root.spawn_bg(async fn() {
+      root.spawn_bg(() => {
         try {
           let file = @fs.open(path, mode=ReadOnly)
           defer file.close()
@@ -1254,7 +1254,7 @@ async fn send_file_stream_helper(
       if start_index >= end_index {
         continue
       }
-      root.spawn_bg(async fn() {
+      root.spawn_bg(() => {
         try {
           let file = @fs.open(path, mode=ReadOnly)
           defer file.close()

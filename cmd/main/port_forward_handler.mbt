@@ -178,7 +178,7 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
     log_debug(
       "port_forward open invalid requester=\{msg.source_id} rule=\{rule_id} protocol=\{protocol}",
     )
-    ctx.root.spawn_bg(async fn() {
+    ctx.root.spawn_bg(() => {
       send_port_forward_message(
         msg.source_id,
         "port_forward_open_ack",
@@ -209,7 +209,7 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
     log_debug(
       "port_forward open rejected requester=\{msg.source_id} target=\{target_host_raw}:\{target_port} protocol=\{protocol}",
     )
-    ctx.root.spawn_bg(async fn() {
+    ctx.root.spawn_bg(() => {
       send_port_forward_message(
         msg.source_id,
         "port_forward_open_ack",
@@ -230,7 +230,7 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
     "port_forward open request requester=\{msg.source_id} rule=\{rule_id} protocol=\{protocol} target=\{target_host}:\{target_port} connection=\{connection_id}",
   )
   if is_port_forward_tcp_protocol(protocol) {
-    ctx.root.spawn_bg(async fn() {
+    ctx.root.spawn_bg(() => {
       let target = target_host + ":" + target_port.to_string()
       log_debug(
         "port_forward open begin connect requester=\{msg.source_id} target=\{target}",
@@ -316,7 +316,7 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
       }
     })
   } else if port_forward_transport(protocol) == "udp" {
-    ctx.root.spawn_bg(async fn() {
+    ctx.root.spawn_bg(() => {
       let server_addr = @socket.Addr::resolve(target_host, port=target_port) catch {
         _ => {
           log_debug(
@@ -439,7 +439,7 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
     log_debug(
       "port_forward open unsupported protocol requester=\{msg.source_id} rule=\{rule_id} protocol=\{protocol}",
     )
-    ctx.root.spawn_bg(async fn() {
+    ctx.root.spawn_bg(() => {
       send_port_forward_message(
         msg.source_id,
         "port_forward_open_ack",
@@ -524,7 +524,7 @@ fn handle_port_forward_data_message(ctx : MessageContext) -> Unit {
         match
           port_forward_registry_state.udp_forward_runtimes.get(session.rule_key) {
           Some(runtime) =>
-            ctx.root.spawn_bg(async fn() {
+            ctx.root.spawn_bg(() => {
               touch_port_forward_udp_forward_session(connection_id)
               let addr_opt : @socket.Addr? = Some(
                 @socket.Addr::parse(session.source_addr),
@@ -545,7 +545,7 @@ fn handle_port_forward_data_message(ctx : MessageContext) -> Unit {
         match
           port_forward_registry_state.udp_expose_sessions.get(connection_id) {
           Some(session) =>
-            ctx.root.spawn_bg(async fn() {
+            ctx.root.spawn_bg(() => {
               touch_port_forward_udp_expose_session(connection_id)
               session.audit.bytes_in = session.audit.bytes_in + data.length()
               session.client.send(data) catch {

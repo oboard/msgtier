@@ -115,7 +115,7 @@ impl Transport for WebSocketTransport with fn send(self, target, data) {
               (Some(root), Some(on_disconnect)) => {
                 self.reader_started[target_key] = true
                 let transport = self
-                root.spawn_bg(async fn() {
+                root.spawn_bg(() => {
                   try {
                     for ;; {
                       let msg = wrapper.conn.recv()
@@ -233,7 +233,7 @@ impl Transport for WebSocketTransport with fn send_raw_port_forward(
               (Some(root), Some(on_disconnect)) => {
                 self.reader_started[target_key] = true
                 let transport = self
-                root.spawn_bg(async fn() {
+                root.spawn_bg(() => {
                   try {
                     for ;; {
                       let msg = wrapper.conn.recv()

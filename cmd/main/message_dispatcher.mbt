@@ -169,7 +169,7 @@ fn handle_hello_message(ctx : MessageContext) -> Unit {
           match parsed {
             Some(addr) =>
               if addr.protocol == transport.protocol_type() {
-                ctx.root.spawn_bg(async fn() {
+                ctx.root.spawn_bg(() => {
                   ignore(send_message(transport, peer_url, hello_msg))
                 })
                 break
@@ -218,9 +218,7 @@ fn handle_hello_message(ctx : MessageContext) -> Unit {
       }
     }
     for _, peer_url in targets {
-      ctx.root.spawn_bg(async fn() {
-        ignore(send_message(ctx.transport, peer_url, msg))
-      })
+      ctx.root.spawn_bg(() => ignore(send_message(ctx.transport, peer_url, msg)))
     }
   }
 }
@@ -230,7 +228,7 @@ fn handle_text_message(ctx : MessageContext) -> Unit {
   match ctx.msg.body {
     String(text) => {
       log_info("Received text message: \{text}")
-      ctx.root.spawn_bg(async fn() {
+      ctx.root.spawn_bg(() => {
         send_response_message_direct(
           ctx.transport,
           ctx.sender_addr,
@@ -278,7 +276,7 @@ fn handle_ping_message(ctx : MessageContext) -> Unit {
     source_addr=ctx.local_addr,
     target_id=ctx.msg.source_id,
   )
-  ctx.root.spawn_bg(async fn() {
+  ctx.root.spawn_bg(() => {
     let ok = send_message(ctx.transport, ctx.sender_addr, reply)
     log_debug(
       "DEBUG: pong send protocol=\{ctx.transport.protocol()} to=\{ctx.sender_addr} ok=\{ok}",

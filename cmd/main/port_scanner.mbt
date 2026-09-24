@@ -789,7 +789,7 @@ fn init_port_scanner(root : @async.TaskGroup[Unit]) -> Unit {
     return
   }
   port_scanner_state.initialized = true
-  root.spawn_bg(async fn() {
+  root.spawn_bg(() => {
     // Initial scan produces the baseline broadcast set.
     ignore(perform_port_scan_cycle(true))
     for ;; {

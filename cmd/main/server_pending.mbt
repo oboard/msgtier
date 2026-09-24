@@ -68,7 +68,7 @@ async fn process_pending_message(
       if remove_pending_message(pending_msg) {
         log_info("PendingMessage: handling local loopback id=\{pending_msg.id}")
         // Use spawn_bg to avoid blocking the pending loop
-        root.spawn_bg(async fn() {
+        root.spawn_bg(() => {
           handle_incoming_message(
             pending_msg.to_msgpack(),
             local_addr,
@@ -296,11 +296,11 @@ async fn handle_pending_messages(
   let queue = @aqueue.Queue(kind=Unbounded)
   let in_queue : @set.Set[String] = @set.Set([], capacity=0)
   let mut pending_generation = get_pending_generation()
-  root.spawn_bg(async fn() {
+  root.spawn_bg(() => {
     for ;; {
       let entry : PendingEntry = queue.get()
       // Spawn a new task for each message to avoid head-of-line blocking
-      root.spawn_bg(async fn() {
+      root.spawn_bg(() => {
         process_pending_message(
           transport, my_id, local_addr, entry, root, dispatcher,
         ) catch {

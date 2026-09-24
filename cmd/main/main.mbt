@@ -43,7 +43,7 @@ async fn run_with_config(
     add_known_peer(peer_url)
   }
   init_port_forward_registry(root)
-  root.spawn_bg(async fn() { init_port_mapping_store(root) })
+  root.spawn_bg(() => init_port_mapping_store(root))
   init_port_scanner(root)
   init_foreign_network_manager()
   start_listeners(root, config.listeners, id)
@@ -111,7 +111,7 @@ async fn create_transport(scheme : String, host : String) -> &Transport {
 ///|
 fn start_http_api(root : @async.TaskGroup[Unit], web_api : String?) -> Unit {
   if web_api is Some(addr) {
-    let _ : @async.Task[Unit] = root.spawn(async fn() {
+    let _ : @async.Task[Unit] = root.spawn(() => {
       log_info("HTTP API listening on http://\{addr}")
       start_http_service(root, addr)
     })

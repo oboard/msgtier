@@ -518,7 +518,7 @@ fn ws_chat_handler(event : @mocket.WebSocketEvent) -> Unit {
           if text != "" {
             match app_state.root {
               Some(root) =>
-                root.spawn_bg(async fn() {
+                root.spawn_bg(() => {
                   match handle_ws_incoming(text) {
                     Some(kind) =>
                       if kind == "ping" {
@@ -535,7 +535,7 @@ fn ws_chat_handler(event : @mocket.WebSocketEvent) -> Unit {
           if content != "" {
             match app_state.root {
               Some(root) =>
-                root.spawn_bg(async fn() {
+                root.spawn_bg(() => {
                   match handle_ws_incoming(content) {
                     Some(kind) =>
                       if kind == "ping" {

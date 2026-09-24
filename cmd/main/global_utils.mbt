@@ -90,7 +90,7 @@ async fn reset_bench_trace() -> Unit {
 
 ///|
 fn start_bench_trace_flusher(root : @async.TaskGroup[Unit]) -> Unit {
-  let _ : @async.Task[Unit] = root.spawn(async fn() {
+  let _ : @async.Task[Unit] = root.spawn(() => {
     let mut flushed_generation = -1
     for ;; {
       let current_generation = global_state.bench_trace_generation

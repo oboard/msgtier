@@ -144,7 +144,7 @@ async fn main {
   let server = @http.Server(addr, reuse_addr=true)
 
   @async.with_task_group(async fn(root) {
-    root.spawn_bg(async fn() {
+    root.spawn_bg(() => {
       server.run_forever(async fn(request, _resp, conn) {
         let ws = @websocket.from_http_server(request, conn)
         defer ws.close()

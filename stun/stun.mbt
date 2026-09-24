@@ -439,7 +439,7 @@ async fn read_transaction_response(
   timeout_ms : Int,
 ) -> Message? {
   let buf = FixedArray::make(2048, b'\x00')
-  let result = @async.with_timeout_opt(timeout_ms, async fn() {
+  let result = @async.with_timeout_opt(timeout_ms, () => {
     for ;; {
       let (n, _) = socket.recvfrom(buf)
       guard n >= stun_header_len else { continue }

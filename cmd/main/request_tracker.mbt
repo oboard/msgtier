@@ -68,7 +68,7 @@ async fn wait_for_response(
 ) -> (Bytes, Map[String, String])? {
   match request_tracker_state.tracker.pending.get(id) {
     Some(req) => {
-      let result = @async.with_timeout_opt(timeout_ms.reinterpret_as_int(), async fn() {
+      let result = @async.with_timeout_opt(timeout_ms.reinterpret_as_int(), () => {
         for ;; {
           match req.response {
             Some(r) => break (r, req.headers)

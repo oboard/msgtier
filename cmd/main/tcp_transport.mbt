@@ -160,7 +160,7 @@ impl Transport for TcpTransport with fn send(self, target, data) {
           (Some(root), Some(on_disconnect)) => {
             self.reader_started[target] = true
             let transport = self
-            root.spawn_bg(async fn() {
+            root.spawn_bg(() => {
               let reader = BufferedReader::new(conn)
               let header_buf = FixedArray::make(4, b'\x00')
               try {
@@ -266,7 +266,7 @@ impl Transport for TcpTransport with fn send_raw_port_forward(
           (Some(root), Some(on_disconnect)) => {
             self.reader_started[target] = true
             let transport = self
-            root.spawn_bg(async fn() {
+            root.spawn_bg(() => {
               let reader = BufferedReader::new(conn)
               let header_buf = FixedArray::make(4, b'\x00')
               try {

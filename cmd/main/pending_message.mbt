@@ -177,7 +177,7 @@ async fn wait_for_pending_change(
   timeout_ms : Int,
 ) -> Int {
   ignore(
-    @async.with_timeout_opt(timeout_ms, async fn() {
+    @async.with_timeout_opt(timeout_ms, () => {
       for ;; {
         if pending_state.generation != last_generation {
           break ()

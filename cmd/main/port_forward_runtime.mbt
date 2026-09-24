@@ -160,7 +160,7 @@ fn ensure_port_forward_tcp_writer(
     return
   }
   endpoint.draining.val = true
-  root.spawn_bg(async fn() {
+  root.spawn_bg(() => {
     if !run_port_forward_tcp_writer(endpoint) {
       stop_port_forward_tcp_endpoint(endpoint)
     }
@@ -306,7 +306,7 @@ async fn run_port_forward_tcp_reader(
       // The TCP transport serialises concurrent writes; endpoint.closed is
       // checked below so a send failure terminates the loop promptly.
       let ep = endpoint
-      root.spawn_bg(async fn() {
+      root.spawn_bg(() => {
         if !send_port_forward_tcp_chunks(ep, chunk) {
           stop_port_forward_tcp_endpoint(ep)
         }
@@ -402,7 +402,7 @@ async fn accept_port_forward_tcp_connection(
     "port_forward open sent rule=\{rule.id} protocol=\{rule.protocol} peer=\{rule.peer_id} connection=\{connection_id} route=\{endpoint.route_protocol}:\{endpoint.route_addr}",
   )
   port_forward_registry_state.tcp_forward_connections[connection_id] = endpoint
-  let opened = @async.with_timeout_opt(5000, async fn() {
+  let opened = @async.with_timeout_opt(5000, () => {
     for ;; {
       match get_port_forward_tcp_forward_connection(connection_id) {
         Some(current) =>
@@ -451,7 +451,7 @@ fn start_port_forward_tcp_listener(
   root : @async.TaskGroup[Unit],
   rule : PortForwardForwardRule,
 ) -> Unit {
-  root.spawn_bg(async fn() {
+  root.spawn_bg(() => {
     let addr = make_port_forward_socket_addr(rule.listen_host, rule.listen_port)
     let server = @socket.TcpServer(@socket.Addr::parse(addr), reuse_addr=true) catch {
       _ => {
@@ -547,7 +547,7 @@ fn start_port_forward_udp_listener(
   root : @async.TaskGroup[Unit],
   rule : PortForwardForwardRule,
 ) -> Unit {
-  root.spawn_bg(async fn() {
+  root.spawn_bg(() => {
     let addr = make_port_forward_socket_addr(rule.listen_host, rule.listen_port)
     let server = @socket.UdpServer(@socket.Addr::parse(addr)) catch {
       _ => {
@@ -612,7 +612,7 @@ fn get_port_forward_active_forward_rules() -> Array[PortForwardForwardRule] {
 fn refresh_port_forward_registry(root : @async.TaskGroup[Unit]) -> Unit {
   if !port_forward_registry_state.initialized {
     port_forward_registry_state.initialized = true
-    root.spawn_bg(async fn() {
+    root.spawn_bg(() => {
       for ;; {
         sweep_port_forward_udp_sessions()
         @async.sleep(30000)

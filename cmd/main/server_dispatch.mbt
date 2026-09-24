@@ -131,7 +131,7 @@ async fn handle_incoming_message(
     }
   }
   if !msg.encrypted {
-    root.spawn_bg(async fn() { emit_ws_message(msg) })
+    root.spawn_bg(() => emit_ws_message(msg))
   }
   // Logger
   log_info(
