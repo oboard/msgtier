@@ -75,8 +75,8 @@ jobs:
           cd web/msgtier-web
           pnpm install --frozen-lockfile
           pnpm run build
-          Remove-Item -Force -ErrorAction SilentlyContinue ../../dist.zip
-          Compress-Archive -Path dist/* -DestinationPath ../../dist.zip
+          Remove-Item -Force -ErrorAction SilentlyContinue ../dist.zip
+          Compress-Archive -Path dist/* -DestinationPath ../dist.zip
 
 
       - name: Install MoonBit (Unix)
