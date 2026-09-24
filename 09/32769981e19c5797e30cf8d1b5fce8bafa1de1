@@ -1,0 +1,14 @@
+.npmrc
+  h_c7606fb8f0c97c 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "0932769981e19c5797e30cf8d1b5fce8bafa1de1",
+  "prompts": {},
+  "humans": {
+    "h_c7606fb8f0c97c": {
+      "author": "oboard <oboard@outlook.com>"
+    }
+  }
+}
