@@ -560,16 +560,12 @@ fn filter_self_and_forward_ports(
 ) -> Array[LocalPortEntry] {
   let self_ports : Map[Int, Bool] = Map([])
   for listener in get_config().listeners {
-    match @url.Url::parse(listener) {
-      Some(url) => {
-        let port_str = url.get_port()
-        if port_str != "" {
-          let p = @string.parse_int(port_str) catch { _ => -1 }
-          if p > 0 {
-            self_ports[p] = true
-          }
+    let parsed = Some(Address::parse(listener)) catch { _ => None }
+    match parsed {
+      Some(address) =>
+        if address.port != 0 {
+          self_ports[address.port.to_int()] = true
         }
-      }
       None => ()
     }
   }

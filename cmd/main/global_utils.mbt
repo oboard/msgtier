@@ -111,8 +111,9 @@ fn add_known_peers(peer_addrs : Array[String]) -> Unit {
 
 ///|
 fn is_bind_all_address(addr : String) -> Bool {
-  match @url.Url::parse(addr) {
-    Some(url) => url.hostname() == "0.0.0.0"
+  let parsed = Some(Address::parse(addr)) catch { _ => None }
+  match parsed {
+    Some(address) => address.host == "0.0.0.0"
     None => addr.contains("0.0.0.0")
   }
 }

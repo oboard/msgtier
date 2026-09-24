@@ -31,6 +31,24 @@ test "Address::parse secure WebSocket" {
 }
 
 ///|
+test "Address::parse WebSocket default ports" {
+  inspect(
+    Address::parse("ws://localhost").to_socket_string(),
+    content="localhost:80",
+  )
+  inspect(
+    Address::parse("wss://localhost").to_socket_string(),
+    content="localhost:443",
+  )
+}
+
+///|
+test "is_bind_all_address recognizes parsed endpoints" {
+  inspect(is_bind_all_address("tcp://0.0.0.0:9000"), content="true")
+  inspect(is_bind_all_address("tcp://127.0.0.1:9000"), content="false")
+}
+
+///|
 test "Address::parse QUIC" {
   let addr = Address::parse("quic://10.0.0.1:1234")
   inspect(addr.protocol, content="Quic")

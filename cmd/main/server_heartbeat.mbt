@@ -73,8 +73,9 @@ async fn handle_heartbeat(
             } else {
               transport.protocol() + "://" + addr
             }
-            if @url.Url::parse(target_addr) is Some(u) &&
-              u.scheme == transport.protocol() {
+            let parsed = Some(Address::parse(target_addr)) catch { _ => None }
+            if parsed is Some({ protocol, .. }) &&
+              protocol.to_string() == transport.protocol() {
               candidate_addrs.push(target_addr)
             }
           }

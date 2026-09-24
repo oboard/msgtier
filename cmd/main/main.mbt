@@ -68,10 +68,11 @@ fn start_listener(
   listener : String,
   id : String,
 ) -> Unit {
-  match @url.Url::parse(listener) {
-    Some(url) => {
-      let host = url.get_host()
-      let scheme = url.scheme
+  let parsed = Some(Address::parse(listener)) catch { _ => None }
+  match parsed {
+    Some(address) => {
+      let host = address.to_socket_string()
+      let scheme = address.protocol.to_string()
       let _ : @async.Task[Unit] = root.spawn(() => {
         for ;; {
           try {
