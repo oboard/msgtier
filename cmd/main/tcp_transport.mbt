@@ -17,6 +17,7 @@ let tcp_transport_state : TcpTransportState = {
 struct TcpConnection {
   socket : @socket.Tcp
   sending : Ref[Bool]
+  mut reader : @async.Task[Unit]?
 }
 
 ///|
@@ -27,6 +28,7 @@ struct TcpTransport {
   mut raw_data_handler : ((String, Int, Bytes) -> Unit)?
   mut on_disconnect : ((String) -> Unit)?
   mut root : @async.TaskGroup[Unit]?
+  mut closed : Bool
   reader_started : Map[String, Bool]
 }
 
@@ -42,6 +44,7 @@ async fn TcpTransport::TcpTransport(addr_str : String) -> TcpTransport {
     raw_data_handler: None,
     on_disconnect: None,
     root: None,
+    closed: false,
     reader_started: Map([]),
   }
 }
@@ -116,7 +119,45 @@ async fn TcpTransport::read_one_frame(
 }
 
 ///|
+/// An old reader must not evict a replacement connection for the same peer.
+fn TcpTransport::forget_connection(
+  self : TcpTransport,
+  target : String,
+  conn : @socket.Tcp,
+) -> Unit {
+  if self.connections.get(target) is Some(current) &&
+    physical_equal(current.socket, conn) {
+    self.connections.remove(target)
+    self.reader_started.remove(target)
+    if self.on_disconnect is Some(callback) {
+      callback(target)
+    }
+  }
+}
+
+///|
+fn TcpTransport::close_connection(
+  self : TcpTransport,
+  target : String,
+  conn : @socket.Tcp,
+) -> Unit {
+  if self.connections.get(target) is Some(current) &&
+    physical_equal(current.socket, conn) {
+    // Closing a descriptor alone does not cancel a suspended reader task.
+    if current.reader is Some(task) {
+      current.reader = None
+      task.cancel()
+    }
+  }
+  conn.close()
+  self.forget_connection(target, conn)
+}
+
+///|
 impl Transport for TcpTransport with fn send(self, target, data) {
+  if self.closed {
+    return false
+  }
   let target = target.strip_prefix("tcp://").unwrap_or(target).to_owned()
 
   // Framing: 4 bytes length header sent separately from data to avoid an extra copy
@@ -130,6 +171,10 @@ impl Transport for TcpTransport with fn send(self, target, data) {
 
   // Retry loop (max 2 attempts)
   for i = 0; i < 2; i = i + 1 {
+    if self.closed {
+      return false
+    }
+    let mut used_connection : @socket.Tcp? = None
     try {
       let mut conn_opt = match self.connections.get(target) {
         Some(wrapper) => Some(wrapper)
@@ -139,28 +184,57 @@ impl Transport for TcpTransport with fn send(self, target, data) {
       if conn_opt is None {
         try {
           let target_addr = @socket.Addr::parse(target)
-          let c = @socket.Tcp::connect(target_addr)
-          let wrapper = TcpConnection::{ socket: c, sending: Ref(false), }
-          self.connections[target] = wrapper
-          conn_opt = Some(wrapper)
-          created = true
+          let c = @async.with_timeout(5000, () => {
+            @socket.Tcp::connect(target_addr)
+          })
+          // The listener may have stopped while this dial was suspended.
+          if self.closed {
+            c.close()
+            return false
+          }
+          // Another sender may have connected while this dial was suspended.
+          // Reuse its connection and release the redundant socket immediately.
+          match self.connections.get(target) {
+            Some(existing) => {
+              c.close()
+              conn_opt = Some(existing)
+            }
+            None => {
+              let wrapper = TcpConnection::{
+                socket: c,
+                sending: Ref(false),
+                reader: None,
+              }
+              self.connections[target] = wrapper
+              conn_opt = Some(wrapper)
+              created = true
+            }
+          }
         } catch {
           _ => ()
         }
       }
-      guard conn_opt is Some({ socket: conn, sending, }) else {
+      guard conn_opt is Some(wrapper) else {
         if i == 1 {
           return false
         }
         continue
       }
+      let conn = wrapper.socket
+      let sending = wrapper.sending
+      used_connection = Some(conn)
 
       if created && self.reader_started.get(target) is None {
         match (self.root, self.on_disconnect) {
-          (Some(root), Some(on_disconnect)) => {
+          (Some(root), Some(_)) => {
             self.reader_started[target] = true
             let transport = self
-            root.spawn_bg(() => {
+            let task = root.spawn(() => {
+              defer {
+                wrapper.reader = None
+                conn.close()
+                transport.forget_connection(target, conn)
+              }
               let reader = BufferedReader::new(conn)
               let header_buf = FixedArray::make(4, b'\x00')
               try {
@@ -172,18 +246,22 @@ impl Transport for TcpTransport with fn send(self, target, data) {
               } catch {
                 _ => ()
               }
-              transport.connections.remove(target)
-              transport.reader_started.remove(target)
-              on_disconnect(target)
             })
+            if self.connections.get(target) is Some(current) &&
+              physical_equal(current.socket, conn) {
+              wrapper.reader = Some(task)
+            }
           }
           _ => ()
         }
       }
 
       // Spinlock to prevent concurrent writes
-      while sending.val {
+      while sending.val && !self.closed {
         @async.sleep(1)
+      }
+      if self.closed {
+        return false
       }
       sending.val = true
       errdefer {
@@ -195,8 +273,9 @@ impl Transport for TcpTransport with fn send(self, target, data) {
       return true
     } catch {
       _ => {
-        self.connections.remove(target)
-        self.reader_started.remove(target)
+        if used_connection is Some(conn) {
+          self.close_connection(target, conn)
+        }
         log_warn("TCP send failed for target \{target}: connection closed")
       }
     }
@@ -212,6 +291,9 @@ impl Transport for TcpTransport with fn send_raw_port_forward(
   seq,
   data,
 ) {
+  if self.closed {
+    return false
+  }
   let target = target.strip_prefix("tcp://").unwrap_or(target).to_owned()
   let id_bytes = @utf8.encode(connection_id)
   let id_len = id_bytes.length()
@@ -236,6 +318,10 @@ impl Transport for TcpTransport with fn send_raw_port_forward(
 
   // Retry loop (max 2 attempts)
   for i = 0; i < 2; i = i + 1 {
+    if self.closed {
+      return false
+    }
+    let mut used_connection : @socket.Tcp? = None
     try {
       let mut conn_opt = match self.connections.get(target) {
         Some(wrapper) => Some(wrapper)
@@ -245,28 +331,57 @@ impl Transport for TcpTransport with fn send_raw_port_forward(
       if conn_opt is None {
         try {
           let target_addr = @socket.Addr::parse(target)
-          let c = @socket.Tcp::connect(target_addr)
-          let wrapper = TcpConnection::{ socket: c, sending: Ref(false), }
-          self.connections[target] = wrapper
-          conn_opt = Some(wrapper)
-          created = true
+          let c = @async.with_timeout(5000, () => {
+            @socket.Tcp::connect(target_addr)
+          })
+          // The listener may have stopped while this dial was suspended.
+          if self.closed {
+            c.close()
+            return false
+          }
+          // Another sender may have connected while this dial was suspended.
+          // Reuse its connection and release the redundant socket immediately.
+          match self.connections.get(target) {
+            Some(existing) => {
+              c.close()
+              conn_opt = Some(existing)
+            }
+            None => {
+              let wrapper = TcpConnection::{
+                socket: c,
+                sending: Ref(false),
+                reader: None,
+              }
+              self.connections[target] = wrapper
+              conn_opt = Some(wrapper)
+              created = true
+            }
+          }
         } catch {
           _ => ()
         }
       }
-      guard conn_opt is Some({ socket: conn, sending, }) else {
+      guard conn_opt is Some(wrapper) else {
         if i == 1 {
           return false
         }
         continue
       }
+      let conn = wrapper.socket
+      let sending = wrapper.sending
+      used_connection = Some(conn)
 
       if created && self.reader_started.get(target) is None {
         match (self.root, self.on_disconnect) {
-          (Some(root), Some(on_disconnect)) => {
+          (Some(root), Some(_)) => {
             self.reader_started[target] = true
             let transport = self
-            root.spawn_bg(() => {
+            let task = root.spawn(() => {
+              defer {
+                wrapper.reader = None
+                conn.close()
+                transport.forget_connection(target, conn)
+              }
               let reader = BufferedReader::new(conn)
               let header_buf = FixedArray::make(4, b'\x00')
               try {
@@ -278,17 +393,21 @@ impl Transport for TcpTransport with fn send_raw_port_forward(
               } catch {
                 _ => ()
               }
-              transport.connections.remove(target)
-              transport.reader_started.remove(target)
-              on_disconnect(target)
             })
+            if self.connections.get(target) is Some(current) &&
+              physical_equal(current.socket, conn) {
+              wrapper.reader = Some(task)
+            }
           }
           _ => ()
         }
       }
 
-      while sending.val {
+      while sending.val && !self.closed {
         @async.sleep(1)
+      }
+      if self.closed {
+        return false
       }
       sending.val = true
       errdefer {
@@ -301,8 +420,9 @@ impl Transport for TcpTransport with fn send_raw_port_forward(
       return true
     } catch {
       _ => {
-        self.connections.remove(target)
-        self.reader_started.remove(target)
+        if used_connection is Some(conn) {
+          self.close_connection(target, conn)
+        }
         log_warn("TCP raw send failed for target \{target}")
       }
     }
@@ -312,7 +432,9 @@ impl Transport for TcpTransport with fn send_raw_port_forward(
 
 ///|
 impl Transport for TcpTransport with fn set_raw_data_handler(self, handler) -> Unit {
-  self.raw_data_handler = Some(handler)
+  if !self.closed {
+    self.raw_data_handler = Some(handler)
+  }
 }
 
 ///|
@@ -322,30 +444,57 @@ impl Transport for TcpTransport with fn listen(
   handler,
   on_disconnect,
 ) {
+  if self.closed {
+    return
+  }
   self.handler = Some(handler)
   self.on_disconnect = Some(on_disconnect)
   self.root = Some(root)
+  defer {
+    self.closed = true
+    for (target, wrapper) in self.connections.to_array() {
+      self.close_connection(target, wrapper.socket)
+    }
+    // The handler captures this transport; clear it to break the RC cycle.
+    self.handler = None
+    self.raw_data_handler = None
+    self.on_disconnect = None
+    self.root = None
+  }
   self.server.run_forever(async fn(conn, remote_addr) {
     let remote_addr_str = remote_addr.to_string()
-    self.connections[remote_addr_str] = TcpConnection::{
+    let wrapper = TcpConnection::{
       socket: conn,
       sending: Ref(false),
+      reader: None,
     }
+    self.connections[remote_addr_str] = wrapper
     self.reader_started[remote_addr_str] = true
-    let reader = BufferedReader::new(conn)
-    let header_buf = FixedArray::make(4, b'\x00')
-    try {
-      for ;; {
-        if !self.read_one_frame(reader, header_buf, remote_addr_str) {
-          break
-        }
-      }
-    } catch {
-      _ => ()
+    defer {
+      wrapper.reader = None
+      self.forget_connection(remote_addr_str, conn)
     }
-    self.connections.remove(remote_addr_str)
-    self.reader_started.remove(remote_addr_str)
-    on_disconnect(remote_addr_str)
+    // Track accepted readers too, so a concurrent send failure can cancel the
+    // pending read before closing its descriptor. run_forever owns the socket.
+    let task = root.spawn(() => {
+      defer {
+        wrapper.reader = None
+      }
+      let reader = BufferedReader::new(conn)
+      let header_buf = FixedArray::make(4, b'\x00')
+      try {
+        for ;; {
+          if !self.read_one_frame(reader, header_buf, remote_addr_str) {
+            break
+          }
+        }
+      } catch {
+        _ => ()
+      }
+    })
+    wrapper.reader = Some(task)
+    defer task.cancel()
+    task.wait()
   })
 }
 

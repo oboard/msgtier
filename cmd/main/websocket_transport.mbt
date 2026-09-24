@@ -3,6 +3,7 @@ struct WebSocketConnWrapper {
   conn : @websocket.Conn
   sending : Ref[Bool]
   broken : Ref[Bool]
+  mut reader : @async.Task[Unit]?
 }
 
 ///|
@@ -13,6 +14,7 @@ struct WebSocketTransport {
   mut raw_data_handler : ((String, Int, Bytes) -> Unit)?
   mut on_disconnect : ((String) -> Unit)?
   mut root : @async.TaskGroup[Unit]?
+  mut closed : Bool
   reader_started : Map[String, Bool]
 }
 
@@ -30,6 +32,7 @@ async fn WebSocketTransport::WebSocketTransport(
     raw_data_handler: None,
     on_disconnect: None,
     root: None,
+    closed: false,
     reader_started: Map([]),
   }
 }
@@ -81,7 +84,41 @@ fn WebSocketTransport::dispatch_ws_frame(
 }
 
 ///|
+fn WebSocketTransport::forget_connection(
+  self : WebSocketTransport,
+  target : String,
+  wrapper : WebSocketConnWrapper,
+) -> Unit {
+  if self.connections.get(target) is Some(current) &&
+    physical_equal(current, wrapper) {
+    self.connections.remove(target)
+    self.reader_started.remove(target)
+    if self.on_disconnect is Some(callback) {
+      callback(target)
+    }
+  }
+}
+
+///|
+fn WebSocketTransport::close_connection(
+  self : WebSocketTransport,
+  target : String,
+  wrapper : WebSocketConnWrapper,
+) -> Unit {
+  wrapper.broken.val = true
+  if wrapper.reader is Some(task) {
+    wrapper.reader = None
+    task.cancel()
+  }
+  wrapper.conn.close()
+  self.forget_connection(target, wrapper)
+}
+
+///|
 impl Transport for WebSocketTransport with fn send(self, target, data) {
+  if self.closed {
+    return false
+  }
   let mut target_clean = target.strip_prefix("ws://").unwrap_or(target)
   if target_clean.has_suffix("/") {
     target_clean = target_clean[0:target_clean.length() - 1]
@@ -89,20 +126,37 @@ impl Transport for WebSocketTransport with fn send(self, target, data) {
   let target_key = target_clean.to_owned()
 
   for i = 0; i < 2; i = i + 1 {
+    if self.closed {
+      return false
+    }
     let mut wrapper_opt = self.connections.get(target_key)
     let mut created = false
     if wrapper_opt is None {
       try {
         let url = "ws://" + target_key
-        let ws = @websocket.connect(url)
-        let wrapper = WebSocketConnWrapper::{
-          conn: ws,
-          sending: { val: false, },
-          broken: { val: false, },
+        let ws = @async.with_timeout(5000, () => @websocket.connect(url))
+        // Handshake completion must not resurrect a stopped transport.
+        if self.closed {
+          ws.close()
+          return false
         }
-        self.connections[target_key] = wrapper
-        wrapper_opt = Some(wrapper)
-        created = true
+        match self.connections.get(target_key) {
+          Some(existing) => {
+            ws.close()
+            wrapper_opt = Some(existing)
+          }
+          None => {
+            let wrapper = WebSocketConnWrapper::{
+              conn: ws,
+              sending: { val: false, },
+              broken: { val: false, },
+              reader: None,
+            }
+            self.connections[target_key] = wrapper
+            wrapper_opt = Some(wrapper)
+            created = true
+          }
+        }
       } catch {
         _ => ()
       }
@@ -112,10 +166,16 @@ impl Transport for WebSocketTransport with fn send(self, target, data) {
         if created {
           if self.reader_started.get(target_key) is None {
             match (self.root, self.on_disconnect) {
-              (Some(root), Some(on_disconnect)) => {
+              (Some(root), Some(_)) => {
                 self.reader_started[target_key] = true
                 let transport = self
-                root.spawn_bg(() => {
+                let task = root.spawn(() => {
+                  defer {
+                    wrapper.reader = None
+                    wrapper.broken.val = true
+                    wrapper.conn.close()
+                    transport.forget_connection(target_key, wrapper)
+                  }
                   try {
                     for ;; {
                       let msg = wrapper.conn.recv()
@@ -134,30 +194,33 @@ impl Transport for WebSocketTransport with fn send(self, target, data) {
                       }
                     }
                   } catch {
-                    _ => {
-                      wrapper.broken.val = true
-                      transport.connections.remove(target_key)
-                      transport.reader_started.remove(target_key)
-                      on_disconnect(target_key)
-                    }
+                    _ => ()
                   }
                 })
+                if !wrapper.broken.val {
+                  wrapper.reader = Some(task)
+                }
               }
               _ => ()
             }
           }
         }
 
-        while wrapper.sending.val {
+        while wrapper.sending.val && !self.closed {
           @async.sleep(5)
         }
 
+        if self.closed {
+          return false
+        }
         if wrapper.broken.val {
-          self.connections.remove(target_key)
-          self.reader_started.remove(target_key)
+          self.close_connection(target_key, wrapper)
           continue
         }
         wrapper.sending.val = true
+        defer {
+          wrapper.sending.val = false
+        }
         try {
           wrapper.conn.send_binary(data)
           wrapper.sending.val = false
@@ -165,9 +228,7 @@ impl Transport for WebSocketTransport with fn send(self, target, data) {
         } catch {
           _ => {
             wrapper.sending.val = false
-            wrapper.broken.val = true
-            self.connections.remove(target_key)
-            self.reader_started.remove(target_key)
+            self.close_connection(target_key, wrapper)
           }
         }
       }
@@ -185,6 +246,9 @@ impl Transport for WebSocketTransport with fn send_raw_port_forward(
   seq,
   data,
 ) {
+  if self.closed {
+    return false
+  }
   let mut target_clean = target.strip_prefix("ws://").unwrap_or(target)
   if target_clean.has_suffix("/") {
     target_clean = target_clean[0:target_clean.length() - 1]
@@ -207,20 +271,37 @@ impl Transport for WebSocketTransport with fn send_raw_port_forward(
   let frame_bytes = frame.unsafe_reinterpret_as_bytes()
 
   for i = 0; i < 2; i = i + 1 {
+    if self.closed {
+      return false
+    }
     let mut wrapper_opt = self.connections.get(target_key)
     let mut created = false
     if wrapper_opt is None {
       try {
         let url = "ws://" + target_key
-        let ws = @websocket.connect(url)
-        let wrapper = WebSocketConnWrapper::{
-          conn: ws,
-          sending: { val: false, },
-          broken: { val: false, },
+        let ws = @async.with_timeout(5000, () => @websocket.connect(url))
+        // Handshake completion must not resurrect a stopped transport.
+        if self.closed {
+          ws.close()
+          return false
         }
-        self.connections[target_key] = wrapper
-        wrapper_opt = Some(wrapper)
-        created = true
+        match self.connections.get(target_key) {
+          Some(existing) => {
+            ws.close()
+            wrapper_opt = Some(existing)
+          }
+          None => {
+            let wrapper = WebSocketConnWrapper::{
+              conn: ws,
+              sending: { val: false, },
+              broken: { val: false, },
+              reader: None,
+            }
+            self.connections[target_key] = wrapper
+            wrapper_opt = Some(wrapper)
+            created = true
+          }
+        }
       } catch {
         _ => ()
       }
@@ -230,10 +311,16 @@ impl Transport for WebSocketTransport with fn send_raw_port_forward(
         if created {
           if self.reader_started.get(target_key) is None {
             match (self.root, self.on_disconnect) {
-              (Some(root), Some(on_disconnect)) => {
+              (Some(root), Some(_)) => {
                 self.reader_started[target_key] = true
                 let transport = self
-                root.spawn_bg(() => {
+                let task = root.spawn(() => {
+                  defer {
+                    wrapper.reader = None
+                    wrapper.broken.val = true
+                    wrapper.conn.close()
+                    transport.forget_connection(target_key, wrapper)
+                  }
                   try {
                     for ;; {
                       let msg = wrapper.conn.recv()
@@ -252,30 +339,33 @@ impl Transport for WebSocketTransport with fn send_raw_port_forward(
                       }
                     }
                   } catch {
-                    _ => {
-                      wrapper.broken.val = true
-                      transport.connections.remove(target_key)
-                      transport.reader_started.remove(target_key)
-                      on_disconnect(target_key)
-                    }
+                    _ => ()
                   }
                 })
+                if !wrapper.broken.val {
+                  wrapper.reader = Some(task)
+                }
               }
               _ => ()
             }
           }
         }
 
-        while wrapper.sending.val {
+        while wrapper.sending.val && !self.closed {
           @async.sleep(5)
         }
 
+        if self.closed {
+          return false
+        }
         if wrapper.broken.val {
-          self.connections.remove(target_key)
-          self.reader_started.remove(target_key)
+          self.close_connection(target_key, wrapper)
           continue
         }
         wrapper.sending.val = true
+        defer {
+          wrapper.sending.val = false
+        }
         try {
           wrapper.conn.send_binary(frame_bytes)
           wrapper.sending.val = false
@@ -283,9 +373,7 @@ impl Transport for WebSocketTransport with fn send_raw_port_forward(
         } catch {
           _ => {
             wrapper.sending.val = false
-            wrapper.broken.val = true
-            self.connections.remove(target_key)
-            self.reader_started.remove(target_key)
+            self.close_connection(target_key, wrapper)
           }
         }
       }
@@ -300,7 +388,9 @@ impl Transport for WebSocketTransport with fn set_raw_data_handler(
   self,
   handler,
 ) -> Unit {
-  self.raw_data_handler = Some(handler)
+  if !self.closed {
+    self.raw_data_handler = Some(handler)
+  }
 }
 
 ///|
@@ -310,9 +400,22 @@ impl Transport for WebSocketTransport with fn listen(
   handler,
   on_disconnect,
 ) {
+  if self.closed {
+    return
+  }
   self.handler = Some(handler)
   self.on_disconnect = Some(on_disconnect)
   self.root = Some(root)
+  defer {
+    self.closed = true
+    for (target, wrapper) in self.connections.to_array() {
+      self.close_connection(target, wrapper)
+    }
+    self.handler = None
+    self.raw_data_handler = None
+    self.on_disconnect = None
+    self.root = None
+  }
   self.server.run_forever(async fn(request, _resp, conn) {
     let client_addr = conn.client_addr().to_string()
     try {
@@ -321,29 +424,41 @@ impl Transport for WebSocketTransport with fn listen(
         conn: ws,
         sending: { val: false, },
         broken: { val: false, },
+        reader: None,
       }
       self.connections[client_addr] = wrapper
       self.reader_started[client_addr] = true
       defer {
+        wrapper.reader = None
         ws.close()
         wrapper.broken.val = true
-        self.connections.remove(client_addr)
-        self.reader_started.remove(client_addr)
-        on_disconnect(client_addr)
+        self.forget_connection(client_addr, wrapper)
       }
-      for ;; {
-        let msg = ws.recv()
-        match msg.kind {
-          Text => {
-            let text = msg.read_all().text()
-            self.dispatch_ws_frame(@utf8.encode(text), client_addr)
-          }
-          Binary => {
-            let bytes = msg.read_all().binary()
-            self.dispatch_ws_frame(bytes, client_addr)
-          }
+      let task = root.spawn(() => {
+        defer {
+          wrapper.reader = None
         }
-      }
+        try {
+          for ;; {
+            let msg = ws.recv()
+            match msg.kind {
+              Text => {
+                let text = msg.read_all().text()
+                self.dispatch_ws_frame(@utf8.encode(text), client_addr)
+              }
+              Binary => {
+                let bytes = msg.read_all().binary()
+                self.dispatch_ws_frame(bytes, client_addr)
+              }
+            }
+          }
+        } catch {
+          _ => ()
+        }
+      })
+      wrapper.reader = Some(task)
+      defer task.cancel()
+      task.wait()
     } catch {
       _ => ()
     }

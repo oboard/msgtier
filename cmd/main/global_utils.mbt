@@ -6,8 +6,6 @@ struct GlobalState {
   transports : Map[String, &Transport]
   hello_times : Map[String, UInt64]
   hello_callback_times : Map[String, UInt64]
-  mut bench_trace_lines : Array[String]
-  mut bench_trace_generation : Int
 }
 
 ///|
@@ -18,8 +16,6 @@ let global_state : GlobalState = {
   transports: Map([]),
   hello_times: Map([]),
   hello_callback_times: Map([]),
-  bench_trace_lines: [],
-  bench_trace_generation: 0,
 }
 
 ///|
@@ -67,56 +63,6 @@ fn log_warn(msg : &Show) -> Unit {
 ///|
 fn log_error(msg : &Show) -> Unit {
   log_with_level(Error, msg.to_string())
-}
-
-///|
-fn bench_trace_path() -> String {
-  "/tmp/msgtier-bench-" + get_config().id + ".log"
-}
-
-///|
-async fn reset_bench_trace() -> Unit {
-  global_state.bench_trace_lines = []
-  global_state.bench_trace_generation += 1
-  @fs.write_file(
-    bench_trace_path(),
-    b"",
-    create_mode=@fs.CreateOrTruncate,
-    permission=0o644,
-  ) catch {
-    _ => ()
-  }
-}
-
-///|
-fn start_bench_trace_flusher(root : @async.TaskGroup[Unit]) -> Unit {
-  let _ : @async.Task[Unit] = root.spawn(() => {
-    let mut flushed_generation = -1
-    for ;; {
-      let current_generation = global_state.bench_trace_generation
-      if current_generation != flushed_generation {
-        let contents = global_state.bench_trace_lines.join("")
-        @fs.write_file(
-          bench_trace_path(),
-          @utf8.encode(contents),
-          create_mode=@fs.CreateOrTruncate,
-          permission=0o644,
-        ) catch {
-          _ => ()
-        }
-        flushed_generation = current_generation
-      }
-      @async.sleep(20)
-    }
-  })
-}
-
-///|
-fn log_bench(stage : String, details? : String = "") -> Unit {
-  let suffix = if details == "" { "" } else { " " + details }
-  let line = "BENCH stage=\{stage} ts=\{@env.now()}\{suffix}\n"
-  global_state.bench_trace_lines.push(line)
-  global_state.bench_trace_generation += 1
 }
 
 ///|
@@ -393,19 +339,12 @@ fn record_hello_time(peer_id : String) -> Unit {
 fn check_and_mark_hello(key : String, ttl_ms : UInt64) -> Bool {
   let now = @env.now()
   let cache = global_state.hello_callback_times
-  match cache.get(key) {
-    Some(last_time) =>
-      if now - last_time <= ttl_ms {
-        true
-      } else {
-        cache[key] = now
-        false
-      }
-    None => {
-      cache[key] = now
-      false
-    }
+  // Store expiration rather than arrival time so cleanup respects each TTL.
+  if cache.get(key) is Some(expires_at) && now <= expires_at {
+    return true
   }
+  cache[key] = now + ttl_ms
+  false
 }
 
 ///|

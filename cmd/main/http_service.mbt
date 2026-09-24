@@ -344,6 +344,7 @@ async fn send_message_handler(
   match (target_peer, is_self) {
     (Some(_), _) | (None, true) => {
       add_pending_request(msg.id)
+      defer remove_pending_request(msg.id)
       add_pending_message(msg)
       ignore(send_message_now(target_id, msg))
       match wait_for_response(msg.id, timeout_ms_uint) {

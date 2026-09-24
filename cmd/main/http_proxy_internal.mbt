@@ -112,6 +112,7 @@ async fn proxy_http_request(
   let timeout_ms_uint = timeout_ms.reinterpret_as_uint()
   let req_id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
   add_pending_request(req_id)
+  defer remove_pending_request(req_id)
   let body_map : Map[String, @msgpack.Value] = Map([], capacity=0)
   body_map["method"] = @msgpack.string(http_method)
   body_map["path"] = @msgpack.string(path)

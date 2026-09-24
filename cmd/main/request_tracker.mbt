@@ -68,7 +68,8 @@ async fn wait_for_response(
 ) -> (Bytes, Map[String, String])? {
   match request_tracker_state.tracker.pending.get(id) {
     Some(req) => {
-      let result = @async.with_timeout_opt(timeout_ms.reinterpret_as_int(), () => {
+      defer remove_pending_request(id)
+      @async.with_timeout_opt(timeout_ms.reinterpret_as_int(), () => {
         for ;; {
           match req.response {
             Some(r) => break (r, req.headers)
@@ -76,12 +77,15 @@ async fn wait_for_response(
           }
         }
       })
-      request_tracker_state.tracker.pending.remove(id)
-      result
     }
     None => {
       log_warn("RequestTracker: wait id=\{id} not found")
       None
     }
   }
+}
+
+///|
+fn remove_pending_request(id : String) -> Unit {
+  request_tracker_state.tracker.pending.remove(id)
 }

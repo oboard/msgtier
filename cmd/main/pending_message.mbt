@@ -82,7 +82,12 @@ fn add_pending_message(msg : Message) -> Unit {
   let messages = pending_state.messages
   if msg.kind == "sync" {
     messages.retain(fn(entry) {
-      entry.msg.kind != "sync" || entry.msg.target_id != msg.target_id
+      if entry.msg.kind == "sync" && entry.msg.target_id == msg.target_id {
+        clear_message_send_state(entry.msg.id)
+        false
+      } else {
+        true
+      }
     })
   }
   messages.push({
@@ -114,6 +119,7 @@ fn take_pending_messages(
         log_debug(
           "Pending message \{entry.msg.id} timed out (age: \{now - entry.msg.timestamp}ms > \{timeout}ms), removed",
         )
+        clear_message_send_state(entry.msg.id)
         messages.remove(i) |> ignore
       } else if predicate(entry) {
         matched.push(entry)

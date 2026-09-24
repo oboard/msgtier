@@ -19,7 +19,8 @@ fn check_and_mark_received(id : String, timestamp : UInt64) -> Bool {
     return true
   }
   let cache = server_state.received_message_cache
-  if cache.contains(id) {
+  if cache.get(id) is Some(seen_at) &&
+    (now < seen_at || now - seen_at <= 30000UL) {
     return true
   }
   cache[id] = now
@@ -125,6 +126,10 @@ async fn start_listener_service(
   let dispatcher = Ref(build_message_dispatcher())
   let local_addr = transport.protocol() + "://" + transport.local_addr()
   register_transport(transport)
+  defer (if global_state.transports.get(local_addr) is Some(current) &&
+    physical_equal(current, transport) {
+    global_state.transports.remove(local_addr)
+  })
   log_debug(
     "DEBUG: start_listener_service protocol=\{transport.protocol()} local=\{local_addr} id=\{my_id}",
   )
@@ -145,7 +150,7 @@ async fn start_listener_service(
 
   // Listen loop
   transport.listen(
-    root,
+    child,
     fn(bytes, sender) {
       let sender = transport.protocol() + "://" + sender
       root.spawn_bg(() => {

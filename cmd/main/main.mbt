@@ -37,6 +37,7 @@ async fn run_with_config(
   set_config(config)
   reset_bench_trace()
   start_bench_trace_flusher(root)
+  start_message_cache_cleanup(root)
   log_debug(ToJson::to_json(config).stringify(indent=2))
   let id = config.id
   for peer_url in config.peers {
