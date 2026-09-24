@@ -10,6 +10,7 @@ import {
   "moonbitlang/async@0.22.4",
   "moonbit-community/zipc@0.2.2",
   "moonbit-community/unicode@0.5.1",
+  "moonbit-community/idna@0.5.1",
 }
 
 readme = "README.mbt.md"
