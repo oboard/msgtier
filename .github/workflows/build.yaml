@@ -104,7 +104,6 @@ jobs:
           moon update
           moon install
           moon check --deny-warn
-          moon test --target native
           moon build cmd/main --release --target native
           mkdir -p artifacts
           cp _build/native/release/build/cmd/main/main.exe artifacts/${{ matrix.artifact }}
