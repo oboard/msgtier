@@ -7,12 +7,12 @@ import {
 options(
   "pre-build": [
     {
-      "command": "moon runwasm oboard/morm/mormgen $input -o $output && moonfmt -w $output",
+      "command": "moonx oboard/morm/mormgen $input -o $output && moonfmt -w $output",
       "input": "message.mbt",
       "output": "message.g.mbt",
     },
     {
-      "command": "moon runwasm oboard/morm/mormgen $input -o $output && moonfmt -w $output",
+      "command": "moonx oboard/morm/mormgen $input -o $output && moonfmt -w $output",
       "input": "message_mapper.mbt",
       "output": "message_mapper.g.mbt",
     },
