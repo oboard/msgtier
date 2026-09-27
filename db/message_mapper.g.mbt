@@ -22,3 +22,6 @@ pub impl MessageMapper for MessageMapperImpl with fn save(
   }
   panic()
 }
+
+///|
+pub extend MessageMapperImpl with MessageMapper::{save}

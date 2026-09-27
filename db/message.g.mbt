@@ -164,3 +164,6 @@ pub impl @morm/engine.FromParam for Message with fn from_param(value) {
     _ => raise ParamDecodeError("Message::from_param: expected Json object row")
   }
 }
+
+///|
+pub extend Message with @morm/engine.FromParam::{from_param}
