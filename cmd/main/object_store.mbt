@@ -122,7 +122,7 @@ async fn save_object_in_dir(
   }
   let buf = FixedArray::make(65536, b'\x00')
   for ;; {
-    let n = reader.read(buf)
+    let n = @async.with_timeout(60000, () => reader.read(buf))
     if n == 0 {
       break
     }

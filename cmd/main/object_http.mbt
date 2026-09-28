@@ -1,93 +1,138 @@
 ///|
-fn parse_range_header(
-  headers : Map[String, String],
-  total_len : Int,
-) -> (Int, Int)? {
-  let range = match headers.get("Range") {
-    Some(v) => Some(v)
-    None => headers.get("range")
+struct ObjectFileSlice {
+  path : String
+  offset : Int64
+  length : Int64
+}
+
+///|
+struct ObjectDownloadPlan {
+  status : Int
+  headers : Map[String, String]
+  offset : Int64
+  length : Int64
+}
+
+///|
+enum ObjectRange {
+  Whole
+  Partial(Int64, Int64)
+  Unsatisfiable
+} derive(Debug, Eq)
+
+///|
+fn object_header(headers : Map[String, String], name : String) -> String? {
+  for key, value in headers {
+    if key.to_lower() == name { return Some(value) }
   }
-  match range {
-    Some(r) =>
-      if !r.has_prefix("bytes=") || r.length() <= 6 {
-        None
-      } else {
-        let spec = r.replace(old="bytes=", new="")
-        let parts = []
-        for part in spec.split("-") {
-          parts.push(part.to_owned())
-        }
-        if parts.length() != 2 {
-          None
-        } else {
-          let start_str = parts[0]
-          let end_str = parts[1]
-          let start_opt : Result[Int, _] = Ok(@string.parse_int(start_str)) catch {
-            e => Err(e)
-          }
-          let end_opt : Result[Int, _] = Ok(@string.parse_int(end_str)) catch {
-            e => Err(e)
-          }
-          match (start_opt, end_opt) {
-            (Ok(start), Ok(end)) =>
-              if start < 0 {
-                None
-              } else {
-                let start = if start >= total_len { total_len } else { start }
-                let end = if end < start { start } else { end }
-                let end = if end >= total_len { total_len - 1 } else { end }
-                if start >= total_len {
-                  None
-                } else {
-                  Some((start, end))
-                }
-              }
-            (Ok(start), Err(_)) =>
-              if start < 0 || start >= total_len {
-                None
-              } else {
-                Some((start, total_len - 1))
-              }
-            (Err(_), Ok(suffix_len)) =>
-              if suffix_len <= 0 || suffix_len > total_len {
-                None
-              } else {
-                Some((total_len - suffix_len, total_len - 1))
-              }
-            _ => None
-          }
-        }
-      }
-    None => None
+  None
+}
+
+///|
+fn parse_object_decimal(value : String) -> Int64? {
+  if value.is_empty() { return None }
+  for char in value {
+    if char < '0' || char > '9' { return None }
+  }
+  Some(@string.parse_int64(value)) catch { _ => None }
+}
+
+///|
+fn object_range(headers : Map[String, String], total : Int64) -> ObjectRange {
+  let raw = match object_header(headers, "range") {
+    Some(raw) if raw.has_prefix("bytes=") => raw[6:].to_owned()
+    _ => return Whole
+  }
+  let (start_text, end_text) = match split_once(raw, "-") {
+    Some(parts) => parts
+    None => return Whole
+  }
+  if start_text == "" {
+    let suffix = match parse_object_decimal(end_text) {
+      Some(suffix) => suffix
+      None => return Whole
+    }
+    if suffix == 0L || total == 0L { return Unsatisfiable }
+    let start = if suffix >= total { 0L } else { total - suffix }
+    return Partial(start, total - 1L)
+  }
+  let start = match parse_object_decimal(start_text) {
+    Some(start) => start
+    None => return Whole
+  }
+  let end = if end_text == "" {
+    total - 1L
+  } else {
+    match parse_object_decimal(end_text) {
+      Some(end) => end
+      None => return Whole
+    }
+  }
+  if start >= total || start > end { return Unsatisfiable }
+  Partial(start, if end >= total { total - 1L } else { end })
+}
+
+///|
+fn object_download_plan(
+  total : Int64,
+  filename : String?,
+  request_headers : Map[String, String],
+) -> ObjectDownloadPlan {
+  let headers : Map[String, String] = {
+    "Content-Type": "application/octet-stream",
+    "Accept-Ranges": "bytes",
+  }
+  if filename is Some(filename) {
+    let safe = filename.replace(old="\r", new="").replace(old="\n", new="")
+      .replace(old="\"", new="_").replace(old="\\", new="_")
+    headers["Content-Disposition"] = "attachment; filename=\"\{safe}\"; filename*=UTF-8''\{@mocket.url_encode(safe)}"
+  }
+  let (status, offset, length) = match object_range(request_headers, total) {
+    Whole => (200, 0L, total)
+    Partial(start, end) => {
+      headers["Content-Range"] = "bytes \{start}-\{end}/\{total}"
+      (206, start, end - start + 1L)
+    }
+    Unsatisfiable => {
+      headers["Content-Range"] = "bytes */\{total}"
+      (416, 0L, 0L)
+    }
+  }
+  headers["Content-Length"] = length.to_string()
+  { status, headers, offset, length }
+}
+
+///|
+impl @mocket.Responder for ObjectFileSlice with fn options(_self, _response) {
+  ()
+}
+
+///|
+impl @mocket.Responder for ObjectFileSlice with fn output(self, writer) {
+  let file = @fs.open(self.path, mode=ReadOnly)
+  defer file.close()
+  let buffer = FixedArray::make(65536, b'\x00')
+  for sent = 0L; sent < self.length; {
+    let remaining = self.length - sent
+    let size = if remaining < 65536L { remaining.to_int() } else { 65536 }
+    let n = file.read_at(buffer, position=self.offset + sent, len=size)
+    if n == 0 { fail("object changed during download") }
+    writer.write(buffer.unsafe_reinterpret_as_bytes()[:n])
+    continue sent + n.to_int64()
   }
 }
 
 ///|
-fn build_object_download_response(
-  data : Bytes,
+async fn object_file_response(
+  path : String,
   filename : String?,
-  request_headers : Map[String, String],
-) -> (Int, Map[String, String], Bytes) {
-  let headers : Map[String, String] = {
-    "Content-Type": "application/octet-stream",
-  }
-  headers["Accept-Ranges"] = "bytes"
-  match filename {
-    Some(fname) =>
-      headers["Content-Disposition"] = "attachment; filename=\"\{fname}\""
-    None => ()
-  }
-  match parse_range_header(request_headers, data.length()) {
-    Some((start, end)) => {
-      let end_exclusive = end + 1
-      let body = slice_bytes(data, start, end_exclusive)
-      headers["Content-Length"] = body.length().to_string()
-      headers["Content-Range"] = "bytes \{start}-\{end}/\{data.length()}"
-      (206, headers, body)
-    }
-    None => {
-      headers["Content-Length"] = data.length().to_string()
-      (200, headers, data)
-    }
-  }
+  headers : Map[String, String],
+) -> @mocket.HttpResponse {
+  let plan = object_download_plan(@fs.file_size(path), filename, headers)
+  let body : ObjectFileSlice = { path, offset: plan.offset, length: plan.length }
+  @mocket.HttpResponse(
+    @mocket.StatusCode::from_int(plan.status),
+    headers=view_map_from_string_map(plan.headers),
+    body=body,
+  )
 }

@@ -87,7 +87,7 @@ async fn handle_ws_incoming(text : String) -> String? {
       }
       let body = match (kind, content_val) {
         ("text", Some(String(s))) => @msgpack.string(s)
-        ("file", Some(Object(fields))) | ("image", Some(Object(fields))) => {
+        ("file" | "image" | "video", Some(Object(fields))) => {
           let mp_map : Map[String, @msgpack.Value] = Map([], capacity=0)
           for k, v in fields {
             let mp_val = match v {
@@ -148,24 +148,18 @@ fn split_once(raw : String, sep : String) -> (String, String)? {
 
 ///|
 fn parse_query_map(raw : String?) -> Map[String, String] {
-  let out : Map[String, String] = Map([])
   match raw {
-    Some(q) if q != "" =>
-      for pair in q.split("&") {
-        let s = pair.to_owned()
-        match split_once(s, "=") {
-          Some((k, v)) => out[k] = v
-          None => out[s] = ""
-        }
-      }
-    _ => ()
+    Some(q) => @mocket.parse_query(q)
+    None => Map([])
   }
-  out
 }
 
 ///|
-/// Extract the query string from a mocket request URL: everything after `?`.
+/// Mocket keeps the query separate from the path used for routing.
 fn request_query(req : @mocket.HttpRequest) -> String? {
+  if req.query != "" {
+    return Some(req.query)
+  }
   match split_once(req.url, "?") {
     Some((_, q)) => if q == "" { None } else { Some(q) }
     None => None
@@ -427,39 +421,18 @@ async fn handle_object_get(
   id : String,
   filename : String?,
   request_headers : Map[String, String],
+  peer_id? : String,
 ) -> @mocket.HttpResponse {
+  if !is_valid_object_id(id) {
+    return json_error(BadRequest, "invalid_object_id", "invalid object id")
+  }
   match get_object_path(id) {
-    Some(path) => {
-      let bytes = @fs.read_file(path).binary() catch {
-        _ =>
-          return json_error(
-            NotFound,
-            "object_not_found",
-            "object \{id} could not be read",
-          )
-      }
-      let (status_code, resp_headers, body) = build_object_download_response(
-        bytes, filename, request_headers,
-      )
-      @mocket.HttpResponse(
-        @mocket.StatusCode::from_int(status_code),
-        headers=view_map_from_string_map(resp_headers),
-        body~,
-      )
-    }
+    Some(path) => object_file_response(path, filename, request_headers)
     None =>
-      match get_object(id) {
-        Some(data) => {
-          let (status_code, resp_headers, body) = build_object_download_response(
-            data, filename, request_headers,
-          )
-          @mocket.HttpResponse(
-            @mocket.StatusCode::from_int(status_code),
-            headers=view_map_from_string_map(resp_headers),
-            body~,
-          )
-        }
-        None =>
+      match peer_id {
+        Some(peer) if peer != "" && peer != get_config().id =>
+          object_peer_response(peer, id, filename, request_headers)
+        _ =>
           json_error(NotFound, "object_not_found", "object \{id} not found")
       }
   }
@@ -610,16 +583,7 @@ fn register_routes(app : @mocket.Mocket) -> Unit {
       err => json_error(InternalServerError, "channel_chat_failed", "\{err}")
     }
   })
-  app.post("/api/object", e => {
-    try {
-      let body : Bytes = e.req.body() catch { _ => b"" }
-      let id = @nanoid.nanoid().unwrap_or(@env.now().to_string())
-      save_object(id, body)
-      @mocket.HttpResponse(OK).body(({ "id": id.to_json() } : Json))
-    } catch {
-      err => json_error(InternalServerError, "object_upload_failed", "\{err}")
-    }
-  })
+  app.post("/api/object", e => handle_object_upload(e.req.reader))
   app.post("/api/object/register", e => {
     let body : String = e.req.body() catch { _ => "" }
     let json_val = @json.parse(body) catch {
@@ -641,7 +605,7 @@ fn register_routes(app : @mocket.Mocket) -> Unit {
       let query_map = parse_query_map(request_query(e.req))
       let filename = query_map.get("filename")
       let request_headers = owned_headers(e.req.headers)
-      handle_object_get(id, filename, request_headers)
+      handle_object_get(id, filename, request_headers, peer_id?=query_map.get("peer"))
     } catch {
       err => json_error(InternalServerError, "object_get_failed", "\{err}")
     }
@@ -702,7 +666,9 @@ async fn start_http_service(
   register_routes(app)
   for ;; {
     log_info("HTTP listening on http://\{addr}")
-    app.listen(addr)
+    listen_http_service(app, addr) catch {
+      err => log_warn("HTTP server on \{addr} failed: \{err}")
+    }
     log_warn("HTTP server on \{addr} exited; retrying in 5s")
     @async.sleep(5000)
   }

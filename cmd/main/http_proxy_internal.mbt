@@ -150,7 +150,7 @@ async fn proxy_http_request(
 ///|
 enum ResponseBody {
   Bytes(Bytes)
-  File(String)
+  File(ObjectFileSlice)
 }
 
 ///|
@@ -160,52 +160,30 @@ async fn handle_internal_http_request(
   headers : Map[String, String],
   body : Bytes,
 ) -> (Int, Map[String, String], ResponseBody) {
-  if http_method == "GET" &&
+  if (http_method == "GET" || http_method == "HEAD") &&
     @url.Url::parse("http://localhost" + path)
     is Some({ path: Segments(["api", "object", id]), query, .. }) {
-    let mut filename = None
-    if query is Some(query) {
-      let parts = query.split("&")
-      for part in parts {
-        let part_str = part.to_owned()
-        if part_str.has_prefix("filename=") {
-          filename = Some(part_str[9:].to_owned())
-        }
-      }
-    }
+    let filename = parse_query_map(query).get("filename")
     match get_object_path(id) {
       Some(path) => {
-        log_info(
-          "HTTP: Serving object \{id} via zero-copy file stream: \{path}",
-        )
-        let resp_headers : Map[String, String] = {
-          "Content-Type": "application/octet-stream",
-          "Accept-Ranges": "bytes",
-        }
-        match filename {
-          Some(fname) =>
-            resp_headers["Content-Disposition"] = "attachment; filename=\"\{fname}\""
-          None => ()
-        }
-        (200, resp_headers, ResponseBody::File(path))
-      }
-      None =>
-        match get_object(id) {
-          Some(data) => {
-            let (status_code, resp_headers, body) = build_object_download_response(
-              data, filename, headers,
-            )
-            (status_code, resp_headers, ResponseBody::Bytes(body))
+        let plan = object_download_plan(@fs.file_size(path), filename, headers)
+        if http_method == "HEAD" || plan.length == 0L {
+          (plan.status, plan.headers, ResponseBody::Bytes(b""))
+        } else {
+          let slice : ObjectFileSlice = {
+            path, offset: plan.offset, length: plan.length,
           }
-          None => {
+          (plan.status, plan.headers, ResponseBody::File(slice))
+        }
+      }
+      None => {
             let resp_headers : Map[String, String] = Map([])
             (
               404,
               resp_headers,
               ResponseBody::Bytes(@utf8.encode("Object not found")),
             )
-          }
-        }
+      }
     }
   } else if http_method == "POST" && path == "/api/object" {
     let id = @nanoid.nanoid().unwrap_or(@env.now().to_string())

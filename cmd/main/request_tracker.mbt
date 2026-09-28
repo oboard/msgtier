@@ -34,7 +34,7 @@ fn add_pending_request(id : String) -> Unit {
       }
     }
     for k in to_remove {
-      request_tracker_state.tracker.pending.remove(k)
+      remove_pending_request(k)
     }
   }
   request_tracker_state.tracker.pending[id] = {
@@ -88,4 +88,5 @@ async fn wait_for_response(
 ///|
 fn remove_pending_request(id : String) -> Unit {
   request_tracker_state.tracker.pending.remove(id)
+  app_data_handler_state.pending_response_chunks.remove(id)
 }

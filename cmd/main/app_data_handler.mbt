@@ -384,6 +384,11 @@ fn store_response_chunk(
   headers : Map[String, String]?,
 ) -> (Bytes, String?, Map[String, String]?)? {
   let cache = app_data_handler_state.pending_response_chunks
+  if !request_tracker_state.tracker.pending.contains(request_id) ||
+    total <= 0 || index < 0 || index >= total {
+    cache.remove(request_id)
+    return None
+  }
   let state = match cache.get(request_id) {
     Some(existing) =>
       if existing.total != total {
@@ -737,7 +742,7 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
     )
     let resp_kind = match resp_body {
       Bytes(b) => "bytes:\{b.length()}"
-      File(file_path) => "file:\{file_path}"
+      File(slice) => "file:\{slice.path} offset=\{slice.offset} length=\{slice.length}"
     }
     log_bench(
       "http_proxy_resp_ready",
@@ -790,7 +795,7 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
 ///|
 enum ResponseSource {
   MsgPack(@msgpack.Value)
-  FileStream(String, String, Map[String, String]) // path, status, headers
+  FileStream(ObjectFileSlice, String, Map[String, String])
 }
 
 ///|
@@ -1029,15 +1034,21 @@ async fn send_file_stream_helper(
   target_id : String,
   correlation_id : String,
   is_encrypted : Bool,
-  path : String,
+  slice : ObjectFileSlice,
   status : String,
   headers : Map[String, String]?,
   prefer_stream_frame : Bool,
 ) -> Unit {
+  let path = slice.path
   let file_size = try {
     let file = @fs.open(path, mode=ReadOnly)
     defer file.close()
-    file.size()
+    let actual_size = file.size()
+    if slice.offset < 0L || slice.length < 0L ||
+      slice.offset > actual_size || slice.length > actual_size - slice.offset {
+      fail("object changed during transfer")
+    }
+    slice.length
   } catch {
     e => {
       log_error("File stream error: " + e.to_string())
@@ -1090,17 +1101,7 @@ async fn send_file_stream_helper(
         } else {
           app_data_handler_state.response_chunk_size
         }
-        let chunk_buf = FixedArray::make(expected_len, b'\x00')
-        let bytes_read = file.read_at(chunk_buf, position=offset)
-        if bytes_read <= 0 {
-          continue
-        }
-        let chunk_full = chunk_buf.unsafe_reinterpret_as_bytes()
-        let chunk = if bytes_read < expected_len {
-          slice_bytes(chunk_full, 0, bytes_read)
-        } else {
-          chunk_full
-        }
+        let chunk = file.read_exactly_at(expected_len, position=slice.offset + offset)
         send_chunk_frame_or_fallback(
           transport,
           resolved_addr,
@@ -1143,17 +1144,7 @@ async fn send_file_stream_helper(
       } else {
         app_data_handler_state.response_chunk_size
       }
-      let chunk_buf = FixedArray::make(expected_len, b'\x00')
-      let bytes_read = file.read_at(chunk_buf, position=offset)
-      if bytes_read <= 0 {
-        continue
-      }
-      let chunk_full = chunk_buf.unsafe_reinterpret_as_bytes()
-      let chunk = if bytes_read < expected_len {
-        slice_bytes(chunk_full, 0, bytes_read)
-      } else {
-        chunk_full
-      }
+      let chunk = file.read_exactly_at(expected_len, position=slice.offset + offset)
       send_chunk_frame_or_fallback(
         transport,
         resolved_addr,
@@ -1210,17 +1201,7 @@ async fn send_file_stream_helper(
             } else {
               app_data_handler_state.response_chunk_size
             }
-            let chunk_buf = FixedArray::make(expected_len, b'\x00')
-            let bytes_read = file.read_at(chunk_buf, position=offset)
-            if bytes_read <= 0 {
-              continue
-            }
-            let chunk_full = chunk_buf.unsafe_reinterpret_as_bytes()
-            let chunk = if bytes_read < expected_len {
-              slice_bytes(chunk_full, 0, bytes_read)
-            } else {
-              chunk_full
-            }
+            let chunk = file.read_exactly_at(expected_len, position=slice.offset + offset)
             send_chunk_frame_or_fallback(
               transport,
               resolved_addr,
@@ -1265,17 +1246,7 @@ async fn send_file_stream_helper(
             } else {
               app_data_handler_state.response_chunk_size
             }
-            let chunk_buf = FixedArray::make(expected_len, b'\x00')
-            let bytes_read = file.read_at(chunk_buf, position=offset)
-            if bytes_read <= 0 {
-              continue
-            }
-            let chunk_full = chunk_buf.unsafe_reinterpret_as_bytes()
-            let chunk = if bytes_read < expected_len {
-              slice_bytes(chunk_full, 0, bytes_read)
-            } else {
-              chunk_full
-            }
+            let chunk = file.read_exactly_at(expected_len, position=slice.offset + offset)
             send_chunk_frame_or_fallback(
               transport,
               resolved_addr,
