@@ -1,0 +1,14 @@
+cmd/main/config.mbt
+  h_c7606fb8f0c97c 33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "f7c3227fb055dd2bc48242fb1b64e2d04ea7b824",
+  "prompts": {},
+  "humans": {
+    "h_c7606fb8f0c97c": {
+      "author": "oboard <oboard@outlook.com>"
+    }
+  }
+}
