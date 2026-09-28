@@ -28,7 +28,9 @@ fn HttpWebSocketOutput::enqueue(
   self : HttpWebSocketOutput,
   frame : HttpWebSocketFrame,
 ) -> Unit {
-  if self.closed { return }
+  if self.closed {
+    return
+  }
   let size = match frame {
     Text(text) => text.length() * 2
     Binary(bytes) => bytes.length()
@@ -58,7 +60,11 @@ async fn serve_http_websocket(
   let handler = match app.ws_static_routes.get(path) {
     Some(handler) => handler
     None => {
-      send_http_response(conn, request, @mocket.HttpResponse(NotFound).body("Not Found"))
+      send_http_response(
+        conn,
+        request,
+        @mocket.HttpResponse(NotFound).body("Not Found"),
+      )
       conn.close()
       return
     }
@@ -80,7 +86,10 @@ async fn serve_http_websocket(
     () => output.enqueue(Ping),
   )
   defer @mocket.unregister_ws_connection(id)
-  let peer : @mocket.WebSocketPeer = { connection_id: id, subscribed_channels: [] }
+  let peer : @mocket.WebSocketPeer = {
+    connection_id: id,
+    subscribed_channels: [],
+  }
   defer handler(Close(peer))
   handler(Open(peer))
   @async.with_task_group(group => {
@@ -92,7 +101,9 @@ async fn serve_http_websocket(
           Binary(bytes) => ws.send_binary(bytes)
           Ping => ws.ping()
         }
-        if !output.closed { output.pending_bytes -= size }
+        if !output.closed {
+          output.pending_bytes -= size
+        }
       }
     })
     for ;; {

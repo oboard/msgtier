@@ -171,18 +171,20 @@ async fn handle_internal_http_request(
           (plan.status, plan.headers, ResponseBody::Bytes(b""))
         } else {
           let slice : ObjectFileSlice = {
-            path, offset: plan.offset, length: plan.length,
+            path,
+            offset: plan.offset,
+            length: plan.length,
           }
           (plan.status, plan.headers, ResponseBody::File(slice))
         }
       }
       None => {
-            let resp_headers : Map[String, String] = Map([])
-            (
-              404,
-              resp_headers,
-              ResponseBody::Bytes(@utf8.encode("Object not found")),
-            )
+        let resp_headers : Map[String, String] = Map([])
+        (
+          404,
+          resp_headers,
+          ResponseBody::Bytes(@utf8.encode("Object not found")),
+        )
       }
     }
   } else if http_method == "POST" && path == "/api/object" {

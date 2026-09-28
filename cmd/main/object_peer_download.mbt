@@ -18,7 +18,9 @@ impl @mocket.Responder for ObjectPeerDownload with fn output(self, writer) {
     let remaining = self.length - sent
     let size = if remaining < 1048576L { remaining.to_int() } else { 1048576 }
     let chunk = (self.fetch)(self.offset + sent, size)
-    if chunk.length() != size { fail("incomplete object range from peer") }
+    if chunk.length() != size {
+      fail("incomplete object range from peer")
+    }
     writer.write(chunk)
     continue sent + size.to_int64()
   }
@@ -33,11 +35,18 @@ async fn fetch_object_peer_range(
   total : Int64,
 ) -> Bytes {
   let end = start + length.to_int64() - 1L
-  match proxy_http_request(
-    peer, "GET", path, { "Range": "bytes=\{start}-\{end}" }, b"", 30000,
-  ) {
+  match
+    proxy_http_request(
+      peer,
+      "GET",
+      path,
+      { "Range": "bytes=\{start}-\{end}" },
+      b"",
+      30000,
+    ) {
     Some((206, headers, body)) => {
-      if object_header(headers, "content-range") != Some("bytes \{start}-\{end}/\{total}") ||
+      if object_header(headers, "content-range") !=
+        Some("bytes \{start}-\{end}/\{total}") ||
         body.length() != length {
         fail("invalid object range from peer")
       }
@@ -56,13 +65,23 @@ async fn object_peer_response(
   headers : Map[String, String],
 ) -> @mocket.HttpResponse {
   let path = "/api/object/" + @mocket.url_encode(id)
-  let (status, metadata, _) = match proxy_http_request(peer, "HEAD", path, {}, b"", 30000) {
+  let (status, metadata, _) = match
+    proxy_http_request(peer, "HEAD", path, {}, b"", 30000) {
     Some(result) => result
-    None => return json_error(GatewayTimeout, "object_peer_timeout", "Timeout fetching object from peer")
+    None =>
+      return json_error(
+        GatewayTimeout,
+        "object_peer_timeout",
+        "Timeout fetching object from peer",
+      )
   }
   if status != 200 {
     let code = if status == 404 { @mocket.NotFound } else { @mocket.BadGateway }
-    return json_error(code, "object_peer_failed", "Peer returned HTTP \{status}")
+    return json_error(
+      code,
+      "object_peer_failed",
+      "Peer returned HTTP \{status}",
+    )
   }
   let total = match object_header(metadata, "content-length") {
     Some(value) => parse_object_decimal(value)
@@ -70,17 +89,24 @@ async fn object_peer_response(
   }
   let total = match total {
     Some(total) => total
-    None => return json_error(BadGateway, "object_peer_invalid", "Peer did not provide the object size")
+    None =>
+      return json_error(
+        BadGateway,
+        "object_peer_invalid",
+        "Peer did not provide the object size",
+      )
   }
   let plan = object_download_plan(total, filename, headers)
   let body : ObjectPeerDownload = {
     offset: plan.offset,
     length: plan.length,
-    fetch: (start, length) => fetch_object_peer_range(peer, path, start, length, total),
+    fetch: (start, length) => {
+      fetch_object_peer_range(peer, path, start, length, total)
+    },
   }
   @mocket.HttpResponse(
     @mocket.StatusCode::from_int(plan.status),
     headers=view_map_from_string_map(plan.headers),
-    body=body,
+    body~,
   )
 }

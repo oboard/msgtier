@@ -385,7 +385,9 @@ fn store_response_chunk(
 ) -> (Bytes, String?, Map[String, String]?)? {
   let cache = app_data_handler_state.pending_response_chunks
   if !request_tracker_state.tracker.pending.contains(request_id) ||
-    total <= 0 || index < 0 || index >= total {
+    total <= 0 ||
+    index < 0 ||
+    index >= total {
     cache.remove(request_id)
     return None
   }
@@ -742,7 +744,8 @@ fn handle_http_proxy_message(ctx : MessageContext) -> Unit {
     )
     let resp_kind = match resp_body {
       Bytes(b) => "bytes:\{b.length()}"
-      File(slice) => "file:\{slice.path} offset=\{slice.offset} length=\{slice.length}"
+      File(slice) =>
+        "file:\{slice.path} offset=\{slice.offset} length=\{slice.length}"
     }
     log_bench(
       "http_proxy_resp_ready",
@@ -1044,8 +1047,10 @@ async fn send_file_stream_helper(
     let file = @fs.open(path, mode=ReadOnly)
     defer file.close()
     let actual_size = file.size()
-    if slice.offset < 0L || slice.length < 0L ||
-      slice.offset > actual_size || slice.length > actual_size - slice.offset {
+    if slice.offset < 0L ||
+      slice.length < 0L ||
+      slice.offset > actual_size ||
+      slice.length > actual_size - slice.offset {
       fail("object changed during transfer")
     }
     slice.length
@@ -1101,7 +1106,10 @@ async fn send_file_stream_helper(
         } else {
           app_data_handler_state.response_chunk_size
         }
-        let chunk = file.read_exactly_at(expected_len, position=slice.offset + offset)
+        let chunk = file.read_exactly_at(
+          expected_len,
+          position=slice.offset + offset,
+        )
         send_chunk_frame_or_fallback(
           transport,
           resolved_addr,
@@ -1144,7 +1152,10 @@ async fn send_file_stream_helper(
       } else {
         app_data_handler_state.response_chunk_size
       }
-      let chunk = file.read_exactly_at(expected_len, position=slice.offset + offset)
+      let chunk = file.read_exactly_at(
+        expected_len,
+        position=slice.offset + offset,
+      )
       send_chunk_frame_or_fallback(
         transport,
         resolved_addr,
@@ -1201,7 +1212,10 @@ async fn send_file_stream_helper(
             } else {
               app_data_handler_state.response_chunk_size
             }
-            let chunk = file.read_exactly_at(expected_len, position=slice.offset + offset)
+            let chunk = file.read_exactly_at(
+              expected_len,
+              position=slice.offset + offset,
+            )
             send_chunk_frame_or_fallback(
               transport,
               resolved_addr,
@@ -1246,7 +1260,10 @@ async fn send_file_stream_helper(
             } else {
               app_data_handler_state.response_chunk_size
             }
-            let chunk = file.read_exactly_at(expected_len, position=slice.offset + offset)
+            let chunk = file.read_exactly_at(
+              expected_len,
+              position=slice.offset + offset,
+            )
             send_chunk_frame_or_fallback(
               transport,
               resolved_addr,

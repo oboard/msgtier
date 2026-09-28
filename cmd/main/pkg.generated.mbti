@@ -40,6 +40,10 @@ pub async fn save_object_from_reader(String, &@io.Reader) -> Unit
 // Errors
 type AddressParseError derive(@debug.Debug)
 
+type HttpBodyTooLarge derive(@debug.Debug)
+
+type ObjectUploadReadError derive(@debug.Debug)
+
 type PortMappingError derive(@debug.Debug)
 
 type TransportError derive(@debug.Debug)
@@ -88,6 +92,10 @@ type HotReloadSettings derive(ToJson, @debug.Debug, @json.FromJson)
 
 type HttpServiceState
 
+type HttpWebSocketFrame
+
+type HttpWebSocketOutput
+
 type LocalPortEntry derive(Eq, ToJson, @debug.Debug, @json.FromJson)
 
 type LogLevel derive(Eq, ToJson, @debug.Debug, @json.FromJson)
@@ -107,6 +115,14 @@ type NetworkAddress derive(Eq, ToJson, @debug.Debug, @json.FromJson)
 pub impl Show for NetworkAddress
 
 type NetworkDiscoveryInfo derive(ToJson, @debug.Debug, @json.FromJson)
+
+type ObjectDownloadPlan
+
+type ObjectFileSlice
+
+type ObjectPeerDownload
+
+type ObjectRange derive(Eq, @debug.Debug)
 
 type ObjectStore
 

@@ -432,8 +432,7 @@ async fn handle_object_get(
       match peer_id {
         Some(peer) if peer != "" && peer != get_config().id =>
           object_peer_response(peer, id, filename, request_headers)
-        _ =>
-          json_error(NotFound, "object_not_found", "object \{id} not found")
+        _ => json_error(NotFound, "object_not_found", "object \{id} not found")
       }
   }
 }
@@ -605,7 +604,12 @@ fn register_routes(app : @mocket.Mocket) -> Unit {
       let query_map = parse_query_map(request_query(e.req))
       let filename = query_map.get("filename")
       let request_headers = owned_headers(e.req.headers)
-      handle_object_get(id, filename, request_headers, peer_id?=query_map.get("peer"))
+      handle_object_get(
+        id,
+        filename,
+        request_headers,
+        peer_id?=query_map.get("peer"),
+      )
     } catch {
       err => json_error(InternalServerError, "object_get_failed", "\{err}")
     }

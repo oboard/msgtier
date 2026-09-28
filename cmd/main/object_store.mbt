@@ -87,9 +87,17 @@ pub async fn save_object_from_reader(id : String, reader : &@io.Reader) -> Unit 
 
 ///|
 fn is_valid_object_id(id : String) -> Bool {
-  !id.is_empty() && !id.has_prefix(".") &&
-  !id.contains("/") && !id.contains("\\") && !id.contains("\u0000")
+  !id.is_empty() &&
+  !id.has_prefix(".") &&
+  !id.contains("/") &&
+  !id.contains("\\") &&
+  !id.contains("\u0000")
 }
+
+///|
+suberror ObjectUploadReadError {
+  ObjectUploadReadError(String)
+} derive(Debug)
 
 ///|
 /// Publish only complete uploads. A cancelled or failed upload must not leave
@@ -122,7 +130,11 @@ async fn save_object_in_dir(
   }
   let buf = FixedArray::make(65536, b'\x00')
   for ;; {
-    let n = @async.with_timeout(60000, () => reader.read(buf))
+    let n = @async.with_timeout(60000, () => {
+      reader.read(buf) catch {
+        err => raise ObjectUploadReadError(err.to_string())
+      }
+    })
     if n == 0 {
       break
     }
