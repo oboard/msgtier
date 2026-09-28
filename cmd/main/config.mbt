@@ -30,7 +30,7 @@ struct AppState {
 }
 
 ///|
-let app_state : AppState = { version: "0.1.0", config: None, root: None, }
+let app_state : AppState = { version: "0.1.1", config: None, root: None, }
 
 ///|
 async fn Config::from_file(path : String) -> Config {
