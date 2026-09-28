@@ -101,59 +101,16 @@ fn mark_port_forward_open_ack(
       endpoint.opened = ok
       endpoint.failed = !ok
       endpoint.error = error
-      port_forward_registry_state.tcp_forward_connections[connection_id] = endpoint
-      endpoint.cond.signal()
+      endpoint.cond.broadcast()
       if !ok {
-        match remove_port_forward_tcp_forward_connection(connection_id) {
-          Some(value) => {
-            record_port_forward_audit_close(
-              value.audit,
-              error.unwrap_or("open_failed"),
-            )
-            close_port_forward_tcp_endpoint(value)
-          }
-          None => ()
-        }
+        close_port_forward_tcp_endpoint(
+          endpoint,
+          error=error.unwrap_or("open_failed"),
+        )
       }
     }
     None => ()
   }
-}
-
-///|
-async fn run_port_forward_expose_tcp_reader(
-  endpoint : PortForwardTcpEndpoint,
-) -> Unit {
-  let buf = FixedArray::make(port_forward_tcp_chunk_size, b'\x00')
-  try {
-    for ;; {
-      let n = endpoint.socket.read(buf)
-      if n <= 0 {
-        break
-      }
-      let chunk = slice_bytes(buf.unsafe_reinterpret_as_bytes(), 0, n)
-      endpoint.audit.bytes_out = endpoint.audit.bytes_out + chunk.length()
-      if !send_port_forward_tcp_chunks(endpoint, chunk) {
-        break
-      }
-    }
-  } catch {
-    _ => ()
-  }
-  send_port_forward_close_if_possible(
-    endpoint.peer_id,
-    endpoint.rule_id,
-    endpoint.protocol,
-    endpoint.connection_id,
-    if endpoint.send_seq.val > 0 {
-      Some(endpoint.send_seq.val - 1)
-    } else {
-      None
-    },
-    None,
-    route_protocol=endpoint.route_protocol,
-    route_addr=endpoint.route_addr,
-  )
 }
 
 ///|
@@ -230,91 +187,9 @@ fn handle_port_forward_open_message(ctx : MessageContext) -> Unit {
     "port_forward open request requester=\{msg.source_id} rule=\{rule_id} protocol=\{protocol} target=\{target_host}:\{target_port} connection=\{connection_id}",
   )
   if is_port_forward_tcp_protocol(protocol) {
-    ctx.root.spawn_bg(() => {
-      let target = target_host + ":" + target_port.to_string()
-      log_debug(
-        "port_forward open begin connect requester=\{msg.source_id} target=\{target}",
-      )
-      let conn = @socket.Tcp::connect_to_host(target_host, port=target_port) catch {
-        _ => {
-          log_debug(
-            "port_forward open tcp connect failed requester=\{msg.source_id} target=\{target}",
-          )
-          ignore(
-            send_port_forward_message_via(
-              msg.source_id,
-              "port_forward_open_ack",
-              make_port_forward_open_ack_body(
-                rule_id,
-                protocol,
-                connection_id,
-                false,
-                Some("target_connect_failed"),
-              ),
-              None,
-              route_protocol=ctx.transport.protocol(),
-              route_addr=ctx.sender_addr,
-            ),
-          )
-          return
-        }
-      }
-      let endpoint = {
-        socket: conn,
-        send_seq: Ref(0),
-        recv_next_seq: Ref(0),
-        remote_close_seq: Ref(None),
-        recv_buffer: Ref(Map([])),
-        pending_writes: Ref([]),
-        draining: Ref(false),
-        closed: Ref(false),
-        cond: @cond_var.Cond(),
-        rule_id,
-        peer_id: msg.source_id,
-        protocol,
-        connection_id,
-        route_protocol: ctx.transport.protocol(),
-        route_addr: ctx.sender_addr,
-        opened: true,
-        failed: false,
-        error: None,
-        audit: record_port_forward_audit_open(
-          rule_id,
-          protocol,
-          msg.source_id,
-          get_config().id,
-          target,
-        ),
-      }
-      port_forward_registry_state.tcp_expose_connections[connection_id] = endpoint
-      log_debug(
-        "port_forward open tcp established requester=\{msg.source_id} target=\{target}",
-      )
-      ignore(
-        send_port_forward_message_via(
-          msg.source_id,
-          "port_forward_open_ack",
-          make_port_forward_open_ack_body(
-            rule_id,
-            protocol,
-            connection_id,
-            true,
-            None,
-          ),
-          None,
-          route_protocol=ctx.transport.protocol(),
-          route_addr=ctx.sender_addr,
-        ),
-      )
-      run_port_forward_expose_tcp_reader(endpoint)
-      match remove_port_forward_tcp_expose_connection(connection_id) {
-        Some(value) => {
-          record_port_forward_audit_close(value.audit, "closed")
-          close_port_forward_tcp_endpoint(value)
-        }
-        None => ()
-      }
-    })
+    start_port_forward_expose_tcp_connection(
+      ctx, rule_id, protocol, connection_id, target_host, target_port,
+    )
   } else if port_forward_transport(protocol) == "udp" {
     ctx.root.spawn_bg(() => {
       let server_addr = @socket.Addr::resolve(target_host, port=target_port) catch {
@@ -489,31 +364,11 @@ fn handle_port_forward_data_message(ctx : MessageContext) -> Unit {
   if is_port_forward_tcp_protocol(protocol) {
     match get_port_forward_tcp_forward_connection(connection_id) {
       Some(endpoint) =>
-        if !queue_port_forward_tcp_recv_chunk(endpoint, seq, data) {
-          match remove_port_forward_tcp_forward_connection(connection_id) {
-            Some(value) => {
-              record_port_forward_audit_close(value.audit, "write_failed")
-              close_port_forward_tcp_endpoint(value)
-            }
-            None => ()
-          }
-        } else {
-          ensure_port_forward_tcp_writer(ctx.root, endpoint)
-        }
+        receive_port_forward_tcp_chunk(ctx.root, endpoint, seq, data)
       None =>
         match get_port_forward_tcp_expose_connection(connection_id) {
           Some(endpoint) =>
-            if !queue_port_forward_tcp_recv_chunk(endpoint, seq, data) {
-              match remove_port_forward_tcp_expose_connection(connection_id) {
-                Some(value) => {
-                  record_port_forward_audit_close(value.audit, "write_failed")
-                  close_port_forward_tcp_endpoint(value)
-                }
-                None => ()
-              }
-            } else {
-              ensure_port_forward_tcp_writer(ctx.root, endpoint)
-            }
+            receive_port_forward_tcp_chunk(ctx.root, endpoint, seq, data)
           None => ()
         }
     }
@@ -565,31 +420,25 @@ fn handle_port_forward_close_message(ctx : MessageContext) -> Unit {
     "",
   )
   let last_seq = port_forward_int_field(msg.body, "last_seq")
+  let error = port_forward_string_field(msg.body, "error")
   if connection_id == "" {
     return
   }
   match get_port_forward_tcp_forward_connection(connection_id) {
     Some(endpoint) => {
-      endpoint.error = Some("closed")
-      endpoint.remote_close_seq.val = last_seq
-      if should_finalize_port_forward_tcp_remote_close(endpoint) {
-        finalize_port_forward_tcp_remote_close(connection_id)
-      }
+      receive_port_forward_tcp_close(ctx.root, endpoint, last_seq, error)
       return
     }
     None => ()
   }
   match get_port_forward_tcp_expose_connection(connection_id) {
     Some(endpoint) => {
-      endpoint.error = Some("closed")
-      endpoint.remote_close_seq.val = last_seq
-      if should_finalize_port_forward_tcp_remote_close(endpoint) {
-        finalize_port_forward_tcp_remote_close(connection_id)
-      }
+      receive_port_forward_tcp_close(ctx.root, endpoint, last_seq, error)
       return
     }
     None => ()
   }
+  cancel_port_forward_tcp_pending_open(connection_id)
   if port_forward_registry_state.udp_forward_session_by_id.contains(
       connection_id,
     ) {
@@ -618,32 +467,11 @@ fn dispatch_raw_port_forward_data(
     return
   }
   match get_port_forward_tcp_forward_connection(connection_id) {
-    Some(endpoint) =>
-      if !queue_port_forward_tcp_recv_chunk(endpoint, seq, data) {
-        match remove_port_forward_tcp_forward_connection(connection_id) {
-          Some(value) => {
-            record_port_forward_audit_close(value.audit, "write_failed")
-            close_port_forward_tcp_endpoint(value)
-          }
-          None => ()
-        }
-      } else {
-        ensure_port_forward_tcp_writer(root, endpoint)
-      }
+    Some(endpoint) => receive_port_forward_tcp_chunk(root, endpoint, seq, data)
     None =>
       match get_port_forward_tcp_expose_connection(connection_id) {
         Some(endpoint) =>
-          if !queue_port_forward_tcp_recv_chunk(endpoint, seq, data) {
-            match remove_port_forward_tcp_expose_connection(connection_id) {
-              Some(value) => {
-                record_port_forward_audit_close(value.audit, "write_failed")
-                close_port_forward_tcp_endpoint(value)
-              }
-              None => ()
-            }
-          } else {
-            ensure_port_forward_tcp_writer(root, endpoint)
-          }
+          receive_port_forward_tcp_chunk(root, endpoint, seq, data)
         None => ()
       }
   }

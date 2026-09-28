@@ -46,6 +46,9 @@ fn get_upload_dir() -> String {
 
 ///|
 pub async fn get_object_path(id : String) -> String? {
+  if !is_valid_object_id(id) {
+    return None
+  }
   // Check registered objects first
   if object_store_state.store.objects.contains(id) {
     match object_store_state.store.objects.get(id) {
@@ -74,39 +77,60 @@ pub async fn get_object(id : String) -> Bytes? {
 
 ///|
 pub async fn save_object(id : String, data : Bytes) -> Unit {
-  let dir = get_upload_dir()
-  if !@fs.exists(dir) {
-    @fs.mkdir(dir, permission=0o644)
-  }
-  let path = dir + "/" + id
-  @fs.write_file(path, data, create_mode=@fs.CreateOrTruncate, permission=0o644)
+  save_object_from_reader(id, @io.MemoryReader(writer => writer.write(data)))
 }
 
 ///|
 pub async fn save_object_from_reader(id : String, reader : &@io.Reader) -> Unit {
-  let dir = get_upload_dir()
-  if !@fs.exists(dir) {
-    @fs.mkdir(dir, permission=0o644)
+  save_object_in_dir(get_upload_dir(), id, reader)
+}
+
+///|
+fn is_valid_object_id(id : String) -> Bool {
+  !id.is_empty() && !id.has_prefix(".") &&
+  !id.contains("/") && !id.contains("\\") && !id.contains("\u0000")
+}
+
+///|
+/// Publish only complete uploads. A cancelled or failed upload must not leave
+/// a downloadable partial object, and memory use must not depend on file size.
+async fn save_object_in_dir(
+  dir : String,
+  id : String,
+  reader : &@io.Reader,
+) -> Unit {
+  if !is_valid_object_id(id) {
+    fail("invalid object id")
   }
-  let path = dir + "/" + id
+  @fs.mkdir(dir, permission=0o755, recursive=true, allow_exist=true)
+  let suffix = @nanoid.nanoid().unwrap_or(@env.now().to_string())
+  let temporary_path = dir + "/.upload-" + suffix
   let file = @fs.open(
-    path,
+    temporary_path,
     mode=WriteOnly,
-    create_mode=@fs.CreateOrTruncate,
+    create_mode=@fs.CreateNew,
     permission=0o644,
   )
-  defer file.close()
-
-  let buf = FixedArray::make(4194304, b'\x00') // 4MB buffer
+  let mut committed = false
+  defer {
+    file.close()
+    if !committed {
+      @fs.remove(temporary_path) catch {
+        err => log_warn("Failed to remove incomplete upload: \{err}")
+      }
+    }
+  }
+  let buf = FixedArray::make(65536, b'\x00')
   for ;; {
     let n = reader.read(buf)
-    if n <= 0 {
+    if n == 0 {
       break
     }
-    let full = buf.unsafe_reinterpret_as_bytes()
-    let chunk = if n < 4194304 { slice_bytes(full, 0, n) } else { full }
-    file.write(chunk)
+    file.write(buf.unsafe_reinterpret_as_bytes()[:n])
   }
+  file.close()
+  @fs.rename(temporary_path, dir + "/" + id, replace=true)
+  committed = true
 }
 
 ///|

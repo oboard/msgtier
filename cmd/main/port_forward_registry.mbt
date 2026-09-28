@@ -9,6 +9,12 @@ struct PortForwardTcpEndpoint {
   draining : Ref[Bool]
   closed : Ref[Bool]
   cond : @cond_var.Cond
+  mut buffered_bytes : Int
+  mut buffered_chunks : Int
+  // The reader task also owns the open/ack handshake.
+  mut reader : @async.Task[Unit]?
+  mut writer : @async.Task[Unit]?
+  mut close_timer : @async.Task[Unit]?
   rule_id : String
   peer_id : String
   protocol : String
@@ -19,6 +25,12 @@ struct PortForwardTcpEndpoint {
   mut failed : Bool
   mut error : String?
   audit : PortForwardAuditEntry
+}
+
+///|
+priv struct PortForwardTcpPendingOpen {
+  mut task : @async.Task[Unit]?
+  mut closed : Bool
 }
 
 ///|
@@ -53,6 +65,7 @@ struct PortForwardRegistryState {
   tcp_forward_servers : Map[String, @socket.TcpServer]
   tcp_forward_connections : Map[String, PortForwardTcpEndpoint]
   tcp_expose_connections : Map[String, PortForwardTcpEndpoint]
+  tcp_expose_pending_opens : Map[String, PortForwardTcpPendingOpen]
   udp_forward_runtimes : Map[String, PortForwardUdpForwardRuntime]
   udp_forward_session_by_id : Map[String, PortForwardUdpForwardSession]
   udp_forward_session_by_source : Map[String, String]
@@ -66,6 +79,7 @@ let port_forward_registry_state : PortForwardRegistryState = {
   tcp_forward_servers: Map([]),
   tcp_forward_connections: Map([]),
   tcp_expose_connections: Map([]),
+  tcp_expose_pending_opens: Map([]),
   udp_forward_runtimes: Map([]),
   udp_forward_session_by_id: Map([]),
   udp_forward_session_by_source: Map([]),
@@ -118,34 +132,40 @@ fn get_port_forward_tcp_expose_connection(
 }
 
 ///|
-fn remove_port_forward_tcp_forward_connection(
-  connection_id : String,
-) -> PortForwardTcpEndpoint? {
-  let conn = port_forward_registry_state.tcp_forward_connections.get(
-    connection_id,
-  )
-  match conn {
-    Some(value) => {
-      port_forward_registry_state.tcp_forward_connections.remove(connection_id)
-      Some(value)
-    }
-    None => None
+fn forget_port_forward_tcp_endpoint(endpoint : PortForwardTcpEndpoint) -> Unit {
+  let connection_id = endpoint.connection_id
+  if get_port_forward_tcp_forward_connection(connection_id) is Some(current) &&
+    physical_equal(current, endpoint) {
+    port_forward_registry_state.tcp_forward_connections.remove(connection_id)
+  }
+  if get_port_forward_tcp_expose_connection(connection_id) is Some(current) &&
+    physical_equal(current, endpoint) {
+    port_forward_registry_state.tcp_expose_connections.remove(connection_id)
   }
 }
 
 ///|
-fn remove_port_forward_tcp_expose_connection(
+fn forget_port_forward_tcp_pending_open(
   connection_id : String,
-) -> PortForwardTcpEndpoint? {
-  let conn = port_forward_registry_state.tcp_expose_connections.get(
-    connection_id,
-  )
-  match conn {
-    Some(value) => {
-      port_forward_registry_state.tcp_expose_connections.remove(connection_id)
-      Some(value)
+  pending : PortForwardTcpPendingOpen,
+) -> Unit {
+  if port_forward_registry_state.tcp_expose_pending_opens.get(connection_id)
+    is Some(current) &&
+    physical_equal(current, pending) {
+    port_forward_registry_state.tcp_expose_pending_opens.remove(connection_id)
+  }
+}
+
+///|
+fn cancel_port_forward_tcp_pending_open(connection_id : String) -> Unit {
+  if port_forward_registry_state.tcp_expose_pending_opens.get(connection_id)
+    is Some(pending) {
+    pending.closed = true
+    forget_port_forward_tcp_pending_open(connection_id, pending)
+    if pending.task is Some(task) {
+      pending.task = None
+      task.cancel()
     }
-    None => None
   }
 }
 
