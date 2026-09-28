@@ -1,0 +1,14 @@
+cmd/main/object_store.mbt
+  h_c7606fb8f0c97c 49-51,80,85-103,105-107,109,111,114-123,126,129,131-133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "d4a5a3f2f47ca4d6135899f69c8b708acef69d76",
+  "prompts": {},
+  "humans": {
+    "h_c7606fb8f0c97c": {
+      "author": "oboard <oboard@outlook.com>"
+    }
+  }
+}
