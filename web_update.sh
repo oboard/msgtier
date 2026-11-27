@@ -1,12 +1,18 @@
 #!/bin/bash
-set -e
+# Build the web console and refresh the archive the MoonBit side embeds.
+#
+# The MoonBit package `web/` embeds web/dist.zip at compile time and serves it
+# from memory, so this must run before `moon build` when the UI changed.
+set -euo pipefail
 
-cd web/msgtier-web
+cd "$(dirname "$0")/web/msgtier-web"
 
-pnpm i
-pnpm run build
+pnpm install
+pnpm exec vp build
+
 cd dist
-rm -rf ../../dist.zip
-zip -r -9 ../../dist.zip *
-
+rm -f ../../dist.zip
+zip -r -9 -q ../../dist.zip .
 cd ../../
+
+echo "wrote web/dist.zip ($(du -h dist.zip | cut -f1))"
